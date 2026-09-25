@@ -24,7 +24,7 @@ every sign-in code is `123456`, which is also what the web app's end-to-end test
 ## Architecture
 
 A **modular monolith**: one Spring Boot service, split into modules by business capability
-(`auth`, `users`, `profiles`, `catalog`, `venues`, and next `games`, `payments`, `notifications`, `competitions`). Every
+(`auth`, `users`, `profiles`, `catalog`, `venues`, `games`, `notifications`, and next `payments`, `competitions`). Every
 module has the same shape:
 
 ```
@@ -126,10 +126,30 @@ provider exists it refuses to start at all, so sign-in codes can never end up in
 | `GET /venues/{id}/schedule?from=&to=` | `venues.schedule` | Owner only: bookings and blocks in that range |
 | `POST /venues/{id}/blocks` | `venues.block` | Owner only: holds time on a pitch → 201 |
 | `DELETE /bookings/{id}` | `venues.cancelBlock` | Owner only: releases a block → 204 |
+| `GET /games?query=&sport=&when=` | `games.list` | Upcoming games still on that you may see; `when` is `today`, `tomorrow` or `weekend` in local time |
+| `GET /me/games` | `games.mine` | Games you host or have a spot in |
+| `GET /games/{id}` | `games.get` | One game; 404 (the app's `null`) if it doesn't exist |
+| `POST /games` | `games.create` | Hosts a game; on a partner pitch it's booked in the same transaction → 201 |
+| `POST /games/{id}/repeat` | `games.repeat` | Host only: the same game a week later → 201 |
+| `POST /games/{id}/players` | `games.join` | Takes a spot (the game row is locked, so the last spot can't go twice) |
+| `DELETE /games/{id}/players/me` | `games.leave` | Gives up your spot, unless you've paid |
+| `DELETE /games/{id}/players/{player}` | `games.removePlayer` | Host only: a player's id, or `guest:<token>` |
+| `POST /games/{id}/cancellation` | `games.cancel` | Host only: `{"reason"?}`; releases the pitch and tells everyone |
+| `POST /games/{id}/invites` | `games.invite` | Host only: `{"userIds"}` → `{"invited"}` |
+| `POST /games/{id}/guests` | `games.addGuest` | Host only: holds a spot → `{"game", "token"}` for the claim link |
+| `POST /games/{id}/claims` | `games.claimSpot` | `{"token"}` from the claim link |
+| `POST /games/{id}/reminders` | `games.remind` | Host only: `{"userIds"?}` → `{"reminded"}` |
+| `POST /games/{id}/players/{player}/cash` | `games.markPaidCash` | Host only: a share paid in cash |
+| `GET /notifications` | `notifications.list` | Your latest 50, newest first |
+| `POST /notifications/read-all` | `notifications.markAllRead` | → 204 |
 
 Opening hours are the venue's local time (its market's timezone); a day can close at 24:00. A pitch
 can never be double-booked: besides the service's own check, a Postgres exclusion constraint
 (`bookings_no_overlap`) refuses overlapping confirmed bookings however many requests race for them.
+
+A guest spot's claim token is a secret: it's returned once, to the host, when they hold the spot,
+and only its hash is stored. In game data a guest is identified by the spot's public ID instead, so
+nobody viewing a game can claim a spot meant for someone else.
 
 Phone and payout numbers are only ever sent to the player themselves: anyone else gets a blank
 phone and no payout number.
