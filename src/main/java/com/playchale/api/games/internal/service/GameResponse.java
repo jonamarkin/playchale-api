@@ -14,8 +14,29 @@ import com.playchale.api.users.api.UserSummary;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record GameResponse(UUID id, String sport, String format, String title, Instant startsAt, int durationMinutes,
 		VenueRef venue, int capacity, long totalCost, String currency, String visibility, UUID hostId, String notes,
-		List<ParticipantResponse> participants, String status, Instant createdAt, Instant cancelledAt, String cancelReason,
-		UserSummary host, List<PlayerResponse> players, long share, int spotsLeft) {
+		List<ParticipantResponse> participants, String status, ResultResponse result, Instant createdAt, Instant cancelledAt,
+		String cancelReason, UserSummary host, List<PlayerResponse> players, long share, int spotsLeft) {
+
+	/** The web app's GameResult. Players are named by the roster's keys: a player's ID, or "guest:<token>". */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record ResultResponse(int homeScore, int awayScore, Sides sides, List<Scorer> scorers, List<SetScore> sets,
+			List<String> absent, UUID verifiedBy, Instant recordedAt, List<UUID> confirmedBy, List<Dispute> disputes) {
+	}
+
+	public record Sides(List<String> home, List<String> away) {
+	}
+
+	/** Only the sport's own stats are set: goals and assists for football, points for basketball. */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Scorer(String userId, Integer goals, Integer assists, Integer points) {
+	}
+
+	public record SetScore(int home, int away) {
+	}
+
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Dispute(UUID userId, String reason, Instant at) {
+	}
 
 	/** Where it's played: {kind: "listed", venueId, name, area, pitchId?, pitchName?} or {kind: "unlisted", name, area?}. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)

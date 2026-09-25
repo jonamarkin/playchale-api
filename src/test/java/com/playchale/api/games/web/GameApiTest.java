@@ -20,6 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -122,6 +123,36 @@ class GameApiTest {
 		mvc.perform(get("/games/0199f000-0000-7000-8000-000000000000")).andExpect(status().isNotFound())
 			.andExpect(jsonPath("$.error.message").value("This game no longer exists."));
 		mvc.perform(get("/games/g-1")).andExpect(status().isNotFound());
+	}
+
+	@Test
+	void recordingAResultOverHttp() throws Exception {
+		var kwame = TestSignIn.as(mvc, "024 455 5123");
+		var game = json.readTree(mvc.perform(post("/games").cookie(kwame).contentType(MediaType.APPLICATION_JSON)
+			.content(NEW_GAME.replace("2030-06-02T16:00:00.000Z", java.time.Instant.now().plusSeconds(2).toString())))
+			.andReturn().getResponse().getContentAsString());
+		var id = game.get("id").asString();
+		var kojo = TestSignIn.as(mvc, "024 455 5124");
+		var kojoId = json.readTree(mvc.perform(post("/games/" + id + "/players").cookie(kojo)).andReturn().getResponse().getContentAsString())
+			.get("players").get(1).get("id").asString();
+		Thread.sleep(2500);
+
+		mvc.perform(put("/games/" + id + "/result").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("""
+				{"homeScore":2,"awayScore":1,"sides":{"home":["%s"],"away":["%s"]},"scorers":[{"userId":"%s","goals":1}]}
+				""".formatted(game.get("hostId").asString(), kojoId, kojoId)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("completed"))
+			.andExpect(jsonPath("$.result.homeScore").value(2))
+			.andExpect(jsonPath("$.result.scorers[0].goals").value(1))
+			.andExpect(jsonPath("$.result.scorers[0].assists").doesNotExist());
+
+		mvc.perform(post("/games/" + id + "/result/disputes").cookie(kojo).contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"2-2\"}"))
+			.andExpect(jsonPath("$.result.disputes[0].reason").value("2-2"));
+		mvc.perform(get("/users/" + kojoId + "/profile"))
+			.andExpect(jsonPath("$.stats.games").value(1))
+			.andExpect(jsonPath("$.stats.goals").value(1))
+			.andExpect(jsonPath("$.form[0]").value("L"));
+		mvc.perform(get("/users/" + kojoId + "/history")).andExpect(jsonPath("$[0].scoreFor").value(1));
 	}
 
 }

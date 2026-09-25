@@ -140,12 +140,20 @@ provider exists it refuses to start at all, so sign-in codes can never end up in
 | `POST /games/{id}/claims` | `games.claimSpot` | `{"token"}` from the claim link |
 | `POST /games/{id}/reminders` | `games.remind` | Host only: `{"userIds"?}` → `{"reminded"}` |
 | `POST /games/{id}/players/{player}/cash` | `games.markPaidCash` | Host only: a share paid in cash |
+| `PUT /games/{id}/result` | `games.recordResult` | Host only, after kick-off: records the result, or corrects it (which clears checks) |
+| `POST /games/{id}/result/confirmations` | `games.confirmResult` | A player who was there says it's right |
+| `POST /games/{id}/result/disputes` | `games.disputeResult` | `{"reason"?}`: says it isn't; the host is told |
 | `GET /notifications` | `notifications.list` | Your latest 50, newest first |
 | `POST /notifications/read-all` | `notifications.markAllRead` | → 204 |
 
 Opening hours are the venue's local time (its market's timezone); a day can close at 24:00. A pitch
 can never be double-booked: besides the service's own check, a Postgres exclusion constraint
 (`bookings_no_overlap`) refuses overlapping confirmed bookings however many requests race for them.
+
+Profiles are worked out from results: a game counts for a player when they were on a side (not
+marked absent). Set-based sports (volleyball, tennis) are scored from their sets, and each sport keeps
+only its own player stats (goals and assists, or points). The scoring rules live in
+`catalog/api/SportCatalog` and mirror the web app's `data/sports.ts`.
 
 A guest spot's claim token is a secret: it's returned once, to the host, when they hold the spot,
 and only its hash is stored. In game data a guest is identified by the spot's public ID instead, so

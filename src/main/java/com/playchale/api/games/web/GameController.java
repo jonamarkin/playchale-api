@@ -7,8 +7,10 @@ import java.util.UUID;
 import com.playchale.api.games.internal.service.GameFilters;
 import com.playchale.api.games.internal.service.GameResponse;
 import com.playchale.api.games.internal.service.GameService;
+import com.playchale.api.games.internal.service.ResultService;
 import com.playchale.api.games.web.dto.GameRequests.CancelRequest;
 import com.playchale.api.games.web.dto.GameRequests.ClaimRequest;
+import com.playchale.api.games.web.dto.GameRequests.DisputeRequest;
 import com.playchale.api.games.web.dto.GameRequests.GuestRequest;
 import com.playchale.api.games.web.dto.GameRequests.GuestResponse;
 import com.playchale.api.games.web.dto.GameRequests.InviteRequest;
@@ -16,6 +18,7 @@ import com.playchale.api.games.web.dto.GameRequests.InviteResponse;
 import com.playchale.api.games.web.dto.GameRequests.RemindRequest;
 import com.playchale.api.games.web.dto.GameRequests.RemindResponse;
 import com.playchale.api.games.web.dto.NewGameRequest;
+import com.playchale.api.games.web.dto.ResultRequest;
 import com.playchale.api.shared.security.CurrentUser;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -23,19 +26,23 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
-/** Games, one endpoint per method of {@code games} in the web app's contract (results come separately). */
+/** Games, one endpoint per method of {@code games} in the web app's contract. */
 @RestController
 class GameController {
 
 	private final GameService games;
 
-	GameController(GameService games) {
+	private final ResultService results;
+
+	GameController(GameService games, ResultService results) {
 		this.games = games;
+		this.results = results;
 	}
 
 	/** games.list */
@@ -119,6 +126,24 @@ class GameController {
 	@PostMapping("/games/{id}/reminders")
 	RemindResponse remind(CurrentUser me, @PathVariable UUID id, @RequestBody(required = false) RemindRequest request) {
 		return new RemindResponse(games.remind(id, request == null ? null : request.userIds(), me.id()));
+	}
+
+	/** games.recordResult: recording again corrects it. */
+	@PutMapping("/games/{id}/result")
+	GameResponse recordResult(CurrentUser me, @PathVariable UUID id, @Valid @RequestBody ResultRequest request) {
+		return results.record(id, request.toInput(), me.id());
+	}
+
+	/** games.confirmResult */
+	@PostMapping("/games/{id}/result/confirmations")
+	GameResponse confirmResult(CurrentUser me, @PathVariable UUID id) {
+		return results.confirm(id, me.id());
+	}
+
+	/** games.disputeResult */
+	@PostMapping("/games/{id}/result/disputes")
+	GameResponse disputeResult(CurrentUser me, @PathVariable UUID id, @RequestBody(required = false) DisputeRequest request) {
+		return results.dispute(id, request == null ? null : request.reason(), me.id());
 	}
 
 	/** games.markPaidCash */

@@ -298,6 +298,20 @@ public class Game extends AuditableEntity {
 		this.cancelReason = note.isEmpty() ? null : note.substring(0, Math.min(140, note.length()));
 	}
 
+	/**
+	 * The host has recorded a result: the game is played. Only once it's kicked off, and never for a
+	 * game that was called off.
+	 */
+	public void complete(Instant now) {
+		if (CANCELLED.equals(status)) {
+			throw BusinessException.conflict("This game was called off, so it has no result.");
+		}
+		if (!hasStarted(now)) {
+			throw BusinessException.conflict("You can record the result once the game has started.");
+		}
+		status = COMPLETED;
+	}
+
 	/** Spots taken by someone other than the host who has paid. */
 	public List<Participant> paidByOthers() {
 		return participants.stream().filter(p -> p.isPaid() && !p.isPlayer(hostId)).toList();

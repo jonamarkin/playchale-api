@@ -2,6 +2,7 @@ package com.playchale.api.notifications.internal.service;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 import com.playchale.api.games.api.GameEvents;
@@ -17,6 +18,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 class GameNotifications {
+
+	private static final Map<String, String> OUTCOME = Map.of("W", "won", "D", "drew", "L", "lost");
 
 	private final NotificationService notifications;
 
@@ -104,6 +107,28 @@ class GameNotifications {
 					"%s is collecting for %s, %s.".formatted(host, game.title(), kickoff(game.startsAt())),
 					"/games/%s?pay=1".formatted(game.gameId()), game.hostId());
 		}
+	}
+
+	@EventListener
+	void on(GameEvents.ResultRecorded e) {
+		var game = e.game();
+		var sets = e.inSets() ? " in sets" : "";
+		var title = "%s: %s".formatted(e.corrected() ? "Result corrected" : "Result", game.title());
+		for (var player : e.players()) {
+			var body = player.outcome() == null
+					? "%s added the score: %d–%d%s.".formatted(firstName(game.hostId()), e.homeScore(), e.awayScore(), sets)
+					: "You %s %d–%d%s. Your stats are updated.".formatted(OUTCOME.get(player.outcome()), player.scoreFor(),
+							player.scoreAgainst(), sets);
+			notifications.send(player.playerId(), "result-added", title, body, "/games/%s".formatted(game.gameId()), game.hostId());
+		}
+	}
+
+	@EventListener
+	void on(GameEvents.ResultDisputed e) {
+		var game = e.game();
+		var note = e.reason() == null ? "" : " · “%s”".formatted(e.reason());
+		notifications.send(game.hostId(), "result-disputed", "%s says the result isn’t right".formatted(firstName(e.playerId())),
+				"%s%s. You can correct it.".formatted(game.title(), note), "/games/%s".formatted(game.gameId()), e.playerId());
 	}
 
 	private String firstName(UUID userId) {

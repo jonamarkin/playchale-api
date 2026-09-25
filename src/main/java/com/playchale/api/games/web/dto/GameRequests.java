@@ -35,6 +35,10 @@ public final class GameRequests {
 	public record ClaimRequest(String token) {
 	}
 
+	/** {"reason": "It was 3-2, not 2-2"} */
+	public record DisputeRequest(String reason) {
+	}
+
 	/** {"userIds": [...]}, or no body for everyone unpaid. */
 	public record RemindRequest(List<UUID> userIds) {
 	}

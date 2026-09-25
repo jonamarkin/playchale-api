@@ -59,4 +59,21 @@ public final class GameEvents {
 	public record CashShareCollected(GameInfo game, UUID payerId, long amount, String currency) {
 	}
 
+	/**
+	 * The host recorded (or corrected) a result.
+	 *
+	 * @param players each player on a side, with their outcome and score from their side
+	 */
+	public record ResultRecorded(GameInfo game, boolean corrected, boolean inSets, int homeScore, int awayScore,
+			List<PlayerOutcome> players) {
+	}
+
+	/** @param outcome "W", "D" or "L"; null for someone in the game who wasn't on a side */
+	public record PlayerOutcome(UUID playerId, String outcome, int scoreFor, int scoreAgainst) {
+	}
+
+	/** A player says the result isn't right. */
+	public record ResultDisputed(GameInfo game, UUID playerId, String reason) {
+	}
+
 }

@@ -1,6 +1,7 @@
 package com.playchale.api.catalog.api;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -15,7 +16,22 @@ public final class SportCatalog {
 			new Sport("volleyball", "Volleyball", "ph:volleyball-fill", List.of("6v6", "Beach 2v2")),
 			new Sport("tennis", "Tennis", "ph:tennis-ball-fill", List.of("Singles", "Doubles")));
 
+	private static final Map<String, SportScoring> SCORING = Map.of(
+			"football", new SportScoring(false, 99, 0, List.of("goals", "assists"), "goals"),
+			"basketball", new SportScoring(false, 199, 0, List.of("points"), "points"),
+			"volleyball", new SportScoring(true, 50, 5, List.of(), null),
+			"tennis", new SportScoring(true, 7, 5, List.of(), null));
+
 	private SportCatalog() {
+	}
+
+	/** How a supported sport is scored. */
+	public static SportScoring scoring(String sportId) {
+		var scoring = SCORING.get(sportId);
+		if (scoring == null) {
+			throw new IllegalArgumentException("Not a supported sport: " + sportId);
+		}
+		return scoring;
 	}
 
 	public static List<Sport> all() {
