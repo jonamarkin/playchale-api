@@ -23,6 +23,14 @@ spring:
       enabled: true
   flyway:
     locations: classpath:db/migration
+  jpa:
+    hibernate:
+      # Flyway owns the schema (src/main/resources/db/migration). Hibernate never changes it; it
+      # only checks at startup that every entity matches its table, and refuses to start if not.
+      ddl-auto: validate
+    # Don't hold a database connection open while the response is written. Anything a response
+    # needs is loaded inside the service method.
+    open-in-view: false
 
 server:
   port: ${PORT:8080}
@@ -37,6 +45,12 @@ playchale:
   # Development only: every sign-in code is this and it's handed to the web app to show, so sign-in
   # works without SMS and the web app's end-to-end tests can type it. Empty means random codes.
   demo-sign-in-code: "123456"
+
+logging:
+  pattern:
+    # Every line carries the request's ID (set by RequestLogFilter), so one request's lines can be
+    # found together when something goes wrong.
+    level: "%5p [%X{request_id:-}]"
 
 management:
   endpoints:

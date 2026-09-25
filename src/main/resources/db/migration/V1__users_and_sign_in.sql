@@ -36,9 +36,10 @@ CREATE TABLE sign_in_codes (
 
 CREATE INDEX sign_in_codes_by_phone ON sign_in_codes (phone, created_at DESC);
 
--- A signed-in device. The browser holds a random token; only its hash is stored here.
+-- A signed-in device. The browser holds a random token; only its SHA-256 hash is stored here,
+-- written as hex text (JPA can't use a byte array as an ID).
 CREATE TABLE sessions (
-    token_hash   bytea       PRIMARY KEY,
+    token_hash   text        PRIMARY KEY,
     user_id      uuid        NOT NULL REFERENCES users (id) ON DELETE CASCADE,
     created_at   timestamptz NOT NULL DEFAULT now(),
     expires_at   timestamptz NOT NULL,
