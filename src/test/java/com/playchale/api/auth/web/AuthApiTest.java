@@ -31,7 +31,7 @@ class AuthApiTest {
 
 	/** The web app's User type (webapp/app/types/domain.ts). If this changes, both must. */
 	private static final Set<String> USER_FIELDS = Set.of("id", "phone", "name", "handle", "avatar", "tint", "area",
-			"sports", "position", "createdAt", "onboarded", "payoutPhone");
+			"sports", "position", "createdAt", "onboarded", "payoutPhone", "email", "signInEmail");
 
 	@Autowired
 	MockMvc mvc;
@@ -87,6 +87,25 @@ class AuthApiTest {
 
 		mvc.perform(delete("/auth/session").cookie(session)).andExpect(status().isNoContent());
 		mvc.perform(get("/auth/session").cookie(session)).andExpect(content().string("null"));
+	}
+
+	@Test
+	void signingInByEmailAndWhatItOffers() throws Exception {
+		mvc.perform(get("/auth/options")).andExpect(jsonPath("$.phone").value(true)).andExpect(jsonPath("$.email").value(true));
+
+		mvc.perform(post("/auth/codes").contentType(MediaType.APPLICATION_JSON).content("{\"email\":\"ama@example.com\"}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.demoCode").value("123456"));
+		var signIn = mvc.perform(post("/auth/sessions").contentType(MediaType.APPLICATION_JSON)
+			.content("{\"email\":\"ama@example.com\",\"code\":\"123456\"}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.signInEmail").value("ama@example.com"))
+			.andExpect(jsonPath("$.phone").value(""))
+			.andReturn().getResponse();
+		var id = json.readTree(signIn.getContentAsString()).get("id").asString();
+		mvc.perform(get("/users/" + id + "/profile"))
+			.andExpect(jsonPath("$.user.signInEmail").doesNotExist())
+			.andExpect(jsonPath("$.user.email").doesNotExist());
 	}
 
 }

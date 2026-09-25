@@ -105,9 +105,14 @@ Every value in `application.yml` can be set by an environment variable: `playcha
 | `PLAYCHALE_SECURE_COOKIES` | `false` (plain http) | `true` |
 | `PLAYCHALE_TEST_SUPPORT` | `true` (`/dev` endpoints) | must be `false` |
 | `SPRING_DATASOURCE_URL` etc. | set automatically from compose.yaml | the managed Postgres |
+| `PLAYCHALE_PAYSTACK_SECRET_KEY` | empty: the simulated provider | `sk_live_...` (or `sk_test_...` on staging) |
+| `PLAYCHALE_PAYMENTS_WEB_APP_URL` | `http://localhost:3000` | the web app's address: Paystack sends payers back there |
+| `PLAYCHALE_SIGN_IN_PER_CONNECTION_PER_HOUR` | 100000 | 20 (default) |
+| `PLAYCHALE_SIGN_IN_PER_DAY` | 100000 | 3000 (default); raise it as the service grows |
 
-Without the dev profile the app refuses to start with any laptop-only setting, and until a real SMS
-provider exists it refuses to start at all, so sign-in codes can never end up in production logs.
+Without the dev profile the app refuses to start with any laptop-only setting, without a Paystack
+key, or without at least one sign-in provider (SMS or email). Sign-in codes are never written to
+production logs: the logging stand-ins exist only in the dev profile.
 
 ## Endpoints
 
@@ -117,8 +122,9 @@ provider exists it refuses to start at all, so sign-in codes can never end up in
 | `GET /actuator/info` | | Build version |
 | `POST /dev/reset` | | Dev profile only: back to the demo data → 204 |
 | `GET /dev/demo-accounts` | `auth.demoAccounts` | Dev profile only: the seeded players the sign-in page offers |
-| `POST /auth/codes` | `auth.requestOtp` | Sends a sign-in code. `{"phone"}` → `{"demoCode"?}` |
-| `POST /auth/sessions` | `auth.verifyOtp` | Checks the code, creates the account on first sign-in, sets the session cookie → user |
+| `GET /auth/options` | `auth.options` | Which ways of signing in are set up: `{"phone", "email"}` |
+| `POST /auth/codes` | `auth.requestOtp`, `auth.requestEmailCode` | Sends a sign-in code by SMS `{"phone"}` or email `{"email"}` → `{"demoCode"?}` |
+| `POST /auth/sessions` | `auth.verifyOtp`, `auth.verifyEmailCode` | Checks the code (`{"phone"\|"email", "code"}`), creates the account on first sign-in, sets the session cookie → user |
 | `GET /auth/session` | `auth.currentUser` | The signed-in user, or `null` |
 | `DELETE /auth/session` | `auth.signOut` | Ends the session → 204 |
 | `PATCH /me` | `profiles.update` | Edits your profile; absent fields stay, blank optional ones clear |
@@ -185,10 +191,41 @@ only its own player stats (goals and assists, or points). The scoring rules live
 **Money.** PlayChale never holds it: the payment provider moves it from the payer to the host, and the
 API records that it moved. `payments` holds each attempt; `movements` is an append-only ledger with a
 line on each person's statement (share out for the payer, in for the host), for in-app and cash
-payments alike. There is no balance anywhere. On a laptop a simulated provider stands in, behaving
-like the web app's mock: a payment settles about 2.6 s after it starts, and a mobile money number
-ending in 000 is declined. Without the dev profile the app refuses to start until a real provider
-is configured.
+payments alike. There is no balance anywhere.
+
+**Paystack.** With `PLAYCHALE_PAYSTACK_SECRET_KEY` set, payments go through Paystack's hosted
+checkout (`integration/payments/PaystackPaymentProvider`): the payer is sent to Paystack's page for
+mobile money or card and comes back to the game (`/games/{id}?payment={id}`), where the web app keeps
+checking. Paystack needs an email for its receipt, so the web app asks for one the first time someone
+pays. The rules, taken from how the FCL banking platform handles money:
+
+- **Only Paystack's "verify" answer says money moved.** A webhook (`POST /webhooks/paystack`, set it in
+  the Paystack dashboard) is believed only if its HMAC-SHA512 signature checks out, is handled once
+  however often it's delivered (`webhook_events`), and even then only prompts us to verify.
+- A "success" for a different amount or currency is left pending and logged for a person.
+- "Abandoned" means nobody has paid yet (the payer may still be on the checkout page), so it only
+  counts as failed after 30 minutes.
+- **A background worker chases pending payments** (`PaymentChecks`): a minute after they start, then
+  backing off to hourly, for about a day. It claims them with `FOR UPDATE SKIP LOCKED`, so any number of
+  copies of the API can run it. A payment it gives up on stays pending and is logged: nothing is marked
+  failed on a guess.
+
+Settlement straight to hosts (Paystack subaccounts or splits, so PlayChale never holds money) comes
+once Paystack confirms how it works for Ghana mobile money.
+
+On a laptop, without a key, a simulated provider stands in, behaving like the web app's mock: a
+payment settles about 2.6 s after it starts, and a mobile money number ending in 000 is declined.
+
+**Background jobs** run on every copy of the API but do their work on one at a time (a Postgres
+advisory lock, `shared/scheduling/ClusterLock`): hourly tidying of spent sign-in codes, ended sessions
+and old rate-limit counters; and the payment checks above.
+
+**Sign-in texts cost money**, and bots requesting them in bulk ("SMS pumping") is a known way to run
+up the bill. Besides five an hour per number, there are caps per connection (IP address) and per day
+for the whole service, counted in Postgres (`shared/security/RateLimiter`) so they hold across every
+copy. Behind the proxy, the client's address comes from X-Forwarded-For, which Tomcat only believes
+from private and loopback addresses. Sign-in codes are sent straight away rather than through an
+outbox: a code is a secret we only store hashed, and one that arrives minutes late is useless anyway.
 
 **Competitions.** Fixtures are ordinary games (the competitions module asks games to create them
 through `games/api/Fixtures`), so results, stats and notifications work for them unchanged. A squad
@@ -203,6 +240,12 @@ nobody viewing a game can claim a spot meant for someone else.
 
 Phone and payout numbers are only ever sent to the player themselves: anyone else gets a blank
 phone and no payout number.
+
+Players sign in with a mobile number (code by SMS) or an email address (code by email). A phone and an
+email are separate accounts. The email someone signs in with is proven by the code and never changes
+from the profile page; the profile's own email is only where receipts go. Each way of signing in is
+offered only where its provider is set up (`GET /auth/options`), and outside the dev profile the app
+won't start with neither, so the service can go live on email while an SMS sender ID is approved.
 
 Sign-in rules: codes last 10 minutes, five wrong guesses lock a code, five codes an hour per
 number. Codes and session tokens are stored only as hashes. The session cookie is `HttpOnly`,

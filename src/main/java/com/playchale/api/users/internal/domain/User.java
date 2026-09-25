@@ -29,13 +29,22 @@ public class User extends AuditableEntity {
 	/** Lower-case letters, digits and _, 3 to 20 of them. The web app's handle field allows the same. */
 	private static final Pattern HANDLE = Pattern.compile("^[a-z0-9_]{3,20}$");
 
+	/** Deliberately loose: something@something.something. The provider's receipt is the real test. */
+	private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
 	/** UUID version 7 starts with a timestamp, so new rows land at the end of the index. */
 	@Id
 	@UuidGenerator(style = UuidGenerator.Style.VERSION_7)
 	private UUID id;
 
-	/** E.164, e.g. +233241234567. How they sign in, so it never changes. */
+	/** E.164, e.g. +233241234567. How they sign in if they signed up by phone; null if by email. Never changes. */
 	private String phone;
+
+	/**
+	 * The email they sign in with, if they signed up by email: proven by a code and never changed from
+	 * the profile. Not the same as {@link #email}, which is only where receipts go.
+	 */
+	private String signInEmail;
 
 	/** ISO 3166-1 alpha-2 of the market they signed up in, e.g. GH. The column is char(2). */
 	@JdbcTypeCode(SqlTypes.CHAR)
@@ -64,14 +73,25 @@ public class User extends AuditableEntity {
 
 	private boolean onboarded;
 
+	/** Where payment receipts go. Asked for the first time they pay. */
+	private String email;
+
 	protected User() {
 	}
 
-	/** A brand-new player, on their first sign-in. */
+	/** A brand-new player, on their first sign-in by phone. */
 	public User(String phone, String country, String tint) {
 		this.phone = phone;
 		this.country = country;
 		this.tint = tint;
+	}
+
+	/** A brand-new player, on their first sign-in by email. Receipts go to the same address to start with. */
+	public static User signedUpByEmail(String email, String country, String tint) {
+		var user = new User(null, country, tint);
+		user.signInEmail = email;
+		user.email = email;
+		return user;
 	}
 
 	/** The name other players see. */
@@ -125,6 +145,19 @@ public class User extends AuditableEntity {
 		var market = Market.get(country);
 		this.payoutPhone = market.normalisePhone(phone)
 			.orElseThrow(() -> BusinessException.invalid("Enter a valid %s mobile number for payouts, e.g. 024 123 4567.".formatted(market.countryName())));
+	}
+
+	/** Where payment receipts go, stored lower-case. Blank clears it. */
+	public void emailTo(String email) {
+		var trimmed = email.strip().toLowerCase(Locale.ROOT);
+		if (trimmed.isEmpty()) {
+			this.email = null;
+			return;
+		}
+		if (trimmed.length() > 254 || !EMAIL.matcher(trimmed).matches()) {
+			throw BusinessException.invalid("Enter an email address like name@example.com.");
+		}
+		this.email = trimmed;
 	}
 
 	/** Onboarding is done once they have a name and a handle, which a public profile needs. */
@@ -195,6 +228,14 @@ public class User extends AuditableEntity {
 
 	public String getPayoutPhone() {
 		return payoutPhone;
+	}
+
+	public String getSignInEmail() {
+		return signInEmail;
+	}
+
+	public String getEmail() {
+		return email;
 	}
 
 	public boolean isOnboarded() {

@@ -42,6 +42,10 @@ spring:
 server:
   port: ${PORT:8080}
   shutdown: graceful
+  # Behind a reverse proxy (Caddy on the same server), take the client's address and the scheme from
+  # X-Forwarded-For and X-Forwarded-Proto. Tomcat only believes those headers from private and
+  # loopback addresses, so a client can't fake them.
+  forward-headers-strategy: native
 
 # The API's own settings (config/PlaychaleProperties.java). Production sets PLAYCHALE_SECRET and
 # PLAYCHALE_CORS_ORIGINS; there are deliberately no defaults for them.

@@ -22,4 +22,7 @@ public interface UserDirectory {
 	/** The player with this number (E.164), registered on their first sign-in. */
 	UserSummary registerOrFind(String phone, String country);
 
+	/** The player who signs in with this email (lower-case), registered on their first sign-in. */
+	UserSummary registerOrFindByEmail(String email, String country);
+
 }

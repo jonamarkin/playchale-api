@@ -22,7 +22,7 @@ public class SignInCode {
 
 	public static final int MAX_WRONG_GUESSES = 5;
 
-	/** A number can be sent this many codes an hour, so nobody can flood a phone with texts. */
+	/** A phone or address can be sent this many codes an hour, so nobody can flood it. */
 	public static final int MAX_PER_HOUR = 5;
 
 	/** What a guess did. */
@@ -41,7 +41,11 @@ public class SignInCode {
 	@UuidGenerator(style = UuidGenerator.Style.VERSION_7)
 	private UUID id;
 
-	private String phone;
+	/** "sms" or "email". */
+	private String channel;
+
+	/** The phone (E.164) or email (lower-case) it was sent to. */
+	private String recipient;
 
 	private byte[] codeHash;
 
@@ -56,9 +60,10 @@ public class SignInCode {
 	protected SignInCode() {
 	}
 
-	/** A new code for a number, good for {@link #LIFETIME}. */
-	public SignInCode(String phone, byte[] codeHash, Instant now) {
-		this.phone = phone;
+	/** A new code for a phone or an email address, good for {@link #LIFETIME}. */
+	public SignInCode(String channel, String recipient, byte[] codeHash, Instant now) {
+		this.channel = channel;
+		this.recipient = recipient;
 		this.codeHash = codeHash.clone();
 		this.createdAt = now;
 		this.expiresAt = now.plus(LIFETIME);

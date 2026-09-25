@@ -77,4 +77,13 @@ class UserTest {
 		assertThat(user.isOnboarded()).isTrue();
 	}
 
+	@Test
+	void emailsAreStoredLowerCaseAndChecked() {
+		user.emailTo(" Kwame@Example.COM ");
+		assertThat(user.getEmail()).isEqualTo("kwame@example.com");
+		assertThatThrownBy(() -> user.emailTo("kwame at example")).hasMessage("Enter an email address like name@example.com.");
+		user.emailTo("");
+		assertThat(user.getEmail()).isNull();
+	}
+
 }

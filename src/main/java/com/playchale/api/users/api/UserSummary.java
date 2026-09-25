@@ -15,7 +15,8 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record UserSummary(UUID id, String phone, String name, String handle, String avatar, String tint, String area,
-		List<String> sports, String position, Instant createdAt, boolean onboarded, String payoutPhone) {
+		List<String> sports, String position, Instant createdAt, boolean onboarded, String payoutPhone, String email,
+		String signInEmail) {
 
 	public UserSummary {
 		sports = List.copyOf(sports);
@@ -24,11 +25,11 @@ public record UserSummary(UUID id, String phone, String name, String handle, Str
 	}
 
 	/**
-	 * The player as anyone else sees them: without their phone and payout numbers, which the web app
-	 * only ever shows to the player themselves.
+	 * The player as anyone else sees them: without their phone, payout number or emails, which the web
+	 * app only ever shows to the player themselves.
 	 */
 	public UserSummary toPublic() {
-		return new UserSummary(id, "", name, handle, avatar, tint, area, sports, position, createdAt, onboarded, null);
+		return new UserSummary(id, "", name, handle, avatar, tint, area, sports, position, createdAt, onboarded, null, null, null);
 	}
 
 	/** Everything to the player themselves; the public view to anyone else. */

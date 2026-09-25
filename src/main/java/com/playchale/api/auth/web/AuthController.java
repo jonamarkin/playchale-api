@@ -8,6 +8,7 @@ import com.playchale.api.auth.web.dto.CodeResponse;
 import com.playchale.api.auth.web.dto.RequestCodeRequest;
 import com.playchale.api.auth.web.dto.SignInRequest;
 import com.playchale.api.users.api.UserSummary;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -37,16 +38,23 @@ class AuthController {
 		this.cookies = cookies;
 	}
 
-	/** auth.requestOtp */
-	@PostMapping("/codes")
-	CodeResponse requestCode(@Valid @RequestBody RequestCodeRequest request) {
-		return new CodeResponse(auth.requestCode(request.phone()).orElse(null));
+	/** auth.options: which ways of signing in are set up. */
+	@GetMapping("/options")
+	AuthService.Options options() {
+		return auth.options();
 	}
 
-	/** auth.verifyOtp: the signed-in player, plus the session cookie. */
+	/** auth.requestOtp (a phone) and auth.requestEmailCode (an email) */
+	@PostMapping("/codes")
+	CodeResponse requestCode(@Valid @RequestBody RequestCodeRequest request, HttpServletRequest http) {
+		// Behind the proxy, Tomcat takes the client's address from X-Forwarded-For (see application.yml).
+		return new CodeResponse(auth.requestCode(request.phone(), request.email(), http.getRemoteAddr()).orElse(null));
+	}
+
+	/** auth.verifyOtp and auth.verifyEmailCode: the signed-in player, plus the session cookie. */
 	@PostMapping("/sessions")
 	ResponseEntity<UserSummary> signIn(@Valid @RequestBody SignInRequest request) {
-		var signedIn = auth.signIn(request.phone(), request.code());
+		var signedIn = auth.signIn(request.phone(), request.email(), request.code());
 		return ResponseEntity.ok()
 			.header(HttpHeaders.SET_COOKIE, cookies.issue(signedIn.token(), signedIn.validFor()).toString())
 			.body(signedIn.user());

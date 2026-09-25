@@ -12,20 +12,20 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface SignInCodeRepository extends JpaRepository<SignInCode, UUID> {
 
-	/** How many codes a number has been sent since a moment, for the hourly limit. */
-	long countByPhoneAndCreatedAtAfter(String phone, Instant since);
+	/** How many codes a phone or address has been sent since a moment, for the hourly limit. */
+	long countByRecipientAndCreatedAtAfter(String recipient, Instant since);
 
 	/**
-	 * The newest live code for a number. The lock (SELECT ... FOR UPDATE) holds the row until the
+	 * The newest live code for a phone or address. The lock (SELECT ... FOR UPDATE) holds the row until the
 	 * transaction ends, so two guesses at the same moment can't both be counted as the first.
 	 */
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
 	@Query("""
 			select c from SignInCode c
-			where c.phone = :phone and c.usedAt is null and c.expiresAt > :now
+			where c.recipient = :recipient and c.usedAt is null and c.expiresAt > :now
 			order by c.createdAt desc
 			limit 1
 			""")
-	Optional<SignInCode> lockLatestLive(String phone, Instant now);
+	Optional<SignInCode> lockLatestLive(String recipient, Instant now);
 
 }

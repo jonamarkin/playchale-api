@@ -1,6 +1,7 @@
 package com.playchale.api.payments.internal.domain;
 
 import java.security.SecureRandom;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
@@ -26,6 +27,8 @@ public class Payment {
 	public static final String FAILED = "failed";
 
 	public static final String CARD = "card";
+
+	static final Duration FIRST_CHECK_AFTER = Duration.ofMinutes(1);
 
 	static final Set<String> METHODS = Set.of("momo-mtn", "momo-telecel", "momo-at", CARD);
 
@@ -63,19 +66,31 @@ public class Payment {
 
 	private Instant settledAt;
 
+	/** How many times the background worker has asked the provider about it. */
+	private int checks;
+
+	/** When the worker should next ask the provider, while it's pending. */
+	private Instant nextCheckAt;
+
+	/** The provider's checkout page, for a hosted checkout. */
+	private String checkoutUrl;
+
 	protected Payment() {
 	}
 
 	/**
-	 * A new attempt. Mobile money needs the number to charge; cards don't.
+	 * A new attempt.
 	 *
-	 * @param payerPhone already normalised (E.164), or null
+	 * @param payerPhone  already normalised (E.164), or null
+	 * @param phoneNeeded whether mobile money needs the number up front (it doesn't when the payer gives
+	 *                    it on the provider's own checkout page)
 	 */
-	public Payment(UUID gameId, UUID userId, String method, long amount, String currency, String payerPhone, Instant now) {
+	public Payment(UUID gameId, UUID userId, String method, long amount, String currency, String payerPhone, boolean phoneNeeded,
+			Instant now) {
 		if (method == null || !METHODS.contains(method)) {
 			throw BusinessException.invalid("Pick how you’ll pay.");
 		}
-		if (!CARD.equals(method) && payerPhone == null) {
+		if (!CARD.equals(method) && phoneNeeded && payerPhone == null) {
 			throw BusinessException.invalid("Enter the mobile money number to charge.");
 		}
 		this.gameId = gameId;
@@ -87,6 +102,13 @@ public class Payment {
 		this.status = PENDING;
 		this.reference = newReference();
 		this.createdAt = now;
+		// The payer's app polls for the first minute; after that the background worker takes over.
+		this.nextCheckAt = now.plus(FIRST_CHECK_AFTER);
+	}
+
+	/** The payer goes to the provider's page to pay. */
+	public void sendToCheckout(String url) {
+		checkoutUrl = url;
 	}
 
 	public void succeed(Instant now) {
@@ -102,6 +124,14 @@ public class Payment {
 
 	public boolean isPending() {
 		return PENDING.equals(status);
+	}
+
+	public String getCheckoutUrl() {
+		return checkoutUrl;
+	}
+
+	public int getChecks() {
+		return checks;
 	}
 
 	public boolean belongsTo(UUID user) {

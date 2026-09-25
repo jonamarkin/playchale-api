@@ -119,12 +119,12 @@ class DemoSeed {
 		var created = at(-30, 9);
 		for (var p : PEOPLE) {
 			jdbc.sql("""
-					INSERT INTO users (id, phone, country, name, handle, tint, avatar_url, area, sports, position, onboarded, created_at, updated_at)
-					VALUES (:id, :phone, 'GH', :name, :handle, :tint, :avatar, :area, :sports, :position, true, :created, :created)
+					INSERT INTO users (id, phone, country, name, handle, tint, avatar_url, area, sports, position, email, onboarded, created_at, updated_at)
+					VALUES (:id, :phone, 'GH', :name, :handle, :tint, :avatar, :area, :sports, :position, :email, true, :created, :created)
 					""")
 				.param("id", id(p.id())).param("phone", demoPhone(p.phone())).param("name", p.name()).param("handle", p.handle())
 				.param("tint", p.tint()).param("avatar", p.avatar()).param("area", p.area()).param("sports", p.sports().toArray(String[]::new))
-				.param("position", p.position()).param("created", utc(created))
+				.param("position", p.position()).param("email", p.handle() + "@example.com").param("created", utc(created))
 				.update();
 		}
 	}

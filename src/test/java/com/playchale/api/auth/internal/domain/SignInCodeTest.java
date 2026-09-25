@@ -17,7 +17,7 @@ class SignInCodeTest {
 
 	private static final byte[] WRONG = "wrong".getBytes(StandardCharsets.UTF_8);
 
-	private final SignInCode code = new SignInCode("+233244555123", RIGHT, NOW);
+	private final SignInCode code = new SignInCode("sms", "+233244555123", RIGHT, NOW);
 
 	@Test
 	void theRightCodeIsAcceptedOnceAndUsedUp() {

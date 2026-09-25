@@ -12,3 +12,11 @@ playchale:
   secure-cookies: false
   # /dev endpoints that reset and seed the database, for the web app's end-to-end tests.
   test-support: true
+  # One laptop signs in many times (the end-to-end suite does it before every test), so the
+  # production limits on sign-in texts would get in the way.
+  sign-in:
+    per-connection-per-hour: 100000
+    per-day: 100000
+  # A hosted checkout (Paystack) sends the payer back to the web app here.
+  payments:
+    web-app-url: http://localhost:3000

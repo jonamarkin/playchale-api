@@ -20,9 +20,21 @@ class SimulatedPaymentProvider implements PaymentProvider {
 		this.clock = clock;
 	}
 
+	/** The payer "approves it on their phone", so the number matters: one ending in 000 is declined. */
 	@Override
-	public void charge(Charge charge) {
+	public boolean needsPayerPhone() {
+		return true;
+	}
+
+	@Override
+	public boolean needsEmail() {
+		return false;
+	}
+
+	@Override
+	public Started charge(Charge charge) {
 		// Nothing to send anywhere: the answer is worked out when it's checked.
+		return new Started(null);
 	}
 
 	@Override

@@ -57,9 +57,18 @@ class UserDirectoryService implements UserDirectory {
 		return summary(user);
 	}
 
+	@Override
+	@Transactional
+	public UserSummary registerOrFindByEmail(String email, String country) {
+		var user = users.findBySignInEmail(email)
+			.orElseGet(() -> users.save(User.signedUpByEmail(email, country, User.TINTS.get(random.nextInt(User.TINTS.size())))));
+		return summary(user);
+	}
+
+	/** A player signed up by email has no phone: the web app's User type still wants a string there. */
 	static UserSummary summary(User u) {
-		return new UserSummary(u.getId(), u.getPhone(), u.getName(), u.getHandle(), u.getAvatarUrl(), u.getTint(),
-				u.getArea(), u.getSports(), u.getPosition(), u.getCreatedAt(), u.isOnboarded(), u.getPayoutPhone());
+		return new UserSummary(u.getId(), u.getPhone() == null ? "" : u.getPhone(), u.getName(), u.getHandle(), u.getAvatarUrl(), u.getTint(),
+				u.getArea(), u.getSports(), u.getPosition(), u.getCreatedAt(), u.isOnboarded(), u.getPayoutPhone(), u.getEmail(), u.getSignInEmail());
 	}
 
 }

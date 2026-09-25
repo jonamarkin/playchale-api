@@ -6,7 +6,10 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
 
-/** Which {@link SmsSender} runs. The real provider's adapter will be added here. */
+/**
+ * Which {@link SmsSender} runs. On a laptop, texts go to the log. The real provider's adapter will be
+ * added here; until then there's none outside the dev profile, and signing in by phone isn't offered there.
+ */
 @Configuration
 class SmsConfig {
 
@@ -17,16 +20,6 @@ class SmsConfig {
 	@Profile("dev")
 	SmsSender loggingSmsSender() {
 		return (phone, message) -> log.info("SMS (dev profile: not sent) to={} message={}", phone, message);
-	}
-
-	/**
-	 * Everywhere else there's no SMS provider yet, so the app refuses to start rather than quietly
-	 * writing sign-in codes into production logs.
-	 */
-	@Bean
-	@Profile("!dev")
-	SmsSender noSmsSender() {
-		throw new IllegalStateException("No SMS provider is configured yet, so the app can't run outside the dev profile");
 	}
 
 }

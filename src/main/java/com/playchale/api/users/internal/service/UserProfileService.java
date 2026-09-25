@@ -83,6 +83,9 @@ public class UserProfileService {
 		if (changes.payoutPhone() != null) {
 			user.payTo(changes.payoutPhone());
 		}
+		if (changes.email() != null) {
+			user.emailTo(changes.email());
+		}
 	}
 
 	/**
