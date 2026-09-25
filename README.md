@@ -24,7 +24,7 @@ every sign-in code is `123456`, which is also what the web app's end-to-end test
 ## Architecture
 
 A **modular monolith**: one Spring Boot service, split into modules by business capability
-(`auth`, `users`, `profiles`, `catalog`, `venues`, `games`, `notifications`, `payments`, and next `competitions`). Every
+(`auth`, `users`, `profiles`, `catalog`, `venues`, `games`, `notifications`, `payments`, `competitions`). Every
 module has the same shape:
 
 ```
@@ -147,6 +147,18 @@ provider exists it refuses to start at all, so sign-in codes can never end up in
 | `GET /payments/{id}/status` | `payments.status` | Asks the provider while pending; on success the share is marked paid and the ledger written |
 | `GET /payments/{id}` | `payments.get` | Your payment; 404 (the app's `null`) for anyone else's |
 | `GET /me/statement` | `payments.statement` | Every movement of money involving you, newest first |
+| `GET /competitions` | `competitions.list` | Leagues with their fixtures drawn, newest first |
+| `GET /me/competitions` | `competitions.mine` | Leagues you organise or play in |
+| `GET /competitions/{id}` | `competitions.get` | A league with teams, table, fixtures and waiting requests; 404 (the app's `null`) if none |
+| `POST /competitions` | `competitions.create` | A draft league → 201 |
+| `POST /competitions/{id}/teams` | `competitions.addTeam` | Organiser only, before the draw: `{"name", "captainId"?, "playerIds"?}` |
+| `DELETE /competitions/{id}/teams/{teamId}` | `competitions.removeTeam` | Organiser only, before the draw |
+| `POST /competitions/{id}/fixtures` | `competitions.generateFixtures` | Organiser only: everyone plays everyone once, a round a week |
+| `POST /competitions/{id}/teams/{teamId}/players` | `competitions.addPlayers` | Captain or organiser: `{"userIds"}` |
+| `DELETE /competitions/{id}/teams/{teamId}/players/{userId}` | `competitions.removePlayer` | Captain or organiser; the captain stays |
+| `POST /competitions/{id}/teams/{teamId}/requests` | `competitions.requestJoin` | Asks the captain for a place |
+| `POST /competitions/{id}/requests/{requestId}` | `competitions.answerRequest` | Captain or organiser: `{"accept"}` |
+| `POST /competitions/{id}/squad-joins` | `competitions.joinWithToken` | `{"token"}` from a squad link |
 | `GET /notifications` | `notifications.list` | Your latest 50, newest first |
 | `POST /notifications/read-all` | `notifications.markAllRead` | → 204 |
 
@@ -166,6 +178,13 @@ payments alike. There is no balance anywhere. On a laptop a simulated provider s
 like the web app's mock: a payment settles about 2.6 s after it starts, and a mobile money number
 ending in 000 is declined. Without the dev profile the app refuses to start until a real provider
 is configured.
+
+**Competitions.** Fixtures are ordinary games (the competitions module asks games to create them
+through `games/api/Fixtures`), so results, stats and notifications work for them unchanged. A squad
+change reaches every fixture that team hasn't played yet. The database holds each player to one team
+per competition. A squad link's token is only shown to the team's captain and the organiser (the link
+also names the team, so whoever opens it can see which one). A team set up without a named captain is
+run by the organiser, who isn't then in its squad.
 
 A guest spot's claim token is a secret: it's returned once, to the host, when they hold the spot,
 and only its hash is stored. In game data a guest is identified by the spot's public ID instead, so

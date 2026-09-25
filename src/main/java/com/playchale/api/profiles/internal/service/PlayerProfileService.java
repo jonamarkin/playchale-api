@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import com.playchale.api.competitions.api.TeamMemberships;
 import com.playchale.api.games.api.PlayedGames;
 import com.playchale.api.games.api.PlayedGames.PlayedGame;
 import com.playchale.api.shared.error.BusinessException;
@@ -29,9 +30,12 @@ public class PlayerProfileService {
 
 	private final PlayedGames played;
 
-	PlayerProfileService(UserDirectory users, PlayedGames played) {
+	private final TeamMemberships teams;
+
+	PlayerProfileService(UserDirectory users, PlayedGames played, TeamMemberships teams) {
 		this.users = users;
 		this.played = played;
+		this.teams = teams;
 	}
 
 	/** profiles.get. Phone numbers are only included when the viewer is the player. */
@@ -72,7 +76,7 @@ public class PlayerProfileService {
 			.sorted(Comparator.comparingInt((SportRecord r) -> r.stats().games()).reversed())
 			.toList();
 
-		return new PlayerProfile(shown, stats(games), form(games), records, List.of());
+		return new PlayerProfile(shown, stats(games), form(games), records, teams.teamNames(user.id()));
 	}
 
 	private static PlayerStats stats(List<PlayedGame> games) {

@@ -3,7 +3,7 @@ package com.playchale.api.games.web.dto;
 import java.util.List;
 import java.util.UUID;
 
-import com.playchale.api.games.internal.service.GameResponse;
+import com.playchale.api.games.api.GameResponse;
 
 /** The small request and response bodies of the game endpoints. */
 public final class GameRequests {

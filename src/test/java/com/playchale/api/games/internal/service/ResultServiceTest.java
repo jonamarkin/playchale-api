@@ -1,5 +1,6 @@
 package com.playchale.api.games.internal.service;
 
+import com.playchale.api.games.api.GameResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;

@@ -1,4 +1,4 @@
-package com.playchale.api.games.internal.service;
+package com.playchale.api.games.api;
 
 import java.time.Instant;
 import java.util.List;
@@ -14,8 +14,17 @@ import com.playchale.api.users.api.UserSummary;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record GameResponse(UUID id, String sport, String format, String title, Instant startsAt, int durationMinutes,
 		VenueRef venue, int capacity, long totalCost, String currency, String visibility, UUID hostId, String notes,
-		List<ParticipantResponse> participants, String status, ResultResponse result, Instant createdAt, Instant cancelledAt,
-		String cancelReason, UserSummary host, List<PlayerResponse> players, long share, int spotsLeft) {
+		List<ParticipantResponse> participants, String status, ResultResponse result, FixtureRef fixture, Instant createdAt,
+		Instant cancelledAt, String cancelReason, UserSummary host, List<PlayerResponse> players, FixtureTeamsResponse fixtureTeams,
+		long share, int spotsLeft) {
+
+	/** What makes a game a league fixture: which league, which round, who's playing. */
+	public record FixtureRef(UUID competitionId, int round, UUID homeTeamId, UUID awayTeamId) {
+	}
+
+	/** The two teams in a fixture. */
+	public record FixtureTeamsResponse(FixtureTeams.TeamCard home, FixtureTeams.TeamCard away) {
+	}
 
 	/** The web app's GameResult. Players are named by the roster's keys: a player's ID, or "guest:<token>". */
 	@JsonInclude(JsonInclude.Include.NON_NULL)

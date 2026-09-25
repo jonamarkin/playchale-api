@@ -1,5 +1,6 @@
 package com.playchale.api.games.internal.service;
 
+import com.playchale.api.games.api.GameResponse;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.UUID;

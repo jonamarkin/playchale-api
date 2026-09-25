@@ -1,5 +1,7 @@
 package com.playchale.api.games.internal.service;
 
+import com.playchale.api.games.api.FixtureTeams;
+import com.playchale.api.games.api.GameResponse;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -17,6 +19,7 @@ import com.playchale.api.games.internal.repository.GameResultRepository;
 import com.playchale.api.market.Market;
 import com.playchale.api.users.api.UserDirectory;
 import com.playchale.api.users.api.UserSummary;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
@@ -33,9 +36,12 @@ class GameViews {
 
 	private final GameResultRepository results;
 
-	GameViews(UserDirectory users, GameResultRepository results) {
+	private final ObjectProvider<FixtureTeams> fixtureTeams;
+
+	GameViews(UserDirectory users, GameResultRepository results, ObjectProvider<FixtureTeams> fixtureTeams) {
 		this.users = users;
 		this.results = results;
+		this.fixtureTeams = fixtureTeams;
 	}
 
 	GameResponse of(Game game, UUID viewer) {
@@ -52,10 +58,15 @@ class GameViews {
 		var played = games.stream().filter(g -> Game.COMPLETED.equals(g.getStatus())).map(Game::getId).toList();
 		var resultsByGame = played.isEmpty() ? Map.<UUID, GameResult>of()
 				: results.findAllById(played).stream().collect(Collectors.toMap(GameResult::getGameId, r -> r));
-		return games.stream().map(g -> view(g, viewer, people, resultsByGame.get(g.getId()))).toList();
+		var teamIds = games.stream().filter(g -> g.getCompetitionId() != null)
+			.flatMap(g -> Stream.of(g.getHomeTeamId(), g.getAwayTeamId())).distinct().toList();
+		var teams = teamIds.isEmpty() ? Map.<UUID, FixtureTeams.TeamCard>of()
+				: fixtureTeams.stream().findFirst().map(f -> f.teams(teamIds)).orElseGet(Map::of);
+		return games.stream().map(g -> view(g, viewer, people, resultsByGame.get(g.getId()), teams)).toList();
 	}
 
-	private GameResponse view(Game g, UUID viewer, Map<UUID, UserSummary> people, GameResult result) {
+	private GameResponse view(Game g, UUID viewer, Map<UUID, UserSummary> people, GameResult result,
+			Map<UUID, FixtureTeams.TeamCard> teams) {
 		var market = Market.get(Market.DEFAULT);
 		var hostView = g.isHost(viewer);
 		var venue = new GameResponse.VenueRef(g.getVenueKind(), g.getVenueId(), g.getVenueName(), g.getVenueArea(), g.getPitchId(),
@@ -69,10 +80,18 @@ class GameViews {
 			.filter(Objects::nonNull)
 			.toList();
 		var host = people.get(g.getHostId());
+		GameResponse.FixtureRef fixture = null;
+		GameResponse.FixtureTeamsResponse fixtureTeams = null;
+		if (g.getCompetitionId() != null) {
+			fixture = new GameResponse.FixtureRef(g.getCompetitionId(), g.getFixtureRound(), g.getHomeTeamId(), g.getAwayTeamId());
+			var home = teams.get(g.getHomeTeamId());
+			var away = teams.get(g.getAwayTeamId());
+			fixtureTeams = home == null || away == null ? null : new GameResponse.FixtureTeamsResponse(home, away);
+		}
 		return new GameResponse(g.getId(), g.getSport(), g.getFormat(), g.getTitle(), g.getStartsAt(), g.getDurationMinutes(), venue,
 				g.getCapacity(), g.getTotalCost(), g.getCurrency(), g.getVisibility(), g.getHostId(), g.getNotes(), participants,
-				g.getStatus(), result == null ? null : result(result), g.getCreatedAt(), g.getCancelledAt(), g.getCancelReason(), host == null ? null : host.as(viewer), players,
-				market.shareOf(g.getTotalCost(), g.getCapacity()), g.spotsLeft());
+				g.getStatus(), result == null ? null : result(result), fixture, g.getCreatedAt(), g.getCancelledAt(), g.getCancelReason(),
+				host == null ? null : host.as(viewer), players, fixtureTeams, market.shareOf(g.getTotalCost(), g.getCapacity()), g.spotsLeft());
 	}
 
 	private static GameResponse.ResultResponse result(GameResult r) {

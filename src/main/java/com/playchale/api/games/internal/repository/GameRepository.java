@@ -37,6 +37,8 @@ public interface GameRepository extends JpaRepository<Game, UUID> {
 			""")
 	List<Game> discover(Instant now, UUID viewer, String sport, Instant from, Instant to, String pattern, Limit limit);
 
+	List<Game> findByCompetitionIdOrderByStartsAt(UUID competitionId);
+
 	/** Games someone hosts or has a spot in, in kick-off order. */
 	@Query("""
 			select g from Game g

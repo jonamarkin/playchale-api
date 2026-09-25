@@ -6,7 +6,7 @@ import java.util.UUID;
 
 import com.playchale.api.TestcontainersConfiguration;
 import com.playchale.api.games.internal.domain.GameDetails;
-import com.playchale.api.games.internal.service.GameResponse;
+import com.playchale.api.games.api.GameResponse;
 import com.playchale.api.games.internal.service.GameService;
 import com.playchale.api.notifications.internal.service.NotificationService;
 import com.playchale.api.shared.TestClock;

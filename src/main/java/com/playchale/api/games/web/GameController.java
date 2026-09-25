@@ -5,7 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.playchale.api.games.internal.service.GameFilters;
-import com.playchale.api.games.internal.service.GameResponse;
+import com.playchale.api.games.api.GameResponse;
 import com.playchale.api.games.internal.service.GameService;
 import com.playchale.api.games.internal.service.ResultService;
 import com.playchale.api.games.web.dto.GameRequests.CancelRequest;

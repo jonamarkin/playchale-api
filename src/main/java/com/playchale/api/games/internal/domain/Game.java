@@ -157,6 +157,47 @@ public class Game extends AuditableEntity {
 		syncStatus();
 	}
 
+	/**
+	 * A league fixture. The organiser hosts it, the two squads fill it, and nobody pays through the
+	 * app for a league game.
+	 */
+	public static Game fixture(UUID competitionId, int round, UUID homeTeamId, UUID awayTeamId, String title, String sport,
+			String format, Instant startsAt, int durationMinutes, UUID organiserId, List<UUID> squad, Market market, Instant now) {
+		var game = new Game();
+		game.sport = sport;
+		game.format = format;
+		game.title = title;
+		game.startsAt = startsAt;
+		game.durationMinutes = durationMinutes;
+		game.totalCost = 0;
+		game.currency = market.currency();
+		game.visibility = "public";
+		game.hostId = organiserId;
+		game.competitionId = competitionId;
+		game.fixtureRound = round;
+		game.homeTeamId = homeTeamId;
+		game.awayTeamId = awayTeamId;
+		game.capacity = Math.max(2, squad.size());
+		squad.stream().distinct().forEach(player -> game.participants.add(Participant.player(game, player, true, now)));
+		game.syncStatus();
+		return game;
+	}
+
+	/** Brings an unplayed fixture's roster in line with its squads. Played, started or called-off fixtures stay as they were. */
+	public void syncSquad(List<UUID> squad, Instant now) {
+		if (competitionId == null || COMPLETED.equals(status) || CANCELLED.equals(status) || hasStarted(now)) {
+			return;
+		}
+		participants.removeIf(p -> p.isGuest() || !squad.contains(p.getUserId()));
+		for (var player : squad.stream().distinct().toList()) {
+			if (spotOf(player).isEmpty()) {
+				participants.add(Participant.player(this, player, true, now));
+			}
+		}
+		capacity = Math.max(2, participants.size());
+		syncStatus();
+	}
+
 	/** At a partner venue, maybe on a pitch booked for it. */
 	public void playAt(UUID venueId, String venueName, String venueArea, UUID pitchId, String pitchName) {
 		this.venueKind = LISTED;
@@ -483,6 +524,22 @@ public class Game extends AuditableEntity {
 
 	public String getCancelReason() {
 		return cancelReason;
+	}
+
+	public UUID getCompetitionId() {
+		return competitionId;
+	}
+
+	public Integer getFixtureRound() {
+		return fixtureRound;
+	}
+
+	public UUID getHomeTeamId() {
+		return homeTeamId;
+	}
+
+	public UUID getAwayTeamId() {
+		return awayTeamId;
 	}
 
 	public List<Participant> getParticipants() {

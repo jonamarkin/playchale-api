@@ -1,5 +1,6 @@
 package com.playchale.api.games.internal.service;
 
+import com.playchale.api.games.api.GameResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
