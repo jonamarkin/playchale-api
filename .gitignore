@@ -1,0 +1,9 @@
+# Local settings and secrets
+.env
+
+# Build output
+/bin/
+
+# Editors and OS
+.idea/
+.DS_Store

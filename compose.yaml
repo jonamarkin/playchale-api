@@ -1,0 +1,21 @@
+# Local services for development. Start with `make db-up`, stop with `make db-down`.
+# Production uses a managed Postgres, so nothing here is deployed.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: playchale
+      POSTGRES_PASSWORD: playchale
+      POSTGRES_DB: playchale
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U playchale -d playchale"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  pgdata:
