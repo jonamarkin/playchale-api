@@ -2,7 +2,7 @@ package com.playchale.api.auth.web;
 
 import java.util.Optional;
 
-import com.playchale.api.auth.api.CurrentUser;
+import com.playchale.api.shared.security.CurrentUser;
 import com.playchale.api.auth.internal.service.AuthService;
 import com.playchale.api.auth.web.dto.CodeResponse;
 import com.playchale.api.auth.web.dto.RequestCodeRequest;

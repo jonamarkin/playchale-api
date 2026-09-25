@@ -15,6 +15,10 @@ public class TestClock extends Clock {
 		now = now.plus(by);
 	}
 
+	public void set(Instant instant) {
+		now = instant;
+	}
+
 	@Override
 	public Instant instant() {
 		return now;

@@ -24,7 +24,7 @@ every sign-in code is `123456`, which is also what the web app's end-to-end test
 ## Architecture
 
 A **modular monolith**: one Spring Boot service, split into modules by business capability
-(`auth`, `users`, and next `venues`, `games`, `payments`, `notifications`, `competitions`). Every
+(`auth`, `users`, `profiles`, `catalog`, `venues`, and next `games`, `payments`, `notifications`, `competitions`). Every
 module has the same shape:
 
 ```
@@ -110,6 +110,29 @@ provider exists it refuses to start at all, so sign-in codes can never end up in
 | `POST /auth/sessions` | `auth.verifyOtp` | Checks the code, creates the account on first sign-in, sets the session cookie → user |
 | `GET /auth/session` | `auth.currentUser` | The signed-in user, or `null` |
 | `DELETE /auth/session` | `auth.signOut` | Ends the session → 204 |
+| `PATCH /me` | `profiles.update` | Edits your profile; absent fields stay, blank optional ones clear |
+| `POST /me/onboarding` | `profiles.completeOnboarding` | The same, then marks you onboarded (needs a name and a handle) |
+| `GET /handles/{handle}` | `profiles.isHandleAvailable` | `{"available"}`; your own handle counts as free |
+| `GET /users/{id}/profile` | `profiles.get` | A player's profile and record |
+| `GET /profiles/{handle}` | `profiles.getByHandle` | The same by handle; 404 (the app's `null`) when no one has it |
+| `GET /users/{id}/history` | `profiles.history` | Verified results they played in, newest first |
+| `GET /sports` | `catalog.sports` | The sports and their formats |
+| `GET /venues?query=` | `venues.search` | Listed venues matching a name or area |
+| `GET /venues/{id}` | `venues.get` | A venue with its owner; 404 (the app's `null`) if it doesn't exist |
+| `GET /me/venues` | `venues.mine` | Venues you own |
+| `POST /venues` | `venues.create` | Lists a venue you own → 201 |
+| `PUT /venues/{id}` | `venues.update` | Owner only. Pitches keep their id; a pitch with bookings to come can't be removed |
+| `GET /venues/{id}/availability?date=` | `venues.availability` | Every hour on every pitch for one local day, and why it's taken |
+| `GET /venues/{id}/schedule?from=&to=` | `venues.schedule` | Owner only: bookings and blocks in that range |
+| `POST /venues/{id}/blocks` | `venues.block` | Owner only: holds time on a pitch → 201 |
+| `DELETE /bookings/{id}` | `venues.cancelBlock` | Owner only: releases a block → 204 |
+
+Opening hours are the venue's local time (its market's timezone); a day can close at 24:00. A pitch
+can never be double-booked: besides the service's own check, a Postgres exclusion constraint
+(`bookings_no_overlap`) refuses overlapping confirmed bookings however many requests race for them.
+
+Phone and payout numbers are only ever sent to the player themselves: anyone else gets a blank
+phone and no payout number.
 
 Sign-in rules: codes last 10 minutes, five wrong guesses lock a code, five codes an hour per
 number. Codes and session tokens are stored only as hashes. The session cookie is `HttpOnly`,

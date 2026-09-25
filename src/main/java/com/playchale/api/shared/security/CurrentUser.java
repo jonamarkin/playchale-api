@@ -1,4 +1,4 @@
-package com.playchale.api.auth.api;
+package com.playchale.api.shared.security;
 
 import java.util.UUID;
 

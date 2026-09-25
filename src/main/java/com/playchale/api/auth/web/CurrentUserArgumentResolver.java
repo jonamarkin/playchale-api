@@ -3,7 +3,7 @@ package com.playchale.api.auth.web;
 import java.util.List;
 import java.util.Optional;
 
-import com.playchale.api.auth.api.CurrentUser;
+import com.playchale.api.shared.security.CurrentUser;
 import com.playchale.api.auth.internal.service.AuthService;
 import com.playchale.api.shared.error.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;

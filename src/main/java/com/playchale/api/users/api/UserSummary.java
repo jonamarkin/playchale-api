@@ -23,4 +23,17 @@ public record UserSummary(UUID id, String phone, String name, String handle, Str
 		createdAt = createdAt.truncatedTo(ChronoUnit.MILLIS);
 	}
 
+	/**
+	 * The player as anyone else sees them: without their phone and payout numbers, which the web app
+	 * only ever shows to the player themselves.
+	 */
+	public UserSummary toPublic() {
+		return new UserSummary(id, "", name, handle, avatar, tint, area, sports, position, createdAt, onboarded, null);
+	}
+
+	/** Everything to the player themselves; the public view to anyone else. */
+	public UserSummary as(UUID viewer) {
+		return id.equals(viewer) ? this : toPublic();
+	}
+
 }
