@@ -1,5 +1,5 @@
-# Local services for development. Start with `make db-up`, stop with `make db-down`.
-# Production uses a managed Postgres, so nothing here is deployed.
+# Local services for development. `./mvnw spring-boot:run` starts them automatically (Spring Boot's
+# Docker Compose support) and points the app at them. Production uses a managed Postgres instead.
 services:
   db:
     image: postgres:17

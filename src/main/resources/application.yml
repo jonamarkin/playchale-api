@@ -1,0 +1,45 @@
+# Settings. Every value can be overridden by an environment variable: playchale.secret becomes
+# PLAYCHALE_SECRET, spring.datasource.url becomes SPRING_DATASOURCE_URL, and so on. Defaults
+# here suit a laptop; production sets its own through the environment.
+
+spring:
+  application:
+    name: playchale-api
+  jackson:
+    deserialization:
+      # A field the API doesn't know is an error, so a mismatch with the web app shows up
+      # immediately instead of being silently ignored.
+      fail-on-unknown-properties: true
+  mvc:
+    # Unknown paths throw, so they get the same JSON error shape as everything else.
+    throw-exception-if-no-handler-found: true
+  web:
+    resources:
+      add-mappings: false
+  threads:
+    virtual:
+      # One lightweight thread per request, so waiting on the database or the payment provider
+      # doesn't tie up a scarce platform thread.
+      enabled: true
+  flyway:
+    locations: classpath:db/migration
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+
+playchale:
+  env: development
+  cors-origins:
+    - http://localhost:3000
+  # Keys the hashes of sign-in codes. Production must set a long random value (openssl rand -hex 32).
+  secret: development-only-secret-do-not-use-in-production
+  # Development only: every sign-in code is this and it's handed to the web app to show, so sign-in
+  # works without SMS and the web app's end-to-end tests can type it. Empty means random codes.
+  demo-sign-in-code: "123456"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
