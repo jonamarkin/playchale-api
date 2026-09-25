@@ -1,0 +1,14 @@
+# The dev profile: settings for a laptop, on top of application.yml. Switched on by
+# `./mvnw spring-boot:run` and `./mvnw test` (see pom.xml), and by nothing that gets deployed.
+
+playchale:
+  cors-origins:
+    - http://localhost:3000
+  secret: development-only-secret-do-not-use-in-production
+  # Every sign-in code is this, and it's handed to the web app to show, so sign-in works without
+  # SMS and the web app's end-to-end tests can type it.
+  demo-sign-in-code: "123456"
+  # The API runs on plain http locally, where a Secure cookie would never be sent.
+  secure-cookies: false
+  # /dev endpoints that reset and seed the database, for the web app's end-to-end tests.
+  test-support: true
