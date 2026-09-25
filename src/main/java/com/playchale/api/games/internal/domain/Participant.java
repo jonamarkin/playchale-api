@@ -84,6 +84,12 @@ public class Participant {
 		this.guestAddedBy = null;
 	}
 
+	void paidInApp(UUID paymentId) {
+		paid = true;
+		paidVia = PAID_IN_APP;
+		this.paymentId = paymentId;
+	}
+
 	void paidInCash() {
 		paid = true;
 		paidVia = PAID_IN_CASH;

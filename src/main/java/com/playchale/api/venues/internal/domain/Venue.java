@@ -110,7 +110,7 @@ public class Venue extends AuditableEntity {
 			throw BusinessException.invalid("Open at least one day a week.");
 		}
 		var amenities = details.amenities() == null ? List.<String>of() : details.amenities();
-		if (!AMENITIES.containsAll(amenities)) {
+		if (amenities.stream().anyMatch(a -> a == null || !AMENITIES.contains(a))) {
 			throw BusinessException.invalid("Pick amenities from the list.");
 		}
 		var market = Market.get(country);

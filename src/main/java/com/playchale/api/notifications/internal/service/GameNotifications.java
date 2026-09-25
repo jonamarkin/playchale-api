@@ -7,12 +7,13 @@ import java.util.UUID;
 
 import com.playchale.api.games.api.GameEvents;
 import com.playchale.api.market.Market;
+import com.playchale.api.payments.api.PaymentReceived;
 import com.playchale.api.users.api.UserDirectory;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /**
- * Turns what happens in games into notifications. The listeners run inside the game's own
+ * Turns what happens in games (and their payments) into notifications. The listeners run inside the game's own
  * transaction, so a change and its notifications are saved together or not at all. (Texts and
  * push messages that must survive a crash will go through an outbox instead.)
  */
@@ -129,6 +130,12 @@ class GameNotifications {
 		var note = e.reason() == null ? "" : " · “%s”".formatted(e.reason());
 		notifications.send(game.hostId(), "result-disputed", "%s says the result isn’t right".formatted(firstName(e.playerId())),
 				"%s%s. You can correct it.".formatted(game.title(), note), "/games/%s".formatted(game.gameId()), e.playerId());
+	}
+
+	@EventListener
+	void on(PaymentReceived e) {
+		notifications.send(e.hostId(), "payment-received", "%s paid %s".formatted(firstName(e.payerId()), market().formatMoney(e.amount())),
+				"%s · %d of %d paid".formatted(e.gameTitle(), e.paid(), e.players()), "/games/%s".formatted(e.gameId()), e.payerId());
 	}
 
 	private String firstName(UUID userId) {

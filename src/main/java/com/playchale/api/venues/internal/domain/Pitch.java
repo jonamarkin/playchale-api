@@ -58,7 +58,7 @@ public class Pitch {
 		if (sport.isEmpty() || !sport.get().formats().contains(details.format())) {
 			throw BusinessException.invalid("Pick a sport and format for every pitch.");
 		}
-		if (!SURFACES.contains(details.surface())) {
+		if (details.surface() == null || !SURFACES.contains(details.surface())) {
 			throw BusinessException.invalid("Pick a surface for every pitch.");
 		}
 		if (details.pricePerHour() <= 0) {

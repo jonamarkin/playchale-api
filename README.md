@@ -24,7 +24,7 @@ every sign-in code is `123456`, which is also what the web app's end-to-end test
 ## Architecture
 
 A **modular monolith**: one Spring Boot service, split into modules by business capability
-(`auth`, `users`, `profiles`, `catalog`, `venues`, `games`, `notifications`, and next `payments`, `competitions`). Every
+(`auth`, `users`, `profiles`, `catalog`, `venues`, `games`, `notifications`, `payments`, and next `competitions`). Every
 module has the same shape:
 
 ```
@@ -41,7 +41,7 @@ Plus the pieces every module shares:
 
 ```
 shared/        settings, the error shape, CORS, request IDs and logging, JPA base classes
-integration/   outside systems behind interfaces: SMS today, Paystack next (each with a dev stand-in)
+integration/   outside systems behind interfaces: SMS and payments (each with a dev stand-in)
 market/        per-country rules: phone formats, currency, timezone
 devsupport/    /dev endpoints for the web app's end-to-end tests (dev profile only)
 src/main/resources/db/migration/   the schema, as numbered SQL files applied by Flyway
@@ -143,6 +143,10 @@ provider exists it refuses to start at all, so sign-in codes can never end up in
 | `PUT /games/{id}/result` | `games.recordResult` | Host only, after kick-off: records the result, or corrects it (which clears checks) |
 | `POST /games/{id}/result/confirmations` | `games.confirmResult` | A player who was there says it's right |
 | `POST /games/{id}/result/disputes` | `games.disputeResult` | `{"reason"?}`: says it isn't; the host is told |
+| `POST /payments` | `payments.start` | `{"gameId", "method", "payerPhone"?}`: starts collecting your share → 201, pending |
+| `GET /payments/{id}/status` | `payments.status` | Asks the provider while pending; on success the share is marked paid and the ledger written |
+| `GET /payments/{id}` | `payments.get` | Your payment; 404 (the app's `null`) for anyone else's |
+| `GET /me/statement` | `payments.statement` | Every movement of money involving you, newest first |
 | `GET /notifications` | `notifications.list` | Your latest 50, newest first |
 | `POST /notifications/read-all` | `notifications.markAllRead` | → 204 |
 
@@ -154,6 +158,14 @@ Profiles are worked out from results: a game counts for a player when they were 
 marked absent). Set-based sports (volleyball, tennis) are scored from their sets, and each sport keeps
 only its own player stats (goals and assists, or points). The scoring rules live in
 `catalog/api/SportCatalog` and mirror the web app's `data/sports.ts`.
+
+**Money.** PlayChale never holds it: the payment provider moves it from the payer to the host, and the
+API records that it moved. `payments` holds each attempt; `movements` is an append-only ledger with a
+line on each person's statement (share out for the payer, in for the host), for in-app and cash
+payments alike. There is no balance anywhere. On a laptop a simulated provider stands in, behaving
+like the web app's mock: a payment settles about 2.6 s after it starts, and a mobile money number
+ending in 000 is declined. Without the dev profile the app refuses to start until a real provider
+is configured.
 
 A guest spot's claim token is a secret: it's returned once, to the host, when they hold the spot,
 and only its hash is stored. In game data a guest is identified by the spot's public ID instead, so

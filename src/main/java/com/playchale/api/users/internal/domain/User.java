@@ -105,7 +105,7 @@ public class User extends AuditableEntity {
 
 	/** Only sports PlayChale supports, each once, in the order picked. */
 	public void playSports(List<String> sports) {
-		if (sports.stream().anyMatch(sport -> !SportCatalog.exists(sport))) {
+		if (sports.stream().anyMatch(sport -> sport == null || !SportCatalog.exists(sport))) {
 			throw BusinessException.invalid("Pick sports from the list.");
 		}
 		this.sports = new ArrayList<>(sports.stream().distinct().toList());

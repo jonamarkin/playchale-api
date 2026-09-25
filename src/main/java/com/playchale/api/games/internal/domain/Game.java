@@ -131,7 +131,7 @@ public class Game extends AuditableEntity {
 		if (details.totalCost() < 0) {
 			throw BusinessException.invalid("The cost can’t be less than nothing.");
 		}
-		if (!VISIBILITIES.contains(details.visibility())) {
+		if (details.visibility() == null || !VISIBILITIES.contains(details.visibility())) {
 			throw BusinessException.invalid("Choose who can see the game.");
 		}
 		this.sport = details.sport();
@@ -254,6 +254,29 @@ public class Game extends AuditableEntity {
 			throw BusinessException.conflict("This invite was sent to a different number. Ask the host to add yours.");
 		}
 		spot.claimFor(userId);
+	}
+
+	/** What a player owes before paying in the app. */
+	public long shareDue(UUID userId, Market market) {
+		var spot = spotOf(userId).orElseThrow(() -> BusinessException.conflict("Join the game before paying your share."));
+		if (totalCost == 0) {
+			throw BusinessException.invalid("This game is free. There’s nothing to pay.");
+		}
+		requireOn("This game was called off, so there’s nothing to pay.");
+		if (spot.isPaid()) {
+			throw BusinessException.conflict("You’ve already paid your share.");
+		}
+		return market.shareOf(totalCost, capacity);
+	}
+
+	/** A player's in-app payment went through. */
+	public void paidInApp(UUID userId, UUID paymentId) {
+		spotOf(userId).ifPresent(spot -> spot.paidInApp(paymentId));
+	}
+
+	/** How many spots are paid for. */
+	public int paidCount() {
+		return (int) participants.stream().filter(Participant::isPaid).count();
 	}
 
 	/** The host recording that someone handed them their share in cash. */
