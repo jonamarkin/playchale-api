@@ -21,6 +21,15 @@ every sign-in code is `123456`, which is also what the web app's end-to-end test
 
 `docker compose down` stops Postgres; `docker compose down -v` also deletes its data.
 
+**Demo data.** On a laptop (the dev profile) an empty database is filled with the same demo data as
+the web app's mock: eleven players (sign in as any of them with 024 000 0001 to 0011 and the code
+123456), four venues, games past and upcoming, results, a league in progress and a few
+notifications. Each piece keeps the mock's ID as a fixed UUID, so a demo game has the same ID after
+every reset. `POST /dev/reset` puts it all back as it started; the web app's end-to-end tests do
+that before each test. The seed (`devsupport/internal/service/DemoSeed`) is the one place that
+writes straight into every module's tables with SQL, because demo data needs games already played
+and results already recorded; it exists only in the dev profile.
+
 ## Architecture
 
 A **modular monolith**: one Spring Boot service, split into modules by business capability
@@ -106,6 +115,8 @@ provider exists it refuses to start at all, so sign-in codes can never end up in
 |---|---|---|
 | `GET /actuator/health` | | `UP` when the app can reach the database (`/liveness`, `/readiness` for the load balancer) |
 | `GET /actuator/info` | | Build version |
+| `POST /dev/reset` | | Dev profile only: back to the demo data → 204 |
+| `GET /dev/demo-accounts` | `auth.demoAccounts` | Dev profile only: the seeded players the sign-in page offers |
 | `POST /auth/codes` | `auth.requestOtp` | Sends a sign-in code. `{"phone"}` → `{"demoCode"?}` |
 | `POST /auth/sessions` | `auth.verifyOtp` | Checks the code, creates the account on first sign-in, sets the session cookie → user |
 | `GET /auth/session` | `auth.currentUser` | The signed-in user, or `null` |
@@ -214,8 +225,8 @@ Errors match the web app's `ApiError` codes, as `{"error": {"code", "message"}}`
 | `payment-failed` | 402 | The payment provider said no |
 | `internal` | 500 | Our fault. Details are logged, never sent |
 
-The web app's end-to-end tests (`webapp/tests`) are the acceptance test for this API: pointed at a
-build that uses it, they should pass unchanged.
+The web app's end-to-end tests (`webapp/tests`) are the acceptance test for this API. All 70 pass
+against it (see `webapp/tests/README.md` for how to run them that way).
 
 ## Decisions, so they aren't re-argued
 
