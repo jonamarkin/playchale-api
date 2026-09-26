@@ -15,7 +15,8 @@ import org.springframework.validation.annotation.Validated;
  *
  * <p>The defaults are the production ones. The {@code dev} profile relaxes them.
  *
- * @param corsOrigins      web origins allowed to call the API from a browser, e.g. the web app
+ * @param corsOrigins      web origins allowed to call the API from a browser. The first is the web
+ *                         app's own address, used for links and the logo in emails
  * @param secret           keys the hashes of sign-in codes
  * @param demoSignInCode   dev only: every sign-in code is this, and it's returned to the app
  * @param secureCookies    send the session cookie over HTTPS only. Off only on a laptop's plain http
@@ -33,6 +34,11 @@ public record PlaychaleProperties(
 	public PlaychaleProperties {
 		corsOrigins = corsOrigins == null ? List.of() : List.copyOf(corsOrigins);
 		demoSignInCode = demoSignInCode == null ? "" : demoSignInCode;
+	}
+
+	/** The web app's address (the first CORS origin), e.g. https://playchale.com. */
+	public String webApp() {
+		return corsOrigins.isEmpty() ? "https://playchale.com" : corsOrigins.getFirst();
 	}
 
 	public boolean hasDemoCode() {

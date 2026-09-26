@@ -34,3 +34,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Real production settings (only the .example templates are committed)
+deploy/.env.api
+deploy/.env.web
+deploy/backups/

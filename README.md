@@ -50,7 +50,7 @@ Plus the pieces every module shares:
 
 ```
 shared/        settings, the error shape, CORS, request IDs and logging, JPA base classes
-integration/   outside systems behind interfaces: SMS and payments (each with a dev stand-in)
+integration/   outside systems behind interfaces: SMS, email (Resend) and payments (each with a dev stand-in)
 market/        per-country rules: phone formats, currency, timezone
 devsupport/    /dev endpoints for the web app's end-to-end tests (dev profile only)
 src/main/resources/db/migration/   the schema, as numbered SQL files applied by Flyway
@@ -101,18 +101,20 @@ Every value in `application.yml` can be set by an environment variable: `playcha
 | `SPRING_PROFILES_ACTIVE` | `dev` (set by `./mvnw`) | unset |
 | `PLAYCHALE_SECRET` | a fixed placeholder | required, 32+ random characters (`openssl rand -hex 32`) |
 | `PLAYCHALE_DEMO_SIGN_IN_CODE` | `123456` | must be empty |
-| `PLAYCHALE_CORS_ORIGINS` | `http://localhost:3000` | required: the web app's real origin |
+| `PLAYCHALE_CORS_ORIGINS` | `http://localhost:3000` | required: the web app's real origin (the first is also used for links and the logo in emails) |
 | `PLAYCHALE_SECURE_COOKIES` | `false` (plain http) | `true` |
 | `PLAYCHALE_TEST_SUPPORT` | `true` (`/dev` endpoints) | must be `false` |
 | `SPRING_DATASOURCE_URL` etc. | set automatically from compose.yaml | the managed Postgres |
 | `PLAYCHALE_PAYSTACK_SECRET_KEY` | empty: the simulated provider | `sk_live_...` (or `sk_test_...` on staging) |
 | `PLAYCHALE_PAYMENTS_IN_APP` | `true` | `false` to launch before Paystack: players pay hosts directly |
 | `PLAYCHALE_PAYMENTS_WEB_APP_URL` | `http://localhost:3000` | the web app's address: Paystack sends payers back there |
+| `PLAYCHALE_RESEND_API_KEY` | empty: emails go to the log | a Resend key with sending access; turns on signing in by email |
+| `PLAYCHALE_RESEND_FROM` | | the sender, on a domain verified in Resend: `PlayChale <alert@playchale.com>` |
 | `PLAYCHALE_SIGN_IN_PER_CONNECTION_PER_HOUR` | 100000 | 20 (default) |
 | `PLAYCHALE_SIGN_IN_PER_DAY` | 100000 | 3000 (default); raise it as the service grows |
 
 Without the dev profile the app refuses to start with any laptop-only setting, without a Paystack
-key, or without at least one sign-in provider (SMS or email). Sign-in codes are never written to
+key (unless payments are direct to hosts), or without at least one sign-in provider (SMS or email). Sign-in codes are never written to
 production logs: the logging stand-ins exist only in the dev profile.
 
 ## Endpoints
@@ -271,37 +273,18 @@ number. Codes and session tokens are stored only as hashes. The session cookie i
 
 ## Deploying
 
-The API ships as a container image. CI (`.github/workflows/ci.yml`) runs every test on each push, and on
-`main` publishes `ghcr.io/<owner>/playchale-api:<commit>` and `:latest`. Build one locally with
-`docker build -t playchale-api .`. Any host that runs containers will do: Render, Railway or Fly.io
-to start (no server to look after), or a Hetzner server later. Postgres should be a managed one with
-daily backups and point-in-time recovery.
-
-**First deploy**
-
-1. Create the Postgres database (version 17) and note its JDBC URL, user and password.
-2. Create the service from the image, listening on port 8080, with a health check on
-   `/actuator/health/readiness` (and `/actuator/health/liveness` for restarts, where the host has both).
-3. Set the environment (no dev profile; every one of these is required unless noted):
-
-   | Variable | Value |
-   |---|---|
-   | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://<host>:5432/<db>?sslmode=require` |
-   | `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | the database's |
-   | `PLAYCHALE_SECRET` | `openssl rand -hex 32`; keep it: changing it voids every sign-in code in flight |
-   | `PLAYCHALE_CORS_ORIGINS` | the web app's origin, e.g. `https://playchale.com` |
-   | `PLAYCHALE_PAYMENTS_WEB_APP_URL` | the same address, where Paystack sends payers back to |
-   | `PLAYCHALE_PAYSTACK_SECRET_KEY` | `sk_test_...` on staging, `sk_live_...` in production |
-   | an SMS and/or email provider's settings | when their adapters are added; at least one is needed |
-
-4. Give the API its own address on the same site as the web app (e.g. `api.playchale.com` next to
-   `playchale.com`), so the sign-in cookie counts as first-party. The host terminates HTTPS.
-5. In the Paystack dashboard, set the webhook URL to `https://api.<domain>/webhooks/paystack`.
-6. Point the web app at it: `NUXT_PUBLIC_API_BASE=https://api.<domain>` and
-   `NUXT_PUBLIC_DEMO_PAYMENTS=false` (webapp README).
+**[DEPLOYMENT.md](DEPLOYMENT.md)** is the step-by-step guide for the production server (a Contabo VPS
+shared with another app, Supabase Postgres, Resend, Cloudflare), with the files it uses in `deploy/`.
+In short: CI runs every test on each push, and on `main` publishes
+`ghcr.io/<owner>/playchale-api:<commit>` and `:latest`, then (once configured) deploys it. Build one
+locally with `docker build -t playchale-api .`.
 
 If a setting is missing or still a laptop value, the app refuses to start and says which. That's on
 purpose: a misconfigured deploy never serves a request.
+
+**Emails** are HTML in PlayChale's colours with a plain-text copy: a card from
+`src/main/resources/email/` inside the shared `layout.html`, filled by `integration/email/EmailLayout`
+(values HTML-escaped). A new kind of email is a new card template; the layout stays the same.
 
 **Releasing.** Deploy the new image tag. Flyway applies any new migrations as the app starts, before it
 takes traffic. Because the old version may still be serving while the new one starts, a migration

@@ -1,6 +1,6 @@
 # Every push and pull request: all the tests, against a real Postgres (Testcontainers uses the
 # runner's Docker). On main, the image is then built and published to GitHub's container registry as
-# ghcr.io/<owner>/playchale-api:<commit> and :latest, ready to deploy.
+# ghcr.io/<owner>/playchale-api:<commit> and :latest, and deployed if a server is configured.
 name: CI
 
 on:
@@ -57,3 +57,32 @@ jobs:
             ${{ steps.name.outputs.image }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Pulls the new image on the server and restarts the API. Off until the repository variable
+  # DEPLOY_HOST and the secrets DEPLOY_USER / DEPLOY_SSH_KEY are set (see DEPLOYMENT.md).
+  deploy:
+    needs: image
+    if: ${{ vars.DEPLOY_HOST != '' }}
+    runs-on: ubuntu-latest
+    concurrency: production
+    steps:
+      - name: Pull and restart on the server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ vars.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # Waits for the new API to report ready (it runs any new migrations first) before calling
+          # the deploy done.
+          script: |
+            set -e
+            cd /opt/playchale
+            docker compose pull api
+            docker compose up -d api
+            docker image prune -f
+            for i in $(seq 1 24); do
+              if curl -fsS https://api.playchale.com/actuator/health/readiness; then exit 0; fi
+              sleep 5
+            done
+            docker compose logs --tail 50 api
+            exit 1

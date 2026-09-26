@@ -2,6 +2,7 @@ package com.playchale.api.auth.internal.service;
 
 import com.playchale.api.TestcontainersConfiguration;
 import com.playchale.api.auth.internal.domain.SignInCode;
+import com.playchale.api.integration.email.Email;
 import com.playchale.api.integration.email.EmailSender;
 import com.playchale.api.integration.sms.SmsSender;
 import com.playchale.api.shared.TestClock;
@@ -47,18 +48,15 @@ class AuthServiceTest {
 	/** Keeps the last email instead of sending it. */
 	static class Mailbox implements EmailSender {
 
-		String to;
-
-		String subject;
+		Email last;
 
 		@Override
-		public void send(String to, String subject, String text) {
-			this.to = to;
-			this.subject = subject;
+		public void send(Email email) {
+			this.last = email;
 		}
 
 		String code() {
-			return subject.replaceAll("\\D*(\\d{6}).*", "$1");
+			return last.subject().replaceAll("\\D*(\\d{6}).*", "$1");
 		}
 
 	}
@@ -185,8 +183,10 @@ class AuthServiceTest {
 	@Test
 	void anEmailAddressSignsInToo() {
 		auth.requestCode(null, " Kwame@Example.com ", CONNECTION);
-		assertThat(mail.to).isEqualTo("kwame@example.com");
-		assertThat(mail.subject).startsWith("Your PlayChale sign-in code: ");
+		assertThat(mail.last.to()).isEqualTo("kwame@example.com");
+		assertThat(mail.last.subject()).startsWith("Your PlayChale sign-in code: ");
+		assertThat(mail.last.text()).as("a plain-text copy for every mail app").contains(mail.code());
+		assertThat(mail.last.html()).as("and the branded one").contains(">" + mail.code() + "<", "http://localhost:3000/icons/icon-192.png");
 
 		var first = auth.signIn(null, "kwame@example.com", mail.code());
 		assertThat(first.user().signInEmail()).isEqualTo("kwame@example.com");

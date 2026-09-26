@@ -1,0 +1,48 @@
+# PlayChale on the shared server (next to PayCycl). The database is on Supabase and HTTPS comes from
+# the server's shared Caddy, which routes playchale.com and api.playchale.com to the network names
+# below. So this file only runs the app. See DEPLOYMENT.md.
+name: playchale
+
+services:
+  api:
+    image: ghcr.io/jonamarkin/playchale-api:${PLAYCHALE_API_TAG:-latest}
+    restart: unless-stopped
+    # Secrets live only in the API's env file; the web container never sees them.
+    env_file:
+      - .env.api
+    # The image gives Java 75% of the memory it can see. Without a limit that's 75% of the whole
+    # server, crowding out every other app on it; with one, the heap stays around 750 MB.
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      # Java, and database migrations on a new release, take a little while.
+      start_period: 90s
+    networks:
+      edge:
+        # Unique names on the shared network: other apps have services called "api" too.
+        aliases: [playchale-api]
+
+  web:
+    image: ghcr.io/jonamarkin/playchale-web:${PLAYCHALE_WEB_TAG:-latest}
+    restart: unless-stopped
+    env_file:
+      - .env.web
+    mem_limit: 512m
+    healthcheck:
+      # The image has Node but no curl, so Node makes the request.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      edge:
+        aliases: [playchale-web]
+
+networks:
+  # Created by the shared Caddy (/opt/caddy); every app on the server joins it.
+  edge:
+    external: true

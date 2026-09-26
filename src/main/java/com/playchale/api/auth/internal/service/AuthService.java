@@ -6,6 +6,7 @@ import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -18,6 +19,8 @@ import com.playchale.api.auth.internal.domain.SessionToken;
 import com.playchale.api.auth.internal.domain.SignInCode;
 import com.playchale.api.auth.internal.repository.SessionRepository;
 import com.playchale.api.auth.internal.repository.SignInCodeRepository;
+import com.playchale.api.integration.email.Email;
+import com.playchale.api.integration.email.EmailLayout;
 import com.playchale.api.integration.email.EmailSender;
 import com.playchale.api.integration.sms.SmsSender;
 import com.playchale.api.market.Market;
@@ -86,6 +89,9 @@ public class AuthService {
 
 	private final String demoCode;
 
+	/** The web app's address, for the logo and links in emails. */
+	private final String webApp;
+
 	AuthService(SignInCodeRepository codes, SessionRepository sessions, UserDirectory users, ObjectProvider<SmsSender> sms,
 			ObjectProvider<EmailSender> email, RateLimiter limiter, SignInLimits limits, Clock clock, PlaychaleProperties properties) {
 		this.codes = codes;
@@ -98,6 +104,7 @@ public class AuthService {
 		this.clock = clock;
 		this.codeKey = new SecretKeySpec(properties.secret().getBytes(StandardCharsets.UTF_8), "HmacSHA256");
 		this.demoCode = properties.demoSignInCode();
+		this.webApp = properties.webApp();
 	}
 
 	/** auth.options: which ways of signing in to offer. */
@@ -136,10 +143,19 @@ public class AuthService {
 			sms.getObject().send(to.address(), message);
 		}
 		else {
-			email.getObject().send(to.address(), "Your PlayChale sign-in code: %s".formatted(code),
-					message + "\n\nIf you didn’t try to sign in to PlayChale, you can ignore this email.");
+			email.getObject().send(signInEmail(to.address(), code, message));
 		}
 		return demoCode.isEmpty() ? Optional.empty() : Optional.of(demoCode);
+	}
+
+	/** The sign-in code email, in PlayChale's look, with a plain-text copy. */
+	private Email signInEmail(String address, String code, String message) {
+		var subject = "Your PlayChale sign-in code: %s".formatted(code);
+		var why = "You got this email because someone asked to sign in to PlayChale with this address.";
+		var html = EmailLayout.render(webApp, "sign-in-code", subject, message, why, Map.of("code", code));
+		var text = message + "\n\nIf you didn’t try to sign in to PlayChale, you can ignore this email. Nobody can sign in without the code.\n\n"
+				+ why;
+		return new Email(address, subject, text, html);
 	}
 
 	/**

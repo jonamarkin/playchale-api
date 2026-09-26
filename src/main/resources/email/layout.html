@@ -1,0 +1,81 @@
+<!doctype html>
+<!--
+  The shell every PlayChale email shares, in the web app's colours (webapp/app/assets/css/main.css):
+  brand teal and mint on cool off-white, in Onest where the mail app allows web fonts.
+
+  Email HTML is its own dialect: tables for layout, styles inline, no SVG (Gmail drops it), so the
+  logo is the web app's PNG icon. {{placeholders}} are filled by EmailLayout, already escaped.
+-->
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="x-apple-disable-message-reformatting">
+  <meta name="color-scheme" content="light dark">
+  <meta name="supported-color-schemes" content="light dark">
+  <title>{{subject}}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body { margin: 0; padding: 0; width: 100% !important; -webkit-text-size-adjust: 100%; }
+    table { border-collapse: collapse; }
+    img { border: 0; display: block; }
+    a { color: #0c3a3a; }
+    @media (max-width: 520px) {
+      .pc-card { border-radius: 0 !important; }
+      .pc-pad { padding-left: 24px !important; padding-right: 24px !important; }
+    }
+    /* Mail apps that honour dark mode (Apple Mail, some Outlooks) get the app's night palette. */
+    @media (prefers-color-scheme: dark) {
+      .pc-canvas { background: #061c1c !important; }
+      .pc-card { background: #0c2a2a !important; border-color: #16403f !important; }
+      .pc-ink { color: #f3f6f4 !important; }
+      .pc-body { color: #c5d2ce !important; }
+      .pc-mute { color: #8fa29d !important; }
+      .pc-rule { border-color: #16403f !important; }
+      .pc-link { color: #7cf0c8 !important; }
+    }
+  </style>
+</head>
+<body class="pc-canvas" style="margin:0;padding:0;background:#f3f6f4;">
+  <!-- What the inbox shows after the subject; padded so no stray text follows it. -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">{{preheader}}&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;&#8199;&#65279;&#847;</div>
+
+  <table role="presentation" class="pc-canvas" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6f4;">
+    <tr>
+      <td align="center" style="padding:40px 12px;">
+        <!-- "separate" so the card's border follows its rounded corners. -->
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px;border-collapse:separate;">
+          <!-- Logo -->
+          <tr>
+            <td style="padding:0 8px 20px;">
+              <a href="{{webApp}}" style="text-decoration:none;">
+                <table role="presentation" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="vertical-align:middle;padding-right:10px;">
+                      <img src="{{webApp}}/icons/icon-192.png" width="32" height="32" alt="" style="border-radius:8px;">
+                    </td>
+                    <td class="pc-ink" style="vertical-align:middle;font-family:'Onest',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:21px;font-weight:600;letter-spacing:-0.03em;color:#0b1716;">PlayChale</td>
+                  </tr>
+                </table>
+              </a>
+            </td>
+          </tr>
+          <!-- Card -->
+          <tr>
+            <td class="pc-card pc-pad" style="background:#ffffff;border:1px solid #e0e7e3;border-radius:20px;padding:36px 36px 32px;font-family:'Onest',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+              {{content}}
+            </td>
+          </tr>
+          <!-- Footer -->
+          <tr>
+            <td class="pc-mute" style="padding:24px 8px 0;font-family:'Onest',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:20px;color:#64716f;">
+              {{footer}}<br>
+              <a class="pc-link" href="{{webApp}}" style="color:#64716f;text-decoration:underline;">{{webAppName}}</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
