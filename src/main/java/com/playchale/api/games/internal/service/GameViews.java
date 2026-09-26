@@ -136,12 +136,12 @@ class GameViews {
 		}
 		var shown = user.as(viewer);
 		return new GameResponse.PlayerResponse(shown.id().toString(), shown.phone(), shown.name(), shown.handle(), shown.avatar(),
-				shown.tint(), shown.area(), shown.sports(), shown.roles(), shown.createdAt(), shown.onboarded(),
+				shown.avatarSeed(), shown.tint(), shown.area(), shown.sports(), shown.roles(), shown.createdAt(), shown.onboarded(),
 				shown.payoutPhone(), p.isPaid(), null);
 	}
 
 	private static GameResponse.PlayerResponse guestPlayer(Participant p, boolean hostView) {
-		return new GameResponse.PlayerResponse(p.playerKey(), "", p.getGuestName(), "", null, GUEST_TINT, null, List.of(), Map.of(),
+		return new GameResponse.PlayerResponse(p.playerKey(), "", p.getGuestName(), "", null, null, GUEST_TINT, null, List.of(), Map.of(),
 				p.getJoinedAt(), false, null, p.isPaid(), guest(p, hostView));
 	}
 

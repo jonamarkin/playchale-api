@@ -10,16 +10,17 @@ import jakarta.validation.constraints.Size;
  * The web app's ProfileUpdate: every field optional.
  *
  * @param roles    positions per sport, replacing all of them: {"football": ["goalkeeper"]}
+ * @param avatarSeed the face picked with Shuffle; blank goes back to the one from their id
  * @param position the old free-text position. Accepted and ignored for one release, so a web app
  *                 that's a few minutes behind the API still saves; remove it after that release.
  */
 public record ProfileUpdateRequest(String name, String handle, String area,
 		@Size(max = 10, message = "Pick sports from the list.") List<String> sports,
 		@Size(max = 10, message = "Pick sports from the list.") Map<String, List<String>> roles, @Deprecated String position,
-		String payoutPhone, String email) {
+		String payoutPhone, String email, String avatarSeed) {
 
 	public ProfileChanges toChanges() {
-		return new ProfileChanges(name, handle, area, sports, roles, payoutPhone, email);
+		return new ProfileChanges(name, handle, area, sports, roles, payoutPhone, email, avatarSeed);
 	}
 
 }

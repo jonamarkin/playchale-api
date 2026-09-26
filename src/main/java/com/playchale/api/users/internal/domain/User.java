@@ -34,6 +34,9 @@ public class User extends AuditableEntity {
 	/** Colours behind a new player's initials until they add a photo. Same palette as the web app. */
 	public static final List<String> TINTS = List.of("#b7d3c9", "#a9c4f2", "#f2d4a9", "#d9b8e8", "#f5c9b3", "#c9a1d8", "#e8e8e4");
 
+	/** A navii face's seed, as the web app makes them (utils/faces.ts). */
+	private static final Pattern FACE_SEED = Pattern.compile("^[A-Za-z0-9_-]{1,40}$");
+
 	/** Lower-case letters, digits and _, 3 to 20 of them. The web app's handle field allows the same. */
 	private static final Pattern HANDLE = Pattern.compile("^[a-z0-9_]{3,20}$");
 
@@ -67,6 +70,9 @@ public class User extends AuditableEntity {
 	private String tint;
 
 	private String avatarUrl;
+
+	/** The face they picked with Shuffle; null for the one from their id. See {@link #pickFace}. */
+	private String avatarSeed;
 
 	private String area;
 
@@ -189,6 +195,18 @@ public class User extends AuditableEntity {
 		roles.addAll(next);
 	}
 
+	/** The face shown when they have no photo, picked with Shuffle. Blank goes back to the one from their id. */
+	public void pickFace(String seed) {
+		if (seed.isBlank()) {
+			this.avatarSeed = null;
+			return;
+		}
+		if (!FACE_SEED.matcher(seed).matches()) {
+			throw BusinessException.invalid("Pick a face with Shuffle.");
+		}
+		this.avatarSeed = seed;
+	}
+
 	/** The mobile money number money should reach them on. Blank clears it. */
 	public void payTo(String phone) {
 		if (phone.isBlank()) {
@@ -233,6 +251,7 @@ public class User extends AuditableEntity {
 		email = null;
 		payoutPhone = null;
 		avatarUrl = null;
+		avatarSeed = null;
 		area = null;
 		roles.clear();
 		sports = new ArrayList<>();
@@ -288,6 +307,10 @@ public class User extends AuditableEntity {
 
 	public String getAvatarUrl() {
 		return avatarUrl;
+	}
+
+	public String getAvatarSeed() {
+		return avatarSeed;
 	}
 
 	public String getArea() {

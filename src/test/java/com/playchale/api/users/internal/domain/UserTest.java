@@ -58,6 +58,16 @@ class UserTest {
 	}
 
 	@Test
+	void aShuffledFaceIsKeptUntilTheyGoBack() {
+		user.pickFace("k3v9x1qz0b7m");
+		assertThat(user.getAvatarSeed()).isEqualTo("k3v9x1qz0b7m");
+		assertThatThrownBy(() -> user.pickFace("<script>")).hasMessage("Pick a face with Shuffle.");
+		assertThatThrownBy(() -> user.pickFace("a".repeat(41))).hasMessage("Pick a face with Shuffle.");
+		user.pickFace("");
+		assertThat(user.getAvatarSeed()).as("back to the face from their id").isNull();
+	}
+
+	@Test
 	void positionsArePerSportMainOneFirst() {
 		user.playSports(List.of("football", "basketball", "tennis"));
 		user.playRoles(Map.of("basketball", List.of("center"), "football", List.of("midfielder", "defender", "midfielder")));

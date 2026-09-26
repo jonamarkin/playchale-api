@@ -131,7 +131,7 @@ production logs: the logging stand-ins exist only in the dev profile.
 | `GET /auth/session` | `auth.currentUser` | The signed-in user, or `null` |
 | `DELETE /auth/session` | `auth.signOut` | Ends the session → 204 |
 | `DELETE /me` | `profiles.deleteAccount` | Deletes your account (anonymised; see below) → 204 |
-| `PATCH /me` | `profiles.update` | Edits your profile; absent fields stay, blank optional ones clear. `roles` (positions per sport) replaces all of them |
+| `PATCH /me` | `profiles.update` | Edits your profile; absent fields stay, blank optional ones clear. `roles` (positions per sport) replaces all of them; `avatarSeed` is the face picked with Shuffle (blank: back to the one from their id) |
 | `POST /me/onboarding` | `profiles.completeOnboarding` | The same, then marks you onboarded (needs a name and a handle) |
 | `GET /handles/{handle}` | `profiles.isHandleAvailable` | `{"available"}`; your own handle counts as free |
 | `GET /users/{id}/profile` | `profiles.get` | A player's profile and record |

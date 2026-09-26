@@ -71,6 +71,20 @@ class MeApiTest {
 	}
 
 	@Test
+	void aShuffledFaceIsSavedAndPublic() throws Exception {
+		var kwame = TestSignIn.as(mvc, "024 455 5123");
+		mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON)
+			.content("{\"name\":\"Kwame\",\"handle\":\"kwame\",\"sports\":[\"football\"]}"))
+			.andExpect(jsonPath("$.avatarSeed").doesNotExist());
+		mvc.perform(patch("/me").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("{\"avatarSeed\":\"k3v9x1qz0b7m\"}"))
+			.andExpect(jsonPath("$.avatarSeed").value("k3v9x1qz0b7m"));
+		mvc.perform(get("/profiles/kwame")).andExpect(jsonPath("$.user.avatarSeed").value("k3v9x1qz0b7m"));
+		mvc.perform(patch("/me").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("{\"avatarSeed\":\"\"}"))
+			.andExpect(jsonPath("$.avatarSeed").doesNotExist());
+		expectRefused(kwame, "{\"avatarSeed\":\"../../etc\"}", "Pick a face with Shuffle.");
+	}
+
+	@Test
 	void positionsArePerSportAndPublic() throws Exception {
 		var kwame = TestSignIn.as(mvc, "024 455 5123");
 		mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON)

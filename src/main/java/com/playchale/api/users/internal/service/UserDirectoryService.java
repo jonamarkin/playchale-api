@@ -67,7 +67,7 @@ class UserDirectoryService implements UserDirectory {
 
 	/** A player signed up by email has no phone: the web app's User type still wants a string there. */
 	static UserSummary summary(User u) {
-		return new UserSummary(u.getId(), u.getPhone() == null ? "" : u.getPhone(), u.getName(), u.getHandle(), u.getAvatarUrl(), u.getTint(),
+		return new UserSummary(u.getId(), u.getPhone() == null ? "" : u.getPhone(), u.getName(), u.getHandle(), u.getAvatarUrl(), u.getAvatarSeed(), u.getTint(),
 				u.getArea(), u.getSports(), u.getRoles(), u.getCreatedAt(), u.isOnboarded(), u.getPayoutPhone(), u.getEmail(), u.getSignInEmail());
 	}
 

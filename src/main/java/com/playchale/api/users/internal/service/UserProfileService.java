@@ -120,6 +120,9 @@ public class UserProfileService {
 		if (changes.email() != null) {
 			user.emailTo(changes.email());
 		}
+		if (changes.avatarSeed() != null) {
+			user.pickFace(changes.avatarSeed());
+		}
 	}
 
 	/**
