@@ -99,22 +99,30 @@ class DemoSeed {
 
 	/* ------------------------------------------------------------------ players */
 
-	private record Person(String id, String name, String handle, String tint, int phone, String avatar, String area, String position,
-			List<String> sports) {
+	/** {@code roles}: positions per sport, as in the web app's seed. */
+	private record Person(String id, String name, String handle, String tint, int phone, String avatar, String area,
+			List<String> sports, Map<String, List<String>> roles) {
 	}
 
 	private static final List<Person> PEOPLE = List.of(
-			new Person("u-kwame", "Kwame Asante", "kwame", "#e8e8e4", 1, "/avatars/kwame.jpg", "Osu, Accra", "Striker", List.of("football", "basketball")),
-			new Person("u-kojo", "Kojo Mensah", "kojo", "#7c8a80", 2, "/avatars/kojo.jpg", "Labone, Accra", "Midfielder", List.of("football")),
-			new Person("u-abena", "Abena Owusu", "abena", "#e58f8f", 3, "/avatars/abena.jpg", "East Legon, Accra", "Guard", List.of("basketball", "volleyball")),
-			new Person("u-yaw", "Yaw Boateng", "yaw", "#c9a1d8", 4, "/avatars/yaw.jpg", "Tema", "Defender", List.of("football")),
-			new Person("u-ama", "Ama Serwaa", "ama", "#6b3a2e", 5, "/avatars/ama.jpg", "East Legon, Accra", "Point guard", List.of("basketball")),
-			new Person("u-kofi", "Kofi Adjei", "kofi", "#b7d3c9", 6, null, "Osu, Accra", "Goalkeeper", List.of("football")),
-			new Person("u-esi", "Esi Appiah", "esi", "#f2d4a9", 7, null, "Cantonments, Accra", null, List.of("tennis", "volleyball")),
-			new Person("u-nii", "Nii Armah", "nii", "#a9c4f2", 8, null, "Labone, Accra", "Winger", List.of("football")),
-			new Person("u-akos", "Akosua Darko", "akos", "#d9b8e8", 9, null, "Tema", null, List.of("volleyball")),
-			new Person("u-adwoa", "Adwoa Mensah", "adwoa", "#f5c9b3", 10, null, "Osu, Accra", "Venue owner", List.of("football")),
-			new Person("u-sam", "Samuel Tetteh", "sam", "#c7d8f0", 11, null, "East Legon, Accra", "Venue owner", List.of("basketball")));
+			new Person("u-kwame", "Kwame Asante", "kwame", "#e8e8e4", 1, "/avatars/kwame.jpg", "Osu, Accra", List.of("football", "basketball"),
+					Map.of("football", List.of("forward"), "basketball", List.of("guard"))),
+			new Person("u-kojo", "Kojo Mensah", "kojo", "#7c8a80", 2, "/avatars/kojo.jpg", "Labone, Accra", List.of("football"),
+					Map.of("football", List.of("midfielder"))),
+			new Person("u-abena", "Abena Owusu", "abena", "#e58f8f", 3, "/avatars/abena.jpg", "East Legon, Accra", List.of("basketball", "volleyball"),
+					Map.of("basketball", List.of("guard"), "volleyball", List.of("setter"))),
+			new Person("u-yaw", "Yaw Boateng", "yaw", "#c9a1d8", 4, "/avatars/yaw.jpg", "Tema", List.of("football"),
+					Map.of("football", List.of("defender"))),
+			new Person("u-ama", "Ama Serwaa", "ama", "#6b3a2e", 5, "/avatars/ama.jpg", "East Legon, Accra", List.of("basketball"),
+					Map.of("basketball", List.of("guard"))),
+			new Person("u-kofi", "Kofi Adjei", "kofi", "#b7d3c9", 6, null, "Osu, Accra", List.of("football"), Map.of("football", List.of("goalkeeper"))),
+			new Person("u-esi", "Esi Appiah", "esi", "#f2d4a9", 7, null, "Cantonments, Accra", List.of("tennis", "volleyball"),
+					Map.of("volleyball", List.of("outside-hitter"))),
+			new Person("u-nii", "Nii Armah", "nii", "#a9c4f2", 8, null, "Labone, Accra", List.of("football"),
+					Map.of("football", List.of("forward", "midfielder"))),
+			new Person("u-akos", "Akosua Darko", "akos", "#d9b8e8", 9, null, "Tema", List.of("volleyball"), Map.of()),
+			new Person("u-adwoa", "Adwoa Mensah", "adwoa", "#f5c9b3", 10, null, "Osu, Accra", List.of("football"), Map.of()),
+			new Person("u-sam", "Samuel Tetteh", "sam", "#c7d8f0", 11, null, "East Legon, Accra", List.of("basketball"), Map.of()));
 
 	/** The demo sign-in numbers, 024 000 00NN, so seeded players sign in through the ordinary flow. */
 	static String demoPhone(int n) {
@@ -125,13 +133,20 @@ class DemoSeed {
 		var created = at(-30, 9);
 		for (var p : PEOPLE) {
 			jdbc.sql("""
-					INSERT INTO users (id, phone, country, name, handle, tint, avatar_url, area, sports, position, email, onboarded, created_at, updated_at)
-					VALUES (:id, :phone, 'GH', :name, :handle, :tint, :avatar, :area, :sports, :position, :email, true, :created, :created)
+					INSERT INTO users (id, phone, country, name, handle, tint, avatar_url, area, sports, email, onboarded, created_at, updated_at)
+					VALUES (:id, :phone, 'GH', :name, :handle, :tint, :avatar, :area, :sports, :email, true, :created, :created)
 					""")
 				.param("id", id(p.id())).param("phone", demoPhone(p.phone())).param("name", p.name()).param("handle", p.handle())
 				.param("tint", p.tint()).param("avatar", p.avatar()).param("area", p.area()).param("sports", p.sports().toArray(String[]::new))
-				.param("position", p.position()).param("email", p.handle() + "@example.com").param("created", utc(created))
+				.param("email", p.handle() + "@example.com").param("created", utc(created))
 				.update();
+			p.roles().forEach((sport, roles) -> {
+				for (int rank = 0; rank < roles.size(); rank++) {
+					jdbc.sql("INSERT INTO player_roles (user_id, sport, role, rank) VALUES (:user, :sport, :role, :rank)")
+						.param("user", id(p.id())).param("sport", sport).param("role", roles.get(rank)).param("rank", rank)
+						.update();
+				}
+			});
 		}
 	}
 

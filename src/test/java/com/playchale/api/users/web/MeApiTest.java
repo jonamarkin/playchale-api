@@ -2,6 +2,7 @@ package com.playchale.api.users.web;
 
 import com.playchale.api.TestSignIn;
 import com.playchale.api.TestcontainersConfiguration;
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,22 +49,71 @@ class MeApiTest {
 		var kwame = TestSignIn.as(mvc, "024 455 5123");
 
 		mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("""
-				{"name":"Kwame Mensah","handle":"Kwame","sports":["football"],"area":"East Legon"}
+				{"name":"Kwame Mensah","handle":"Kwame","sports":["football"],"roles":{"football":["forward"]},"area":"East Legon"}
 				"""))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.onboarded").value(true))
+			.andExpect(jsonPath("$.roles.football[0]").value("forward"))
 			.andExpect(jsonPath("$.handle").value("kwame"))
 			.andExpect(jsonPath("$.sports[0]").value("football"))
 			.andExpect(jsonPath("$.area").value("East Legon"));
 
 		mvc.perform(get("/auth/session").cookie(kwame)).andExpect(jsonPath("$.onboarded").value(true));
 
+		// A web app from before positions per sport still sends the old field: accepted, and ignored.
 		mvc.perform(patch("/me").cookie(kwame).contentType(MediaType.APPLICATION_JSON)
 			.content("{\"position\":\"Striker\",\"payoutPhone\":\"020 123 4567\"}"))
 			.andExpect(status().isOk())
-			.andExpect(jsonPath("$.position").value("Striker"))
+			.andExpect(jsonPath("$.position").doesNotExist())
+			.andExpect(jsonPath("$.roles.football[0]").value("forward"))
 			.andExpect(jsonPath("$.payoutPhone").value("+233201234567"))
 			.andExpect(jsonPath("$.name").value("Kwame Mensah"));
+	}
+
+	@Test
+	void positionsArePerSportAndPublic() throws Exception {
+		var kwame = TestSignIn.as(mvc, "024 455 5123");
+		mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON)
+			.content("{\"name\":\"Kwame\",\"handle\":\"kwame\",\"sports\":[\"football\"]}"))
+			.andExpect(jsonPath("$.roles").isEmpty());
+
+		// Adding a sport and its position in one go: sports are applied first.
+		mvc.perform(patch("/me").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("""
+				{"sports":["football","basketball","tennis"],"roles":{"football":["defender","midfielder"],"basketball":["anywhere"]}}
+				"""))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.roles.football[0]").value("defender"))
+			.andExpect(jsonPath("$.roles.football[1]").value("midfielder"))
+			.andExpect(jsonPath("$.roles.basketball[0]").value("anywhere"))
+			.andExpect(jsonPath("$.roles.tennis").doesNotExist());
+
+		// Anyone can see them.
+		mvc.perform(get("/profiles/kwame")).andExpect(jsonPath("$.user.roles.football[0]").value("defender"));
+
+		// Dropping a sport drops its positions.
+		mvc.perform(patch("/me").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("{\"sports\":[\"basketball\"]}"))
+			.andExpect(jsonPath("$.roles.football").doesNotExist())
+			.andExpect(jsonPath("$.roles.basketball[0]").value("anywhere"));
+	}
+
+	@Test
+	void positionsComeFromEachSportsOwnList() throws Exception {
+		var kwame = TestSignIn.as(mvc, "024 455 5123");
+		mvc.perform(patch("/me").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("{\"sports\":[\"football\",\"tennis\"]}"));
+
+		expectRefused(kwame, "{\"roles\":{\"football\":[\"striker\"]}}", "Pick positions from the list.");
+		expectRefused(kwame, "{\"roles\":{\"football\":[\"guard\"]}}", "Pick positions from the list.");
+		expectRefused(kwame, "{\"roles\":{\"football\":[\"goalkeeper\",\"defender\",\"forward\"]}}", "Pick up to 2 positions for Football.");
+		expectRefused(kwame, "{\"roles\":{\"football\":[\"anywhere\",\"forward\"]}}", "Anywhere can’t go with other positions.");
+		expectRefused(kwame, "{\"roles\":{\"basketball\":[\"guard\"]}}", "Add Basketball to your sports first.");
+		expectRefused(kwame, "{\"roles\":{\"tennis\":[\"singles\"]}}", "Tennis doesn’t have positions to pick.");
+	}
+
+	private void expectRefused(Cookie who, String body, String message) throws Exception {
+		mvc.perform(patch("/me").cookie(who).contentType(MediaType.APPLICATION_JSON).content(body))
+			.andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.error.code").value("invalid"))
+			.andExpect(jsonPath("$.error.message").value(message));
 	}
 
 	@Test

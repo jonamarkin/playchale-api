@@ -1,6 +1,7 @@
 package com.playchale.api.users.internal.domain;
 
 import java.util.List;
+import java.util.Map;
 
 import com.playchale.api.shared.error.BusinessException;
 import org.junit.jupiter.api.Test;
@@ -52,11 +53,51 @@ class UserTest {
 	@Test
 	void blankOptionalFieldsClearThem() {
 		user.moveTo("East Legon");
-		user.playPosition("Striker");
 		user.moveTo(" ");
-		user.playPosition("");
 		assertThat(user.getArea()).isNull();
-		assertThat(user.getPosition()).isNull();
+	}
+
+	@Test
+	void positionsArePerSportMainOneFirst() {
+		user.playSports(List.of("football", "basketball", "tennis"));
+		user.playRoles(Map.of("basketball", List.of("center"), "football", List.of("midfielder", "defender", "midfielder")));
+
+		assertThat(user.getRoles()).as("in the order of their sports, duplicates dropped")
+			.containsExactly(Map.entry("football", List.of("midfielder", "defender")), Map.entry("basketball", List.of("center")));
+	}
+
+	@Test
+	void newPositionsReplaceAllTheOldOnes() {
+		user.playSports(List.of("football", "basketball"));
+		user.playRoles(Map.of("football", List.of("goalkeeper"), "basketball", List.of("guard")));
+		user.playRoles(Map.of("basketball", List.of("forward")));
+		assertThat(user.getRoles()).containsExactly(Map.entry("basketball", List.of("forward")));
+
+		user.playRoles(Map.of("basketball", List.of()));
+		assertThat(user.getRoles()).isEmpty();
+	}
+
+	@Test
+	void droppingASportDropsItsPositions() {
+		user.playSports(List.of("football", "volleyball"));
+		user.playRoles(Map.of("football", List.of("forward"), "volleyball", List.of("libero")));
+		user.playSports(List.of("volleyball"));
+		assertThat(user.getRoles()).containsExactly(Map.entry("volleyball", List.of("libero")));
+	}
+
+	@Test
+	void positionsFollowTheirSportsRules() {
+		user.playSports(List.of("football", "tennis"));
+		var refusals = Map.of(
+				"Pick positions from the list.", Map.of("football", List.of("point-guard")),
+				"Pick up to 2 positions for Football.", Map.of("football", List.of("goalkeeper", "defender", "forward")),
+				"Anywhere can’t go with other positions.", Map.of("football", List.of("forward", "anywhere")),
+				"Add Volleyball to your sports first.", Map.of("volleyball", List.of("setter")),
+				"Tennis doesn’t have positions to pick.", Map.of("tennis", List.of("singles")),
+				"Pick sports from the list.", Map.of("cricket", List.of("batter")));
+		refusals.forEach((message, roles) -> assertThatThrownBy(() -> user.playRoles(roles)).as(message)
+			.isInstanceOf(BusinessException.class).hasMessage(message));
+		assertThat(user.getRoles()).as("a refusal changes nothing").isEmpty();
 	}
 
 	@Test

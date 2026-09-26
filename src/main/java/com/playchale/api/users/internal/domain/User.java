@@ -2,18 +2,25 @@ package com.playchale.api.users.internal.domain;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
+import com.playchale.api.catalog.api.RoleOption;
 import com.playchale.api.catalog.api.SportCatalog;
 import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.shared.persistence.AuditableEntity;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UuidGenerator;
@@ -67,7 +74,13 @@ public class User extends AuditableEntity {
 	@JdbcTypeCode(SqlTypes.ARRAY)
 	private List<String> sports = new ArrayList<>();
 
-	private String position;
+	/**
+	 * Positions (or events) per sport, from the sport catalogue. Replaced whole on every change, so
+	 * Hibernate rewrites the player's rows rather than patching them.
+	 */
+	@ElementCollection
+	@CollectionTable(name = "player_roles", joinColumns = @JoinColumn(name = "user_id"))
+	private List<PlayerRole> roles = new ArrayList<>();
 
 	/** Where money reaches them (E.164). Never used to charge them. */
 	private String payoutPhone;
@@ -133,11 +146,47 @@ public class User extends AuditableEntity {
 			throw BusinessException.invalid("Pick sports from the list.");
 		}
 		this.sports = new ArrayList<>(sports.stream().distinct().toList());
+		// Positions only make sense for sports they still play.
+		roles.removeIf(role -> !this.sports.contains(role.sport()));
 	}
 
-	/** What they usually play, e.g. "Striker". Blank clears it. */
-	public void playPosition(String position) {
-		this.position = optional(position, 40, "Keep your position under 40 characters.");
+	/**
+	 * Their positions (or events), per sport, replacing all of them: a sport left out has none
+	 * afterwards. Each sport's list comes from the catalogue: only
+	 * its own choices, no more than its maximum, the first being the main one. Every message is built
+	 * from the catalogue, so a new sport (athletics, with events) needs nothing here.
+	 */
+	public void playRoles(Map<String, List<String>> bySport) {
+		var next = new ArrayList<PlayerRole>();
+		for (var entry : bySport.entrySet()) {
+			var sport = SportCatalog.find(entry.getKey()).orElseThrow(() -> BusinessException.invalid("Pick sports from the list."));
+			var picked = entry.getValue() == null ? List.<String>of() : entry.getValue().stream().distinct().toList();
+			if (picked.isEmpty()) {
+				continue;
+			}
+			if (!sports.contains(sport.id())) {
+				throw BusinessException.invalid("Add %s to your sports first.".formatted(sport.label()));
+			}
+			var options = sport.roles();
+			if (options == null) {
+				throw BusinessException.invalid("%s doesn’t have positions to pick.".formatted(sport.label()));
+			}
+			if (picked.stream().anyMatch(id -> id == null || options.find(id).isEmpty())) {
+				throw BusinessException.invalid("Pick %s from the list.".formatted(options.plural()));
+			}
+			if (picked.size() > options.max()) {
+				throw BusinessException.invalid("Pick up to %d %s for %s.".formatted(options.max(), options.plural(), sport.label()));
+			}
+			var exclusive = picked.stream().map(id -> options.find(id).orElseThrow()).filter(RoleOption::exclusive).findFirst();
+			if (exclusive.isPresent() && picked.size() > 1) {
+				throw BusinessException.invalid("%s can’t go with other %s.".formatted(exclusive.get().label(), options.plural()));
+			}
+			for (int rank = 0; rank < picked.size(); rank++) {
+				next.add(new PlayerRole(sport.id(), picked.get(rank), rank));
+			}
+		}
+		roles.clear();
+		roles.addAll(next);
 	}
 
 	/** The mobile money number money should reach them on. Blank clears it. */
@@ -185,7 +234,7 @@ public class User extends AuditableEntity {
 		payoutPhone = null;
 		avatarUrl = null;
 		area = null;
-		position = null;
+		roles.clear();
 		sports = new ArrayList<>();
 		tint = "#d7ded9";
 		deletedAt = now;
@@ -249,8 +298,17 @@ public class User extends AuditableEntity {
 		return sports;
 	}
 
-	public String getPosition() {
-		return position;
+	/** Positions per sport, in the order of their sports, each list main-first. Sports without any are left out. */
+	public Map<String, List<String>> getRoles() {
+		var bySport = new LinkedHashMap<String, List<String>>();
+		for (var sport : sports) {
+			var picked = roles.stream().filter(r -> r.sport().equals(sport)).sorted(Comparator.comparingInt(PlayerRole::rank))
+				.map(PlayerRole::role).toList();
+			if (!picked.isEmpty()) {
+				bySport.put(sport, picked);
+			}
+		}
+		return bySport;
 	}
 
 	public String getPayoutPhone() {

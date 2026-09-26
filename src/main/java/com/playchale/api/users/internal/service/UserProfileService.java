@@ -110,8 +110,9 @@ public class UserProfileService {
 		if (changes.sports() != null) {
 			user.playSports(changes.sports());
 		}
-		if (changes.position() != null) {
-			user.playPosition(changes.position());
+		// After sports: positions are only allowed for sports they play, including ones added just now.
+		if (changes.roles() != null) {
+			user.playRoles(changes.roles());
 		}
 		if (changes.payoutPhone() != null) {
 			user.payTo(changes.payoutPhone());

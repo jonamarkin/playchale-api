@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import com.playchale.api.TestcontainersConfiguration;
@@ -99,7 +100,8 @@ class AccountDeletionTest {
 		auth.requestCode("024 455 5124", null, "203.0.113.7");
 		var signedIn = auth.signIn("024 455 5124", null, "123456");
 		var kojo = signedIn.user().id();
-		profiles.update(kojo, new ProfileChanges("Kojo Mensah", "kojo", "Osu", List.of("football"), null, "0201234567", "kojo@example.com"));
+		profiles.update(kojo, new ProfileChanges("Kojo Mensah", "kojo", "Osu", List.of("football"), Map.of("football", List.of("midfielder")),
+				"0201234567", "kojo@example.com"));
 
 		var unpaid = game(25_000);
 		var paid = game(25_000);
@@ -117,6 +119,9 @@ class AccountDeletionTest {
 		assertThat(gone.phone()).isEmpty();
 		assertThat(gone.email()).isNull();
 		assertThat(gone.payoutPhone()).isNull();
+		assertThat(gone.roles()).isEmpty();
+		assertThat(jdbc.sql("SELECT count(*) FROM player_roles WHERE user_id = :id").param("id", kojo).query(Long.class).single())
+			.as("positions are removed, not just hidden").isZero();
 		assertThat(users.findByHandle("kojo")).isEmpty();
 		assertThat(auth.userIdFor(signedIn.token())).as("signed out everywhere").isEmpty();
 		assertThat(notifications.list(kojo)).isEmpty();

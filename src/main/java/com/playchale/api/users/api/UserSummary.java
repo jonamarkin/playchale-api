@@ -2,7 +2,10 @@ package com.playchale.api.users.api;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -15,11 +18,16 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record UserSummary(UUID id, String phone, String name, String handle, String avatar, String tint, String area,
-		List<String> sports, String position, Instant createdAt, boolean onboarded, String payoutPhone, String email,
-		String signInEmail) {
+		List<String> sports, Map<String, List<String>> roles, Instant createdAt, boolean onboarded, String payoutPhone,
+		String email, String signInEmail) {
 
+	/**
+	 * @param roles positions (or athletics events) per sport, as catalogue ids, main one first:
+	 *              {"football": ["forward", "midfielder"]}. Keyed in the order of their sports; public.
+	 */
 	public UserSummary {
 		sports = List.copyOf(sports);
+		roles = Collections.unmodifiableMap(new LinkedHashMap<>(roles));
 		// The web app's dates are JavaScript Dates, which only go to the millisecond.
 		createdAt = createdAt.truncatedTo(ChronoUnit.MILLIS);
 	}
@@ -29,7 +37,7 @@ public record UserSummary(UUID id, String phone, String name, String handle, Str
 	 * app only ever shows to the player themselves.
 	 */
 	public UserSummary toPublic() {
-		return new UserSummary(id, "", name, handle, avatar, tint, area, sports, position, createdAt, onboarded, null, null, null);
+		return new UserSummary(id, "", name, handle, avatar, tint, area, sports, roles, createdAt, onboarded, null, null, null);
 	}
 
 	/** Everything to the player themselves; the public view to anyone else. */

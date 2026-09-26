@@ -2,6 +2,7 @@ package com.playchale.api.games.api;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
@@ -73,7 +74,7 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 	 */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record PlayerResponse(String id, String phone, String name, String handle, String avatar, String tint,
-			String area, List<String> sports, String position, Instant createdAt, boolean onboarded, String payoutPhone,
+			String area, List<String> sports, Map<String, List<String>> roles, Instant createdAt, boolean onboarded, String payoutPhone,
 			boolean paid, Guest guest) {
 	}
 

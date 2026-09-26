@@ -71,11 +71,15 @@ class GameApiTest {
 		var id = game.get("id").asString();
 
 		var kojo = TestSignIn.as(mvc, "024 455 5124");
+		mvc.perform(patch("/me").cookie(kojo).contentType(MediaType.APPLICATION_JSON)
+			.content("{\"sports\":[\"football\"],\"roles\":{\"football\":[\"goalkeeper\"]}}"));
 		mvc.perform(post("/games/" + id + "/players").cookie(kojo))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.players.length()").value(2))
 			.andExpect(jsonPath("$.players[0].phone").value(""))
-			.andExpect(jsonPath("$.players[1].phone").value("+233244555124"));
+			.andExpect(jsonPath("$.players[0].roles").isEmpty())
+			.andExpect(jsonPath("$.players[1].phone").value("+233244555124"))
+			.andExpect(jsonPath("$.players[1].roles.football[0]").value("goalkeeper"));
 
 		mvc.perform(get("/games")).andExpect(jsonPath("$[0].id").value(id)).andExpect(jsonPath("$[0].players[1].phone").value(""));
 		mvc.perform(get("/me/games").cookie(kojo)).andExpect(jsonPath("$[0].id").value(id));

@@ -1,0 +1,43 @@
+package com.playchale.api.catalog.web;
+
+import com.playchale.api.TestcontainersConfiguration;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
+import org.springframework.test.web.servlet.MockMvc;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+/** The sport catalogue as the web app's Sport type reads it. */
+@SpringBootTest
+@AutoConfigureMockMvc
+@Import(TestcontainersConfiguration.class)
+class CatalogApiTest {
+
+	@Autowired
+	MockMvc mvc;
+
+	@Test
+	void sportsCarryTheirPositions() throws Exception {
+		mvc.perform(get("/sports"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$[0].id").value("football"))
+			.andExpect(jsonPath("$[0].roles.label").value("Position"))
+			.andExpect(jsonPath("$[0].roles.max").value(2))
+			.andExpect(jsonPath("$[0].roles.options[0].id").value("goalkeeper"))
+			.andExpect(jsonPath("$[0].roles.options[0].label").value("Goalkeeper"))
+			// Only set when true (or present): the web app's optional fields.
+			.andExpect(jsonPath("$[0].roles.options[0].exclusive").doesNotExist())
+			.andExpect(jsonPath("$[0].roles.options[0].group").doesNotExist())
+			.andExpect(jsonPath("$[0].roles.options[4].id").value("anywhere"))
+			.andExpect(jsonPath("$[0].roles.options[4].exclusive").value(true))
+			// Tennis has no positions, so the app doesn't ask.
+			.andExpect(jsonPath("$[3].id").value("tennis"))
+			.andExpect(jsonPath("$[3].roles").doesNotExist());
+	}
+
+}

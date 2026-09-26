@@ -31,7 +31,7 @@ class AuthApiTest {
 
 	/** The web app's User type (webapp/app/types/domain.ts). If this changes, both must. */
 	private static final Set<String> USER_FIELDS = Set.of("id", "phone", "name", "handle", "avatar", "tint", "area",
-			"sports", "position", "createdAt", "onboarded", "payoutPhone", "email", "signInEmail");
+			"sports", "roles", "createdAt", "onboarded", "payoutPhone", "email", "signInEmail");
 
 	@Autowired
 	MockMvc mvc;

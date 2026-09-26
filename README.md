@@ -131,13 +131,13 @@ production logs: the logging stand-ins exist only in the dev profile.
 | `GET /auth/session` | `auth.currentUser` | The signed-in user, or `null` |
 | `DELETE /auth/session` | `auth.signOut` | Ends the session → 204 |
 | `DELETE /me` | `profiles.deleteAccount` | Deletes your account (anonymised; see below) → 204 |
-| `PATCH /me` | `profiles.update` | Edits your profile; absent fields stay, blank optional ones clear |
+| `PATCH /me` | `profiles.update` | Edits your profile; absent fields stay, blank optional ones clear. `roles` (positions per sport) replaces all of them |
 | `POST /me/onboarding` | `profiles.completeOnboarding` | The same, then marks you onboarded (needs a name and a handle) |
 | `GET /handles/{handle}` | `profiles.isHandleAvailable` | `{"available"}`; your own handle counts as free |
 | `GET /users/{id}/profile` | `profiles.get` | A player's profile and record |
 | `GET /profiles/{handle}` | `profiles.getByHandle` | The same by handle; 404 (the app's `null`) when no one has it |
 | `GET /users/{id}/history` | `profiles.history` | Verified results they played in, newest first |
-| `GET /sports` | `catalog.sports` | The sports and their formats |
+| `GET /sports` | `catalog.sports` | The sports, their formats and their positions (`roles`; none for tennis) |
 | `GET /venues?query=` | `venues.search` | Listed venues matching a name or area |
 | `GET /venues/{id}` | `venues.get` | A venue with its owner; 404 (the app's `null`) if it doesn't exist |
 | `GET /me/venues` | `venues.mine` | Venues you own |
@@ -191,7 +191,15 @@ can never be double-booked: besides the service's own check, a Postgres exclusio
 Profiles are worked out from results: a game counts for a player when they were on a side (not
 marked absent). Set-based sports (volleyball, tennis) are scored from their sets, and each sport keeps
 only its own player stats (goals and assists, or points). The scoring rules live in
-`catalog/api/SportCatalog` and mirror the web app's `data/sports.ts`.
+`catalog/api/SportCatalog` and mirror the web app's `data/sports.ts` (its `catalog.spec.ts` compares
+the two when run against this API).
+
+**Positions** are per sport and come from the sport's own list in the catalogue: up to two for team
+sports, the first being the main one (what a game's roster shows), and "Anywhere" on its own. They're
+stored as catalogue ids in `player_roles` (one row per player, sport and position, indexed for "find a
+goalkeeper" later). A sport with a long list works the same way: athletics would list its events,
+grouped, with a higher maximum. `users.position`, the old single free-text field, is unused and goes
+in a later release; `PATCH /me` still accepts (and ignores) `position` until then.
 
 **Money.** PlayChale never holds it: the payment provider moves it from the payer to the host, and the
 API records that it moved. `payments` holds each attempt; `movements` is an append-only ledger with a
