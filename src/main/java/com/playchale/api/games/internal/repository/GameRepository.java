@@ -39,6 +39,10 @@ public interface GameRepository extends JpaRepository<Game, UUID> {
 
 	List<Game> findByCompetitionIdOrderByStartsAt(UUID competitionId);
 
+	/** Whether someone is hosting a game still to come. */
+	@Query("select count(g) > 0 from Game g where g.hostId = :hostId and g.status in ('open', 'full') and g.startsAt > :now")
+	boolean isHostingUpcoming(UUID hostId, Instant now);
+
 	/** Games someone hosts or has a spot in, in kick-off order. */
 	@Query("""
 			select g from Game g

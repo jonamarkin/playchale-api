@@ -28,6 +28,16 @@ class PaymentController {
 		this.payments = payments;
 	}
 
+	/** {"inApp": true}: whether players pay in the app, or pay the host directly. */
+	public record Options(boolean inApp) {
+	}
+
+	/** payments.options */
+	@GetMapping("/payments/options")
+	Options options() {
+		return new Options(payments.inApp());
+	}
+
 	/** payments.start */
 	@PostMapping("/payments")
 	@ResponseStatus(HttpStatus.CREATED)

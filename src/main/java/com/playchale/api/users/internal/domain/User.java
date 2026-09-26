@@ -1,5 +1,6 @@
 package com.playchale.api.users.internal.domain;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -72,6 +73,9 @@ public class User extends AuditableEntity {
 	private String payoutPhone;
 
 	private boolean onboarded;
+
+	/** Set when they deleted their account; everything personal is gone by then. */
+	private Instant deletedAt;
 
 	/** Where payment receipts go. Asked for the first time they pay. */
 	private String email;
@@ -166,6 +170,29 @@ public class User extends AuditableEntity {
 			throw BusinessException.invalid("Add your name and a username to finish.");
 		}
 		this.onboarded = true;
+	}
+
+	/**
+	 * Deletes the account: every personal detail goes, and the player shows as "Deleted player" in the
+	 * games and leagues they were part of, so those still add up.
+	 */
+	public void delete(Instant now) {
+		name = "Deleted player";
+		handle = "";
+		phone = null;
+		signInEmail = null;
+		email = null;
+		payoutPhone = null;
+		avatarUrl = null;
+		area = null;
+		position = null;
+		sports = new ArrayList<>();
+		tint = "#d7ded9";
+		deletedAt = now;
+	}
+
+	public boolean isDeleted() {
+		return deletedAt != null;
 	}
 
 	/** How a handle is compared and stored: trimmed, lower-case, without a leading @. */

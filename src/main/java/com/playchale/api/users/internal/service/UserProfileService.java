@@ -1,12 +1,17 @@
 package com.playchale.api.users.internal.service;
 
+import java.time.Clock;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import com.playchale.api.shared.error.BusinessException;
+import com.playchale.api.users.api.AccountDeleted;
+import com.playchale.api.users.api.AccountHolds;
 import com.playchale.api.users.api.UserSummary;
 import com.playchale.api.users.internal.domain.User;
 import com.playchale.api.users.internal.repository.UserRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,8 +24,36 @@ public class UserProfileService {
 
 	private final UserRepository users;
 
-	UserProfileService(UserRepository users) {
+	private final List<AccountHolds> holds;
+
+	private final ApplicationEventPublisher events;
+
+	private final Clock clock;
+
+	UserProfileService(UserRepository users, List<AccountHolds> holds, ApplicationEventPublisher events, Clock clock) {
 		this.users = users;
+		this.holds = holds;
+		this.events = events;
+		this.clock = clock;
+	}
+
+	/**
+	 * profiles.deleteAccount: the player's personal details go now, and every module removes what it
+	 * holds about them in the same transaction. Refused while someone else depends on them (a game
+	 * they're hosting, say), with what to do first.
+	 */
+	@Transactional
+	public void deleteAccount(UUID userId) {
+		var user = load(userId);
+		for (var hold : holds) {
+			hold.reasonToWait(userId).ifPresent(reason -> {
+				throw BusinessException.conflict(reason);
+			});
+		}
+		var deleted = new AccountDeleted(userId, user.getPhone(), user.getSignInEmail());
+		user.delete(clock.instant());
+		users.saveAndFlush(user);
+		events.publishEvent(deleted);
 	}
 
 	/** profiles.update */

@@ -20,6 +20,8 @@ public interface CompetitionRepository extends JpaRepository<Competition, UUID> 
 
 	List<Competition> findByStatusNotOrderByCreatedAtDesc(String status, Limit limit);
 
+	boolean existsByOrganiserIdAndStatusIn(UUID organiserId, List<String> statuses);
+
 	/** Competitions someone organises or plays in, newest first. */
 	@Query("""
 			select c from Competition c

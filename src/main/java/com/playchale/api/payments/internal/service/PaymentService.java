@@ -21,6 +21,8 @@ import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.users.api.UserDirectory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -36,7 +38,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 @EnableConfigurationProperties(PaymentSettings.class)
-public class PaymentService {
+public class PaymentService implements InitializingBean {
 
 	private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
 
@@ -51,7 +53,7 @@ public class PaymentService {
 
 	private final UserDirectory users;
 
-	private final PaymentProvider provider;
+	private final ObjectProvider<PaymentProvider> providers;
 
 	private final ApplicationEventPublisher events;
 
@@ -62,12 +64,12 @@ public class PaymentService {
 	private final Clock clock;
 
 	PaymentService(PaymentRepository payments, MovementRepository movements, GameShares games, UserDirectory users,
-			PaymentProvider provider, ApplicationEventPublisher events, PaymentSettings settings, JdbcClient jdbc, Clock clock) {
+			ObjectProvider<PaymentProvider> providers, ApplicationEventPublisher events, PaymentSettings settings, JdbcClient jdbc, Clock clock) {
 		this.payments = payments;
 		this.movements = movements;
 		this.games = games;
 		this.users = users;
-		this.provider = provider;
+		this.providers = providers;
 		this.events = events;
 		this.settings = settings;
 		this.jdbc = jdbc;
@@ -80,6 +82,10 @@ public class PaymentService {
 	 */
 	@Transactional
 	public PaymentResponse start(UUID gameId, String method, String payerPhone, UUID me) {
+		if (!inApp()) {
+			throw BusinessException.conflict("Paying in the app isn’t switched on yet. Pay the host directly, and they’ll mark you as paid.");
+		}
+		var provider = providers.getObject();
 		var share = games.shareDue(gameId, me);
 		var email = users.find(me).map(u -> u.email()).orElse(null);
 		if (provider.needsEmail() && email == null) {
@@ -106,6 +112,10 @@ public class PaymentService {
 	 */
 	@Transactional
 	public boolean handleWebhook(String providerName, String body, String signature) {
+		var provider = providers.getIfAvailable();
+		if (provider == null) {
+			return false;
+		}
 		var reference = provider.webhookReference(body, signature);
 		if (reference.isEmpty()) {
 			return false;
@@ -119,6 +129,23 @@ public class PaymentService {
 			payments.findByReference(reference.get()).ifPresent(payment -> reconcile(payment.getId()));
 		}
 		return true;
+	}
+
+	/**
+	 * payments.options: whether players pay in the app, or pay the host directly (mobile money or cash)
+	 * and the host marks it.
+	 */
+	public boolean inApp() {
+		return settings.inApp() && providers.getIfAvailable() != null;
+	}
+
+	/** In-app payments need a provider; without one the app won't start unless they're switched off. */
+	@Override
+	public void afterPropertiesSet() {
+		if (settings.inApp() && providers.getIfAvailable() == null) {
+			throw new IllegalStateException("In-app payments are on but no payment provider is configured: set "
+					+ "PLAYCHALE_PAYSTACK_SECRET_KEY, or PLAYCHALE_PAYMENTS_IN_APP=false to have players pay hosts directly");
+		}
 	}
 
 	/** Where a hosted checkout sends the payer back to: the game, which picks the payment up again. */
@@ -159,6 +186,10 @@ public class PaymentService {
 			return;
 		}
 		var now = clock.instant();
+		var provider = providers.getIfAvailable();
+		if (provider == null) {
+			return;
+		}
 		PaymentProvider.Status status;
 		try {
 			status = provider.check(charge(payment), payment.getCreatedAt());

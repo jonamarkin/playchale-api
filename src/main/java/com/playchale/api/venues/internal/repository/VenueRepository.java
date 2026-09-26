@@ -20,4 +20,6 @@ public interface VenueRepository extends JpaRepository<Venue, UUID> {
 
 	List<Venue> findByOwnerIdOrderByCreatedAt(UUID ownerId);
 
+	boolean existsByOwnerId(UUID ownerId);
+
 }

@@ -106,6 +106,7 @@ Every value in `application.yml` can be set by an environment variable: `playcha
 | `PLAYCHALE_TEST_SUPPORT` | `true` (`/dev` endpoints) | must be `false` |
 | `SPRING_DATASOURCE_URL` etc. | set automatically from compose.yaml | the managed Postgres |
 | `PLAYCHALE_PAYSTACK_SECRET_KEY` | empty: the simulated provider | `sk_live_...` (or `sk_test_...` on staging) |
+| `PLAYCHALE_PAYMENTS_IN_APP` | `true` | `false` to launch before Paystack: players pay hosts directly |
 | `PLAYCHALE_PAYMENTS_WEB_APP_URL` | `http://localhost:3000` | the web app's address: Paystack sends payers back there |
 | `PLAYCHALE_SIGN_IN_PER_CONNECTION_PER_HOUR` | 100000 | 20 (default) |
 | `PLAYCHALE_SIGN_IN_PER_DAY` | 100000 | 3000 (default); raise it as the service grows |
@@ -127,6 +128,7 @@ production logs: the logging stand-ins exist only in the dev profile.
 | `POST /auth/sessions` | `auth.verifyOtp`, `auth.verifyEmailCode` | Checks the code (`{"phone"\|"email", "code"}`), creates the account on first sign-in, sets the session cookie → user |
 | `GET /auth/session` | `auth.currentUser` | The signed-in user, or `null` |
 | `DELETE /auth/session` | `auth.signOut` | Ends the session → 204 |
+| `DELETE /me` | `profiles.deleteAccount` | Deletes your account (anonymised; see below) → 204 |
 | `PATCH /me` | `profiles.update` | Edits your profile; absent fields stay, blank optional ones clear |
 | `POST /me/onboarding` | `profiles.completeOnboarding` | The same, then marks you onboarded (needs a name and a handle) |
 | `GET /handles/{handle}` | `profiles.isHandleAvailable` | `{"available"}`; your own handle counts as free |
@@ -160,6 +162,7 @@ production logs: the logging stand-ins exist only in the dev profile.
 | `PUT /games/{id}/result` | `games.recordResult` | Host only, after kick-off: records the result, or corrects it (which clears checks) |
 | `POST /games/{id}/result/confirmations` | `games.confirmResult` | A player who was there says it's right |
 | `POST /games/{id}/result/disputes` | `games.disputeResult` | `{"reason"?}`: says it isn't; the host is told |
+| `GET /payments/options` | `payments.options` | `{"inApp"}`: whether shares are paid in the app, or straight to the host |
 | `POST /payments` | `payments.start` | `{"gameId", "method", "payerPhone"?}`: starts collecting your share → 201, pending |
 | `GET /payments/{id}/status` | `payments.status` | Asks the provider while pending; on success the share is marked paid and the ledger written |
 | `GET /payments/{id}` | `payments.get` | Your payment; 404 (the app's `null`) for anyone else's |
@@ -192,6 +195,12 @@ only its own player stats (goals and assists, or points). The scoring rules live
 API records that it moved. `payments` holds each attempt; `movements` is an append-only ledger with a
 line on each person's statement (share out for the payer, in for the host), for in-app and cash
 payments alike. There is no balance anywhere.
+
+**Paying the host directly.** With `PLAYCHALE_PAYMENTS_IN_APP=false`, nobody pays through the app: the
+pay sheet tells players to send their share to the host's mobile money number (shown to players in
+that game only) or hand it over in cash, and the host marks them paid, which writes the same ledger
+lines as any cash payment. No payment provider is needed, so PlayChale can launch while Paystack is
+being set up. Switch it on later and nothing else changes.
 
 **Paystack.** With `PLAYCHALE_PAYSTACK_SECRET_KEY` set, payments go through Paystack's hosted
 checkout (`integration/payments/PaystackPaymentProvider`): the payer is sent to Paystack's page for
@@ -226,6 +235,15 @@ for the whole service, counted in Postgres (`shared/security/RateLimiter`) so th
 copy. Behind the proxy, the client's address comes from X-Forwarded-For, which Tomcat only believes
 from private and loopback addresses. Sign-in codes are sent straight away rather than through an
 outbox: a code is a secret we only store hashed, and one that arrives minutes late is useless anyway.
+
+**Deleting an account** (`DELETE /me`) removes everything personal: name, handle, phone, emails, payout
+number, photo, area. The player row stays, as "Deleted player", so past games, results, league tables
+and other people's statements still add up. Their sessions, sign-in codes and notifications go, and
+they give up unpaid spots in games still to come (a paid spot stays: the host has the money). Each
+module handles its own part by listening for `users/api/AccountDeleted`, in the same transaction. It's
+refused while others depend on them (hosting a game still to come, running a venue, organising a
+league that's still going): modules say so through `users/api/AccountHolds`, which the users module
+declares so it never depends on them.
 
 **Competitions.** Fixtures are ordinary games (the competitions module asks games to create them
 through `games/api/Fixtures`), so results, stats and notifications work for them unchanged. A squad
