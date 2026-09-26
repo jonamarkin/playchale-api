@@ -1,5 +1,6 @@
 package com.playchale.api.payments.web;
 
+import java.time.Duration;
 import java.util.Set;
 
 import com.playchale.api.TestSignIn;
@@ -69,8 +70,16 @@ class PaymentApiTest {
 		mvc.perform(get("/payments/" + id).cookie(kwame)).andExpect(status().isNotFound());
 		mvc.perform(get("/payments/" + id + "/status").cookie(kojo)).andExpect(jsonPath("$.status").value("pending"));
 
-		Thread.sleep(2700);
-		mvc.perform(get("/payments/" + id + "/status").cookie(kojo)).andExpect(jsonPath("$.status").value("succeeded"));
+		// The simulated provider settles after about 2.6 s. Asked until then (up to 10 s, for a busy machine).
+		var deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+		String status;
+		do {
+			Thread.sleep(300);
+			status = json.readTree(mvc.perform(get("/payments/" + id + "/status").cookie(kojo)).andReturn().getResponse().getContentAsString())
+				.get("status").asString();
+		}
+		while ("pending".equals(status) && System.nanoTime() < deadline);
+		assertThat(status).isEqualTo("succeeded");
 		mvc.perform(get("/me/statement").cookie(kwame))
 			.andExpect(jsonPath("$[0].direction").value("in"))
 			.andExpect(jsonPath("$[0].kind").value("share"))
