@@ -26,7 +26,7 @@ public interface CompetitionRepository extends JpaRepository<Competition, UUID> 
 	@Query("""
 			select c from Competition c
 			where c.organiserId = :userId
-			   or exists (select 1 from Team t join t.players p where t.competitionId = c.id and p.userId = :userId)
+			   or exists (select 1 from Entry e join e.players p where e.id.competitionId = c.id and p.userId = :userId)
 			order by c.createdAt desc
 			""")
 	List<Competition> involving(UUID userId, Limit limit);

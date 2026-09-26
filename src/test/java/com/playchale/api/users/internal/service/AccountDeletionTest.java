@@ -84,7 +84,7 @@ class AccountDeletionTest {
 	void setUp() {
 		jdbc.sql("""
 				TRUNCATE users, sign_in_codes, sessions, venues, pitches, bookings, games, game_participants, notifications,
-				         game_results, payments, movements, competitions, teams, team_players, join_requests CASCADE
+				         game_results, payments, movements, competitions, teams, team_members, team_join_requests, competition_entries, entry_players CASCADE
 				""").update();
 		clock.set(NOW);
 		host = users.registerOrFind("+233244555123", "GH").id();

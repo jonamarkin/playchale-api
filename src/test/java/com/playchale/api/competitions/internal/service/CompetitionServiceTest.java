@@ -88,7 +88,7 @@ class CompetitionServiceTest {
 	void setUp() {
 		jdbc.sql("""
 				TRUNCATE users, sign_in_codes, sessions, games, game_participants, notifications, game_results,
-				         competitions, teams, team_players, join_requests CASCADE
+				         competitions, teams, team_members, team_join_requests, competition_entries, entry_players CASCADE
 				""").update();
 		clock.set(NOW);
 		organiser = user("+233244555120", "Sam Addo");
@@ -112,9 +112,9 @@ class CompetitionServiceTest {
 	/** Three teams captained by Kojo, Ama and Yaw. */
 	private CompetitionResponse withTeams() {
 		var league = league();
-		competitions.addTeam(league.id(), "Reds", kojo, List.of(kojo), organiser);
-		competitions.addTeam(league.id(), "Blues", ama, List.of(ama), organiser);
-		return competitions.addTeam(league.id(), "Greens", yaw, List.of(yaw), organiser);
+		competitions.addTeam(league.id(), null, "Reds", kojo, List.of(kojo), organiser);
+		competitions.addTeam(league.id(), null, "Blues", ama, List.of(ama), organiser);
+		return competitions.addTeam(league.id(), null, "Greens", yaw, List.of(yaw), organiser);
 	}
 
 	private CompetitionResponse.TeamView team(CompetitionResponse league, String name) {
@@ -146,7 +146,7 @@ class CompetitionServiceTest {
 		assertThat(titlesFor(kojo)).containsExactly("Office League: fixtures are out");
 
 		assertThatThrownBy(() -> competitions.generateFixtures(league.id(), organiser)).hasMessage("The fixtures are already drawn.");
-		assertThatThrownBy(() -> competitions.addTeam(league.id(), "Golds", null, List.of(), organiser))
+		assertThatThrownBy(() -> competitions.addTeam(league.id(), null, "Golds", null, List.of(), organiser))
 			.hasMessage("The fixtures are drawn. Add teams before drawing them, or start a new league.");
 	}
 
@@ -180,7 +180,7 @@ class CompetitionServiceTest {
 
 		var request = competitions.get(league.id(), kojo).orElseThrow().requests().getFirst().id();
 		assertThatThrownBy(() -> competitions.answerRequest(league.id(), request, true, ama))
-			.hasMessage("Only Kojo or the organiser can change this squad.");
+			.hasMessage("Only Kojo can answer requests for Reds.");
 		var answered = competitions.answerRequest(league.id(), request, true, kojo);
 		assertThat(team(answered, "Reds").playerIds()).contains(esi);
 		assertThat(answered.requests()).isEmpty();
@@ -217,11 +217,11 @@ class CompetitionServiceTest {
 	@Test
 	void leaguesNeedThreeTeamsAndUniqueNames() {
 		var league = league();
-		competitions.addTeam(league.id(), "Reds", kojo, List.of(), organiser);
-		assertThatThrownBy(() -> competitions.addTeam(league.id(), "reds", ama, List.of(), organiser)).hasMessage("reds is already in this league.");
-		assertThatThrownBy(() -> competitions.addTeam(league.id(), "Blues", kojo, List.of(), organiser))
+		competitions.addTeam(league.id(), null, "Reds", kojo, List.of(), organiser);
+		assertThatThrownBy(() -> competitions.addTeam(league.id(), null, "reds", ama, List.of(), organiser)).hasMessage("reds is already in this league.");
+		assertThatThrownBy(() -> competitions.addTeam(league.id(), null, "Blues", kojo, List.of(), organiser))
 			.hasMessage("Kojo is already in another team in this league.");
-		competitions.addTeam(league.id(), "Blues", ama, List.of(), organiser);
+		competitions.addTeam(league.id(), null, "Blues", ama, List.of(), organiser);
 		assertThatThrownBy(() -> competitions.generateFixtures(league.id(), organiser)).hasMessage("A league needs at least three teams.");
 		assertThat(competitions.list(null)).as("drafts aren't listed").isEmpty();
 		assertThat(competitions.mine(kojo)).hasSize(1);

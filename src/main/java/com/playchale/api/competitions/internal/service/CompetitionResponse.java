@@ -22,11 +22,12 @@ public record CompetitionResponse(UUID id, String name, String sport, String for
 	}
 
 	/**
-	 * A team with its people, as the web app's TeamView. {@code joinToken} is "" for anyone but the
-	 * captain and the organiser.
+	 * A team in the league with its squad, as the web app's TeamView. {@code joinToken} is "" for
+	 * anyone but the captain and the organiser; {@code status} is "invited" while its captain hasn't
+	 * accepted (left out once it's in).
 	 */
 	public record TeamView(UUID id, UUID competitionId, String name, UUID captainId, List<UUID> playerIds, String tint, String joinToken,
-			Instant createdAt, List<UserSummary> players, UserSummary captain) {
+			Instant createdAt, List<UserSummary> players, UserSummary captain, String status) {
 	}
 
 	/** @param scored goals, points or sets, depending on the sport */

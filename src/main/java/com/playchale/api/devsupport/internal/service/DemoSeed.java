@@ -471,6 +471,24 @@ class DemoSeed {
 			new Team("t-hoopers", "Legon Hoopers", "u-abena", List.of("u-abena", "u-ama"), "#f2d4a9"),
 			new Team("t-labone", "Labone United", "u-esi", List.of("u-esi", "u-akos"), "#d9b8e8"));
 
+	private static final Team CREW = new Team("t-friday", "Friday Fives", "u-kwame", List.of("u-kwame", "u-yaw", "u-nii", "u-kofi"), "#f5c9b3");
+
+	/** A team on its own: its captain and members (the teams module's tables). */
+	private void standingTeam(Team t, Instant created) {
+		jdbc.sql("""
+				INSERT INTO teams (id, name, captain_id, tint, join_token, created_at)
+				VALUES (:id, :name, :captain, :tint, :token, :created)
+				""")
+			.param("id", id(t.id())).param("name", t.name()).param("captain", id(t.captain()))
+			.param("tint", t.tint()).param("token", t.id().replace("t-", "") + "-squad").param("created", utc(created))
+			.update();
+		for (int i = 0; i < t.players().size(); i++) {
+			jdbc.sql("INSERT INTO team_members (team_id, user_id, joined_at) VALUES (:team, :user, :joined)")
+				.param("team", id(t.id())).param("user", id(t.players().get(i))).param("joined", utc(created.plusSeconds(i)))
+				.update();
+		}
+	}
+
 	private static Team team(String id) {
 		return TEAMS.stream().filter(t -> t.id().equals(id)).findFirst().orElseThrow();
 	}
@@ -490,20 +508,19 @@ class DemoSeed {
 			.update();
 		for (var t : TEAMS) {
 			var created = at(-20, 9);
-			jdbc.sql("""
-					INSERT INTO teams (id, competition_id, name, captain_id, tint, join_token, created_at)
-					VALUES (:id, :league, :name, :captain, :tint, :token, :created)
-					""")
-				.param("id", id(t.id())).param("league", id(league)).param("name", t.name()).param("captain", id(t.captain()))
-				.param("tint", t.tint()).param("token", t.id().replace("t-", "") + "-squad").param("created", utc(created))
+			standingTeam(t, created);
+			jdbc.sql("INSERT INTO competition_entries (competition_id, team_id, status, entered_at) VALUES (:league, :team, 'entered', :at)")
+				.param("league", id(league)).param("team", id(t.id())).param("at", utc(created))
 				.update();
 			for (int i = 0; i < t.players().size(); i++) {
-				jdbc.sql("INSERT INTO team_players (team_id, competition_id, user_id, added_at) VALUES (:team, :league, :user, :added)")
+				jdbc.sql("INSERT INTO entry_players (team_id, competition_id, user_id, added_at) VALUES (:team, :league, :user, :added)")
 					.param("team", id(t.id())).param("league", id(league)).param("user", id(t.players().get(i)))
 					.param("added", utc(created.plusSeconds(i)))
 					.update();
 			}
 		}
+		// A team outside any league, as in the web app's seed: friends who play on Fridays.
+		standingTeam(CREW, at(-40, 9));
 		int sat = daysToSaturday();
 		fixture(league, "g-league-1a", 1, "t-ballers", "t-rovers", at(-7, 17), new Result(3, 1, team("t-ballers").players(),
 				team("t-rovers").players(), Map.of("u-kwame", new int[] { 2, 0, 0 }, "u-kojo", new int[] { 1, 1, 0 }), List.of(), "u-kojo",

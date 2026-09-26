@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-import com.playchale.api.competitions.api.TeamMemberships;
+import com.playchale.api.teams.api.TeamMemberships;
 import com.playchale.api.games.api.PlayedGames;
 import com.playchale.api.games.api.PlayedGames.PlayedGame;
 import com.playchale.api.shared.error.BusinessException;

@@ -28,8 +28,11 @@ public final class CompetitionRequests {
 	public record Venue(String kind, UUID venueId, String name, String area, UUID pitchId, String pitchName, String mapUrl) {
 	}
 
-	/** {"name", "captainId"?, "playerIds"?} */
-	public record NewTeam(String name, UUID captainId, List<UUID> playerIds) {
+	/**
+	 * {"teamId"} to enter an existing team, or {"name", "captainId"?, "playerIds"?} for a new one the
+	 * organiser sets up.
+	 */
+	public record NewTeam(UUID teamId, String name, UUID captainId, List<UUID> playerIds) {
 	}
 
 	/** {"userIds": [...]} */

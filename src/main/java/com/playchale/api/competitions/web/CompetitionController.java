@@ -58,7 +58,13 @@ class CompetitionController {
 	/** competitions.addTeam */
 	@PostMapping("/competitions/{id}/teams")
 	CompetitionResponse addTeam(CurrentUser me, @PathVariable UUID id, @RequestBody CompetitionRequests.NewTeam request) {
-		return competitions.addTeam(id, request.name(), request.captainId(), request.playerIds(), me.id());
+		return competitions.addTeam(id, request.teamId(), request.name(), request.captainId(), request.playerIds(), me.id());
+	}
+
+	/** competitions.answerEntry: an invited team's captain accepts or declines. */
+	@PostMapping("/competitions/{id}/teams/{teamId}/entry")
+	CompetitionResponse answerEntry(CurrentUser me, @PathVariable UUID id, @PathVariable UUID teamId, @RequestBody CompetitionRequests.Answer request) {
+		return competitions.answerEntry(id, teamId, request.accept(), me.id());
 	}
 
 	/** competitions.removeTeam */

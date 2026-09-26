@@ -29,6 +29,14 @@ public final class CompetitionEvents {
 	public record JoinedByLink(LeagueInfo league, String teamName, UUID captainId, UUID playerId, int squadSize) {
 	}
 
+	/** The organiser invited a team they don't captain; its captain accepts or declines. */
+	public record TeamInvited(LeagueInfo league, String teamName, UUID captainId, UUID organiserId) {
+	}
+
+	/** An invited team's captain answered. */
+	public record EntryAnswered(LeagueInfo league, String teamName, UUID organiserId, UUID captainId, boolean accepted) {
+	}
+
 	/** The fixtures are out. */
 	public record FixturesDrawn(LeagueInfo league, UUID organiserId, List<UUID> playerIds, int rounds, Instant startsAt) {
 	}

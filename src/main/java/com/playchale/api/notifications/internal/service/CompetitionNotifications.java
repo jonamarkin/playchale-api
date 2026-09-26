@@ -59,6 +59,21 @@ class CompetitionNotifications {
 	}
 
 	@EventListener
+	void on(CompetitionEvents.TeamInvited e) {
+		notifications.send(e.captainId(), "squad-request", "%s invited %s".formatted(e.league().name(), e.teamName()),
+				"%s would like your team in the league. Accept or decline from the league page.".formatted(firstName(e.organiserId())),
+				link(e.league()), e.organiserId());
+	}
+
+	@EventListener
+	void on(CompetitionEvents.EntryAnswered e) {
+		notifications.send(e.organiserId(), "squad-reply",
+				e.accepted() ? "%s is in %s".formatted(e.teamName(), e.league().name()) : "%s won’t play in %s".formatted(e.teamName(), e.league().name()),
+				e.accepted() ? "%s accepted your invitation.".formatted(firstName(e.captainId())) : "%s declined your invitation.".formatted(firstName(e.captainId())),
+				link(e.league()), e.captainId());
+	}
+
+	@EventListener
 	void on(CompetitionEvents.FixturesDrawn e) {
 		var kickoff = Market.get(Market.DEFAULT).formatKickoff(e.startsAt(), clock.instant());
 		for (var player : e.playerIds()) {

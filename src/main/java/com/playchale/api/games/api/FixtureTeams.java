@@ -17,6 +17,7 @@ public interface FixtureTeams {
 			Instant createdAt) {
 	}
 
-	Map<UUID, TeamCard> teams(Collection<UUID> teamIds);
+	/** The teams of one league's fixtures, each with its squad in that league (a team can be in several). */
+	Map<UUID, TeamCard> teams(UUID competitionId, Collection<UUID> teamIds);
 
 }

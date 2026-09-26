@@ -10,13 +10,15 @@ import java.util.UUID;
 import java.util.stream.Stream;
 
 import com.playchale.api.competitions.internal.domain.Competition;
-import com.playchale.api.competitions.internal.domain.JoinRequest;
-import com.playchale.api.competitions.internal.domain.Team;
-import com.playchale.api.competitions.internal.repository.JoinRequestRepository;
-import com.playchale.api.competitions.internal.repository.TeamRepository;
-import com.playchale.api.games.api.FixtureTeams.TeamCard;
+import com.playchale.api.competitions.internal.domain.Entry;
+import com.playchale.api.competitions.internal.domain.EntryId;
+import com.playchale.api.competitions.internal.repository.EntryRepository;
+import com.playchale.api.games.api.FixtureTeams;
 import com.playchale.api.games.api.Fixtures;
 import com.playchale.api.games.api.GameResponse;
+import com.playchale.api.teams.api.JoinRequestCard;
+import com.playchale.api.teams.api.TeamCard;
+import com.playchale.api.teams.api.TeamDirectory;
 import com.playchale.api.users.api.UserDirectory;
 import com.playchale.api.venues.api.PitchBookings;
 import com.playchale.api.users.api.UserSummary;
@@ -26,9 +28,9 @@ import org.springframework.stereotype.Component;
 @Component
 class CompetitionViews {
 
-	private final TeamRepository teams;
+	private final EntryRepository entries;
 
-	private final JoinRequestRepository requests;
+	private final TeamDirectory directory;
 
 	private final Fixtures fixtures;
 
@@ -36,9 +38,9 @@ class CompetitionViews {
 
 	private final PitchBookings venues;
 
-	CompetitionViews(TeamRepository teams, JoinRequestRepository requests, Fixtures fixtures, UserDirectory users, PitchBookings venues) {
-		this.teams = teams;
-		this.requests = requests;
+	CompetitionViews(EntryRepository entries, TeamDirectory directory, Fixtures fixtures, UserDirectory users, PitchBookings venues) {
+		this.entries = entries;
+		this.directory = directory;
 		this.fixtures = fixtures;
 		this.users = users;
 		this.venues = venues;
@@ -49,28 +51,31 @@ class CompetitionViews {
 	}
 
 	CompetitionResponse of(Competition c, UUID viewer) {
-		var squads = teams.findByCompetitionIdOrderByCreatedAt(c.getId());
-		var pending = requests.findByCompetitionIdAndStatusOrderByCreatedAt(c.getId(), JoinRequest.PENDING);
-		var people = users.findAll(Stream.of(Stream.of(c.getOrganiserId()), squads.stream().flatMap(t -> t.playerIds().stream()),
-				squads.stream().map(Team::getCaptainId), pending.stream().map(JoinRequest::getUserId)).flatMap(s -> s).distinct().toList());
+		var squads = entries.inCompetition(c.getId());
+		var cards = directory.findAll(squads.stream().map(Entry::getTeamId).toList());
+		var pending = directory.pendingRequests(cards.keySet());
+		var people = users.findAll(Stream.of(Stream.of(c.getOrganiserId()), squads.stream().flatMap(e -> e.playerIds().stream()),
+				cards.values().stream().map(TeamCard::captainId), pending.stream().map(JoinRequestCard::userId)).flatMap(s -> s).distinct().toList());
 
-		var teamViews = squads.stream().map(t -> new CompetitionResponse.TeamView(t.getId(), t.getCompetitionId(), t.getName(), t.getCaptainId(),
-				t.playerIds(), t.getTint(), token(t, c, viewer), t.getCreatedAt(),
-				t.playerIds().stream().map(people::get).filter(u -> u != null).map(u -> u.as(viewer)).toList(),
-				shown(people.get(t.getCaptainId()), viewer))).toList();
+		var teamViews = squads.stream().filter(e -> cards.containsKey(e.getTeamId())).map(e -> {
+			var t = cards.get(e.getTeamId());
+			return new CompetitionResponse.TeamView(t.id(), c.getId(), t.name(), t.captainId(), e.playerIds(), t.tint(), token(t, c, viewer),
+					t.createdAt(), e.playerIds().stream().map(people::get).filter(u -> u != null).map(u -> u.as(viewer)).toList(),
+					shown(people.get(t.captainId()), viewer), e.isInvited() ? Entry.INVITED : null);
+		}).toList();
 
 		var summaries = fixtures.of(c.getId());
 		var views = fixtures.views(c.getId(), viewer);
 		var rounds = summaries.stream().mapToInt(Fixtures.FixtureSummary::round).max().orElse(0);
-		var requestViews = pending.stream().map(r -> new CompetitionResponse.RequestView(r.getId(), r.getCompetitionId(), r.getTeamId(),
-				r.getUserId(), r.getStatus(), r.getCreatedAt(), shown(people.get(r.getUserId()), viewer))).toList();
+		var requestViews = pending.stream().map(r -> new CompetitionResponse.RequestView(r.id(), c.getId(), r.teamId(), r.userId(), r.status(),
+				r.createdAt(), shown(people.get(r.userId()), viewer))).toList();
 
 		// A partner venue's own map link, so a pin its owner adds later shows here too.
 		var mapUrl = c.getVenueId() != null ? venues.mapLinks(List.of(c.getVenueId())).get(c.getVenueId()) : c.getMapUrl();
 		var venue = new GameResponse.VenueRef(c.getVenueKind(), c.getVenueId(), c.getVenueName(), c.getVenueArea(), null, null, mapUrl);
 		return new CompetitionResponse(c.getId(), c.getName(), c.getSport(), c.getFormat(), c.getOrganiserId(), venue, c.getStartsAt(),
 				c.getDurationMinutes(), c.getStatus(), new CompetitionResponse.Points(c.getPointsWin(), c.getPointsDraw(), c.getPointsLoss()),
-				c.getCreatedAt(), shown(people.get(c.getOrganiserId()), viewer), teamViews, table(c, squads, summaries, viewer), views, rounds,
+				c.getCreatedAt(), shown(people.get(c.getOrganiserId()), viewer), teamViews, table(c, squads, cards, summaries, viewer), views, rounds,
 				requestViews);
 	}
 
@@ -78,10 +83,11 @@ class CompetitionViews {
 	 * The league table from the fixtures played so far: points by the league's rules, then goal (or
 	 * point, or set) difference, then scored, then name.
 	 */
-	private static List<CompetitionResponse.TableRow> table(Competition c, List<Team> squads, List<Fixtures.FixtureSummary> summaries,
-			UUID viewer) {
+	private List<CompetitionResponse.TableRow> table(Competition c, List<Entry> squads, Map<UUID, TeamCard> cards,
+			List<Fixtures.FixtureSummary> summaries, UUID viewer) {
 		var rows = new LinkedHashMap<UUID, Row>();
-		squads.forEach(t -> rows.put(t.getId(), new Row(card(t, c, viewer))));
+		squads.stream().filter(e -> !e.isInvited() && cards.containsKey(e.getTeamId()))
+			.forEach(e -> rows.put(e.getTeamId(), new Row(card(cards.get(e.getTeamId()), e, c, viewer))));
 		summaries.stream().filter(Fixtures.FixtureSummary::played).sorted(Comparator.comparing(Fixtures.FixtureSummary::startsAt)).forEach(f -> {
 			var home = rows.get(f.homeTeamId());
 			var away = rows.get(f.awayTeamId());
@@ -103,7 +109,7 @@ class CompetitionViews {
 
 	private static final class Row {
 
-		private final TeamCard team;
+		private final FixtureTeams.TeamCard team;
 
 		private int played;
 
@@ -121,7 +127,7 @@ class CompetitionViews {
 
 		private final List<String> form = new ArrayList<>();
 
-		Row(TeamCard team) {
+		Row(FixtureTeams.TeamCard team) {
 			this.team = team;
 		}
 
@@ -146,25 +152,32 @@ class CompetitionViews {
 
 	}
 
-	/** A team as the web app's Team type. Its squad link only for the captain and the organiser. */
-	static TeamCard card(Team t, Competition c, UUID viewer) {
-		return new TeamCard(t.getId(), t.getCompetitionId(), t.getName(), t.getCaptainId(), t.playerIds(), t.getTint(), token(t, c, viewer),
-				t.getCreatedAt());
+	/** A team in a league as the web app's Team type: its squad here. Its link only for the captain and the organiser. */
+	FixtureTeams.TeamCard card(TeamCard t, Entry e, Competition c, UUID viewer) {
+		return new FixtureTeams.TeamCard(t.id(), c.getId(), t.name(), t.captainId(), e.playerIds(), t.tint(), token(t, c, viewer), t.createdAt());
 	}
 
-	private static String token(Team t, Competition c, UUID viewer) {
-		return viewer != null && t.isRunBy(viewer, c) ? t.getJoinToken() : "";
+	private String token(TeamCard t, Competition c, UUID viewer) {
+		return viewer != null && (t.captainId().equals(viewer) || c.isOrganisedBy(viewer)) ? directory.joinToken(t.id()) : "";
 	}
 
 	private static UserSummary shown(UserSummary user, UUID viewer) {
 		return user == null ? null : user.as(viewer);
 	}
 
-	static Map<UUID, TeamCard> cards(Collection<Team> teams) {
-		var cards = new LinkedHashMap<UUID, TeamCard>();
-		teams.forEach(t -> cards.put(t.getId(), new TeamCard(t.getId(), t.getCompetitionId(), t.getName(), t.getCaptainId(), t.playerIds(),
-				t.getTint(), "", t.getCreatedAt())));
-		return cards;
+	/** Teams in a league as fixtures show them: no squad links. */
+	Map<UUID, FixtureTeams.TeamCard> cards(UUID competitionId, Collection<UUID> teamIds) {
+		var cards = directory.findAll(teamIds);
+		var out = new LinkedHashMap<UUID, FixtureTeams.TeamCard>();
+		for (var teamId : teamIds) {
+			var t = cards.get(teamId);
+			if (t == null) {
+				continue;
+			}
+			var squad = entries.findById(new EntryId(competitionId, teamId)).map(Entry::playerIds).orElse(List.of());
+			out.put(teamId, new FixtureTeams.TeamCard(t.id(), competitionId, t.name(), t.captainId(), squad, t.tint(), "", t.createdAt()));
+		}
+		return out;
 	}
 
 }

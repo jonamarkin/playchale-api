@@ -44,7 +44,7 @@ class CompetitionApiTest {
 	void emptyTables() {
 		jdbc.sql("""
 				TRUNCATE users, sign_in_codes, sessions, games, game_participants, notifications, game_results,
-				         competitions, teams, team_players, join_requests CASCADE
+				         competitions, teams, team_members, team_join_requests, competition_entries, entry_players CASCADE
 				""").update();
 	}
 

@@ -3,6 +3,7 @@ package com.playchale.api.games.internal.service;
 import com.playchale.api.games.api.FixtureTeams;
 import com.playchale.api.games.api.GameResponse;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -62,13 +63,15 @@ class GameViews {
 		var played = games.stream().filter(g -> Game.COMPLETED.equals(g.getStatus())).map(Game::getId).toList();
 		var resultsByGame = played.isEmpty() ? Map.<UUID, GameResult>of()
 				: results.findAllById(played).stream().collect(Collectors.toMap(GameResult::getGameId, r -> r));
-		var teamIds = games.stream().filter(g -> g.getCompetitionId() != null)
-			.flatMap(g -> Stream.of(g.getHomeTeamId(), g.getAwayTeamId())).distinct().toList();
-		var teams = teamIds.isEmpty() ? Map.<UUID, FixtureTeams.TeamCard>of()
-				: fixtureTeams.stream().findFirst().map(f -> f.teams(teamIds)).orElseGet(Map::of);
+		// Fixtures' teams, per league: a team can be in several, with a different squad in each.
+		var teamIdsByLeague = games.stream().filter(g -> g.getCompetitionId() != null).collect(Collectors.groupingBy(Game::getCompetitionId,
+				Collectors.flatMapping(g -> Stream.of(g.getHomeTeamId(), g.getAwayTeamId()), Collectors.toSet())));
+		var teamsByLeague = new HashMap<UUID, Map<UUID, FixtureTeams.TeamCard>>();
+		fixtureTeams.stream().findFirst().ifPresent(f -> teamIdsByLeague.forEach((league, teamIds) -> teamsByLeague.put(league, f.teams(league, teamIds))));
 		// Partner venues' own map links, in one query: a pin the owner adds later reaches every game there.
 		var mapLinks = venues.mapLinks(games.stream().map(Game::getVenueId).filter(Objects::nonNull).distinct().toList());
-		return games.stream().map(g -> view(g, viewer, people, resultsByGame.get(g.getId()), teams, mapLinks)).toList();
+		return games.stream().map(g -> view(g, viewer, people, resultsByGame.get(g.getId()),
+				g.getCompetitionId() == null ? Map.of() : teamsByLeague.getOrDefault(g.getCompetitionId(), Map.of()), mapLinks)).toList();
 	}
 
 	private GameResponse view(Game g, UUID viewer, Map<UUID, UserSummary> people, GameResult result,

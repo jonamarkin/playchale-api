@@ -25,6 +25,8 @@ public class Competition extends AuditableEntity {
 
 	public static final String RUNNING = "running";
 
+	public static final String FINISHED = "finished";
+
 	/** Crest colours, handed out to teams in turn. Same palette as the web app. */
 	public static final List<String> TEAM_TINTS = List.of("#7cf0c8", "#a9c4f2", "#f2d4a9", "#d9b8e8", "#b7d3c9", "#f5c9b3", "#c9a1d8",
 			"#e8e8e4");

@@ -62,7 +62,7 @@ class DemoSeedTest {
 		assertThat(venues.get(SeedIds.of("v-osu")).orElseThrow().pitches()).hasSize(3);
 		var profile = profiles.get(kwame, Optional.of(kwame));
 		assertThat(profile.stats().goals()).as("3 in Friday 5s, 2 in the league").isEqualTo(5);
-		assertThat(profile.teams()).containsExactly("Osu Ballers");
+		assertThat(profile.teams()).as("a league team and a crew").containsExactly("Friday Fives", "Osu Ballers");
 
 		testData.reset();
 		assertThat(games.get(SeedIds.of("g-osu-sat"), kwame).players()).as("resetting gives the same data again").hasSize(7);
