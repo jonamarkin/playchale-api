@@ -10,7 +10,7 @@ import jakarta.validation.constraints.NotNull;
 /** The web app's NewGameInput. */
 public record NewGameRequest(String sport, String format, String title, @NotNull(message = "Pick a time in the future.") Instant startsAt,
 		int durationMinutes, @NotNull(message = "Say where you’re playing.") @Valid VenueRefRequest venue, int capacity,
-		long totalCost, String visibility, String notes) {
+		long totalCost, String pricing, String visibility, String notes) {
 
 	/**
 	 * The web app's VenueRef: {kind: "listed", venueId, name, area, pitchId?, pitchName?} or {kind: "unlisted", name, area?,
@@ -21,7 +21,7 @@ public record NewGameRequest(String sport, String format, String title, @NotNull
 
 	public GameDetails toDetails() {
 		return new GameDetails(sport, format, title, startsAt, durationMinutes, "listed".equals(venue.kind()) ? "listed" : "unlisted",
-				venue.venueId(), venue.pitchId(), venue.name(), venue.area(), venue.mapUrl(), capacity, totalCost, visibility, notes);
+				venue.venueId(), venue.pitchId(), venue.name(), venue.area(), venue.mapUrl(), capacity, totalCost, pricing, visibility, notes);
 	}
 
 }

@@ -105,7 +105,7 @@ class GameServiceTest {
 
 	private static GameDetails unlisted(int capacity, long totalCost) {
 		return new GameDetails("football", "5-a-side", "Saturday 5s", KICKOFF, 60, "unlisted", null, null, "Legon Park", "Legon", null,
-				capacity, totalCost, "public", null);
+				capacity, totalCost, null, "public", null);
 	}
 
 	private List<String> titlesFor(UUID user) {
@@ -146,18 +146,18 @@ class GameServiceTest {
 	void directionsComeFromTheHostOrThePartnerVenue() {
 		// Anywhere: the host's own pin (a pasted Google Maps share, or coordinates).
 		var park = games.create(new GameDetails("football", "5-a-side", null, KICKOFF, 60, "unlisted", null, null, "Legon Park", "Legon",
-				"Legon Park\nhttps://maps.app.goo.gl/Xy12AbCd", 10, 0, "public", null), kwame);
+				"Legon Park\nhttps://maps.app.goo.gl/Xy12AbCd", 10, 0, null, "public", null), kwame);
 		assertThat(park.venue().mapUrl()).isEqualTo("https://maps.app.goo.gl/Xy12AbCd");
 		assertThat(games.repeat(park.id(), kwame).venue().mapUrl()).as("repeating keeps it").isEqualTo("https://maps.app.goo.gl/Xy12AbCd");
 		assertThatThrownBy(() -> games.create(new GameDetails("football", "5-a-side", null, KICKOFF, 60, "unlisted", null, null, "Legon Park",
-				null, "https://evil.example/maps", 10, 0, "public", null), kwame)).hasMessage(MapLink.REFUSED);
+				null, "https://evil.example/maps", 10, 0, null, "public", null), kwame)).hasMessage(MapLink.REFUSED);
 
 		// A partner venue: its own pin, looked up, so one the owner adds later reaches games already made.
 		var hours = Collections.nCopies(7, new DayHours("06:00", "23:00"));
 		var pitches = List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000));
 		var osu = venues.create(adwoa, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null, pitches, hours, List.of()));
 		var atOsu = games.create(new GameDetails("football", "5-a-side", null, KICKOFF, 60, "listed", osu.id(), null, null, null,
-				"https://maps.app.goo.gl/IgnoredForPartners", 10, 0, "public", null), kwame);
+				"https://maps.app.goo.gl/IgnoredForPartners", 10, 0, null, "public", null), kwame);
 		assertThat(atOsu.venue().mapUrl()).isNull();
 
 		var samePitches = List.of(new PitchDetails(osu.pitches().getFirst().id(), "Pitch A", "football", "5-a-side", "turf", 25_000));
@@ -172,11 +172,12 @@ class GameServiceTest {
 				List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000)),
 				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of()));
 		var pitch = osu.pitches().getFirst().id();
-		var details = new GameDetails("football", "5-a-side", null, KICKOFF, 60, "listed", osu.id(), pitch, null, null, null, 10, 25_000,
+		var details = new GameDetails("football", "5-a-side", null, KICKOFF, 60, "listed", osu.id(), pitch, null, null, null, 10, 25_000, null,
 				"public", null);
 
 		var game = games.create(details, kwame);
 		assertThat(game.venue().pitchName()).isEqualTo("Pitch A");
+		assertThat(game.pricing()).as("a booked pitch's price is shared").isEqualTo("split");
 		assertThat(game.venue().name()).isEqualTo("Osu Astro Turf");
 		assertThat(game.share()).isEqualTo(2_500);
 		assertThat(titlesFor(adwoa)).containsExactly("Kwame booked Pitch A");
@@ -214,6 +215,29 @@ class GameServiceTest {
 	}
 
 	@Test
+	void aPricePerPlayerIsExactlyWhatEachPlayerPays() {
+		// GH₵ 12.30 to take part, 10 spots: a split would round up to the market's step; a price doesn't.
+		var game = games.create(new GameDetails("football", "5-a-side", "Saturday 5s", KICKOFF, 60, "unlisted", null, null, "Legon Park", null,
+				null, 10, 12_300, "per-player", "public", null), kwame);
+		assertThat(game.pricing()).isEqualTo("per-player");
+		assertThat(game.share()).isEqualTo(1_230);
+		assertThat(games.repeat(game.id(), kwame).pricing()).as("repeating keeps it").isEqualTo("per-player");
+
+		games.join(game.id(), kojo);
+		games.remind(game.id(), null, kwame);
+		assertThat(titlesFor(kojo)).containsExactly("Pay GH₵ 12.30 for Saturday 5s");
+
+		// The total is always the price times the spots.
+		assertThatThrownBy(() -> games.create(new GameDetails("football", "5-a-side", null, KICKOFF, 60, "unlisted", null, null, "Legon Park", null,
+				null, 10, 12_345, "per-player", "public", null), kwame)).hasMessage("Set what each player pays to take part.");
+		assertThatThrownBy(() -> games.create(new GameDetails("football", "5-a-side", null, KICKOFF, 60, "unlisted", null, null, "Legon Park", null,
+				null, 10, 1_000, "whatever", "public", null), kwame)).hasMessage("Choose how the cost works.");
+		// A free game is just free.
+		assertThat(games.create(new GameDetails("football", "5-a-side", null, KICKOFF, 60, "unlisted", null, null, "Legon Park", null,
+				null, 10, 0, "per-player", "public", null), kwame).pricing()).isEqualTo("split");
+	}
+
+	@Test
 	void theHostRunsTheRosterAndPlayersHearAboutIt() {
 		var game = games.create(unlisted(10, 25_000), kwame);
 		games.join(game.id(), kojo);
@@ -248,7 +272,7 @@ class GameServiceTest {
 	void discoverShowsUpcomingGamesTheViewerMaySee() {
 		var saturday = games.create(unlisted(10, 0), kwame);
 		var privateGame = games.create(new GameDetails("basketball", "3x3", "Friends only", NOW.plus(Duration.ofHours(3)), 60, "unlisted",
-				null, null, "Kojo's court", "Tema", null, 6, 0, "private", null), kojo);
+				null, null, "Kojo's court", "Tema", null, 6, 0, null, "private", null), kojo);
 
 		assertThat(ids(games.list(new GameFilters(null, null, null), ama))).containsExactly(saturday.id());
 		assertThat(ids(games.list(new GameFilters(null, null, null), kojo))).containsExactly(privateGame.id(), saturday.id());

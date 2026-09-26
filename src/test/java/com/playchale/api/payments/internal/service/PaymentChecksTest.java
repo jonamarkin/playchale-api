@@ -72,7 +72,7 @@ class PaymentChecksTest {
 		clock.set(NOW);
 		host = users.registerOrFind("+233244555123", "GH").id();
 		game = games.create(new GameDetails("football", "5-a-side", "Saturday 5s", NOW.plus(Duration.ofDays(1)), 60, "unlisted", null, null,
-				"Legon Park", null, null, 40, 25_000, "public", null), host).id();
+				"Legon Park", null, null, 40, 25_000, null, "public", null), host).id();
 	}
 
 	/** A player who joins and starts paying, then closes the app. */

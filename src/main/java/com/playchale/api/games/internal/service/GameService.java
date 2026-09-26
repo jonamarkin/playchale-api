@@ -241,7 +241,7 @@ public class GameService {
 		game.reminded(unpaid, clock.instant());
 		if (!unpaid.isEmpty()) {
 			events.publishEvent(new GameEvents.PaymentReminded(info(game), unpaid.stream().map(Participant::getUserId).toList(),
-					share(game), game.getCurrency()));
+					share(game), game.getCurrency(), Game.PER_PLAYER.equals(game.getPricing())));
 		}
 		return unpaid.size();
 	}
@@ -273,6 +273,7 @@ public class GameService {
 		if (details.pitchId() != null && game.getVenueId() != null) {
 			var booked = pitches.bookForGame(game.getVenueId(), details.pitchId(), game.getStartsAt(), game.endsAt(), game.getId(), host);
 			game.playAt(booked.venueId(), booked.venueName(), booked.venueArea(), booked.pitchId(), booked.pitchName());
+			game.splitPitchCost();
 			events.publishEvent(new GameEvents.PitchBooked(info(game), booked.venueId(), booked.ownerId(), booked.pitchName()));
 		}
 		return game;
@@ -295,7 +296,7 @@ public class GameService {
 	}
 
 	private static long share(Game game) {
-		return Market.get(Market.DEFAULT).shareOf(game.getTotalCost(), game.getCapacity());
+		return game.share(Market.get(Market.DEFAULT));
 	}
 
 	static GameEvents.GameInfo info(Game game) {

@@ -92,7 +92,7 @@ class AccountDeletionTest {
 
 	private UUID game(long cost) {
 		return games.create(new GameDetails("football", "5-a-side", "Saturday 5s", NOW.plus(Duration.ofDays(1)), 60, "unlisted", null, null,
-				"Legon Park", null, null, 10, cost, "public", null), host).id();
+				"Legon Park", null, null, 10, cost, null, "public", null), host).id();
 	}
 
 	@Test

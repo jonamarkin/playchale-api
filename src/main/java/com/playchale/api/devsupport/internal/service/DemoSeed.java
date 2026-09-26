@@ -65,6 +65,8 @@ class DemoSeed {
 		league();
 		notifications();
 		mapPins();
+		// A contribution to play rather than a cost to split, as in the web app's seed: GH₵ 20 each (280 across 14 spots).
+		jdbc.sql("UPDATE games SET pricing = 'per-player' WHERE id = :id").param("id", id("g-labone-tonight")).update();
 	}
 
 	/* ------------------------------------------------------------------ map pins */

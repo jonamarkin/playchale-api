@@ -15,7 +15,7 @@ import com.playchale.api.users.api.UserSummary;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record GameResponse(UUID id, String sport, String format, String title, Instant startsAt, int durationMinutes,
-		VenueRef venue, int capacity, long totalCost, String currency, String visibility, UUID hostId, String notes,
+		VenueRef venue, int capacity, long totalCost, String pricing, String currency, String visibility, UUID hostId, String notes,
 		List<ParticipantResponse> participants, String status, ResultResponse result, FixtureRef fixture, Instant createdAt,
 		Instant cancelledAt, String cancelReason, UserSummary host, List<PlayerResponse> players, FixtureTeamsResponse fixtureTeams,
 		long share, int spotsLeft, String hostPayoutPhone) {

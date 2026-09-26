@@ -32,7 +32,7 @@ class GameApiTest {
 
 	/** The web app's GameView (Game plus host, players, share, spotsLeft). Optional fields may be absent. */
 	private static final Set<String> GAME_VIEW_FIELDS = Set.of("id", "sport", "format", "title", "startsAt", "durationMinutes",
-			"venue", "capacity", "totalCost", "currency", "visibility", "hostId", "notes", "participants", "status", "result",
+			"venue", "capacity", "totalCost", "pricing", "currency", "visibility", "hostId", "notes", "participants", "status", "result",
 			"fixture", "createdAt", "cancelledAt", "cancelReason", "host", "players", "fixtureTeams", "share", "spotsLeft");
 
 	private static final String NEW_GAME = """

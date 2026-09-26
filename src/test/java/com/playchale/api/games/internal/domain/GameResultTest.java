@@ -28,7 +28,7 @@ class GameResultTest {
 	private final UUID yaw = UUID.randomUUID();
 
 	private Game game(String sport, String format) {
-		var game = new Game(new GameDetails(sport, format, "Test", KICKOFF, 60, "unlisted", null, null, "Legon", null, null, 10, 0, "public", null),
+		var game = new Game(new GameDetails(sport, format, "Test", KICKOFF, 60, "unlisted", null, null, "Legon", null, null, 10, 0, null, "public", null),
 				host, Market.get("GH"), NOW);
 		game.playAt("Legon", null, null);
 		game.join(kojo, NOW);

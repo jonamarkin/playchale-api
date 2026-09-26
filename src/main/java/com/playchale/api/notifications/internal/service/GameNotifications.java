@@ -104,7 +104,10 @@ class GameNotifications {
 		var game = e.game();
 		var host = firstName(game.hostId());
 		for (var player : e.playerIds()) {
-			notifications.send(player, "payment-reminder", "Pay your %s share".formatted(market().formatMoney(e.share())),
+			// A share of a total, or the price to take part: each said as what it is.
+			var title = e.perPlayer() ? "Pay %s for %s".formatted(market().formatMoney(e.share()), game.title())
+					: "Pay your %s share".formatted(market().formatMoney(e.share()));
+			notifications.send(player, "payment-reminder", title,
 					"%s is collecting for %s, %s.".formatted(host, game.title(), kickoff(game.startsAt())),
 					"/games/%s?pay=1".formatted(game.gameId()), game.hostId());
 		}

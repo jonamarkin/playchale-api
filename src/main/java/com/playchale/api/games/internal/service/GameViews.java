@@ -96,9 +96,9 @@ class GameViews {
 			fixtureTeams = home == null || away == null ? null : new GameResponse.FixtureTeamsResponse(home, away);
 		}
 		return new GameResponse(g.getId(), g.getSport(), g.getFormat(), g.getTitle(), g.getStartsAt(), g.getDurationMinutes(), venue,
-				g.getCapacity(), g.getTotalCost(), g.getCurrency(), g.getVisibility(), g.getHostId(), g.getNotes(), participants,
+				g.getCapacity(), g.getTotalCost(), g.getPricing(), g.getCurrency(), g.getVisibility(), g.getHostId(), g.getNotes(), participants,
 				g.getStatus(), result == null ? null : result(result), fixture, g.getCreatedAt(), g.getCancelledAt(), g.getCancelReason(),
-				host == null ? null : host.as(viewer), players, fixtureTeams, market.shareOf(g.getTotalCost(), g.getCapacity()), g.spotsLeft(),
+				host == null ? null : host.as(viewer), players, fixtureTeams, g.share(market), g.spotsLeft(),
 				host != null && viewer != null && g.spotOf(viewer).isPresent() ? host.payoutPhone() : null);
 	}
 

@@ -32,6 +32,12 @@ import org.hibernate.type.SqlTypes;
 @Entity
 @Table(name = "games")
 public class Game extends AuditableEntity {
+	/** A total (pitch hire, balls, bibs) shared by the spots. */
+	public static final String SPLIT = "split";
+
+	/** What each player pays to take part: a contribution, not a share of anything. */
+	public static final String PER_PLAYER = "per-player";
+
 
 	public static final String LISTED = "listed";
 
@@ -82,6 +88,9 @@ public class Game extends AuditableEntity {
 	private int capacity;
 
 	private long totalCost;
+
+	/** {@link #SPLIT} or {@link #PER_PLAYER}: how the cost is set, and so how the app describes it. */
+	private String pricing = SPLIT;
 
 	@JdbcTypeCode(SqlTypes.CHAR)
 	@Column(length = 3)
@@ -152,6 +161,15 @@ public class Game extends AuditableEntity {
 		this.durationMinutes = details.durationMinutes();
 		this.capacity = details.capacity();
 		this.totalCost = details.totalCost();
+		var pricing = details.pricing() == null ? SPLIT : details.pricing();
+		if (!SPLIT.equals(pricing) && !PER_PLAYER.equals(pricing)) {
+			throw BusinessException.invalid("Choose how the cost works.");
+		}
+		// Per player, the total is always the price times the spots, so every spot pays exactly the price.
+		if (PER_PLAYER.equals(pricing) && details.totalCost() % details.capacity() != 0) {
+			throw BusinessException.invalid("Set what each player pays to take part.");
+		}
+		this.pricing = details.totalCost() == 0 ? SPLIT : pricing;
 		this.currency = market.currency();
 		this.visibility = details.visibility();
 		this.hostId = hostId;
@@ -319,7 +337,23 @@ public class Game extends AuditableEntity {
 		if (spot.isPaid()) {
 			throw BusinessException.conflict("You’ve already paid your share.");
 		}
-		return market.shareOf(totalCost, capacity);
+		return share(market);
+	}
+
+	/**
+	 * What each spot pays: the price, for a per-player game; otherwise the total shared by the spots,
+	 * rounded up to the market's step. 0 for a free game.
+	 */
+	public long share(Market market) {
+		if (totalCost == 0) {
+			return 0;
+		}
+		return PER_PLAYER.equals(pricing) ? totalCost / capacity : market.shareOf(totalCost, capacity);
+	}
+
+	/** A booked partner pitch: its price is the cost, shared by the spots. */
+	public void splitPitchCost() {
+		this.pricing = SPLIT;
 	}
 
 	/** A player's in-app payment went through. */
@@ -514,6 +548,10 @@ public class Game extends AuditableEntity {
 		return totalCost;
 	}
 
+	public String getPricing() {
+		return pricing;
+	}
+
 	public String getCurrency() {
 		return currency;
 	}
@@ -565,7 +603,7 @@ public class Game extends AuditableEntity {
 	/** Everything needed to set the same game up again. */
 	public GameDetails details() {
 		return new GameDetails(sport, format, title, startsAt, durationMinutes, venueKind, venueId, pitchId, venueName,
-				venueArea, mapUrl, capacity, totalCost, visibility, notes);
+				venueArea, mapUrl, capacity, totalCost, pricing, visibility, notes);
 	}
 
 }

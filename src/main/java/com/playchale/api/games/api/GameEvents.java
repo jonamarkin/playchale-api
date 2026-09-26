@@ -47,8 +47,12 @@ public final class GameEvents {
 	public record PlayersInvited(GameInfo game, List<UUID> playerIds, long share, String currency) {
 	}
 
-	/** The host nudged players who haven't paid. */
-	public record PaymentReminded(GameInfo game, List<UUID> playerIds, long share, String currency) {
+	/**
+	 * The host nudged players who haven't paid.
+	 *
+	 * @param perPlayer true when {@code share} is the price to take part, not a share of a total
+	 */
+	public record PaymentReminded(GameInfo game, List<UUID> playerIds, long share, String currency, boolean perPlayer) {
 	}
 
 	/**
