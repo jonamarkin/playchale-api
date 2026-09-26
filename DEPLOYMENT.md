@@ -10,7 +10,7 @@ PayCycl.
 | API (`ghcr.io/jonamarkin/playchale-api`) and web app (`ghcr.io/jonamarkin/playchale-web`) | Containers in `/opt/playchale` on the server | Already paid |
 | HTTPS | The shared Caddy in `/opt/caddy`, which gets certificates automatically | Free |
 | Database | Supabase, a second free project, in Frankfurt | Free |
-| Sign-in emails | Resend, from `alert@playchale.com` | See step 2 |
+| Sign-in emails | Resend (the paid account PayCycl uses), from `alert@playchale.com` | Already paid |
 | DNS and proxy | Cloudflare (already set up for playchale.com) | Free |
 | Backups | Nightly `pg_dump` to Cloudflare R2 | Free up to 10 GB |
 
@@ -27,7 +27,7 @@ explanations; the shell ignores them, so whole blocks can be pasted. Each block 
    database password and save it in your password manager.
 2. **Project Settings → Data API → turn it off.** The app talks to Postgres directly. Left on,
    Supabase would publish the app's tables over its own web API.
-3. **Connect → Session pooler** (not "Direct connection", which is IPv6-only, and not "Transaction
+2. **Connect → Session pooler** (not "Direct connection", which is IPv6-only, and not "Transaction
    pooler"). Supabase shows it as
    `postgresql://postgres.<PROJECT_REF>:[YOUR-PASSWORD]@<HOST>:5432/postgres`. Java wants it in three parts;
    you'll paste them in step 4:
@@ -49,24 +49,21 @@ covers backups). Once there are real players, Pro ($25/mo) removes both concerns
 Sign-in codes go out from `PlayChale <alert@playchale.com>`, in PlayChale's colours with a plain-text
 copy. Resend has to verify that `playchale.com` is yours before it sends from it.
 
-1. **Resend's free plan allows one domain, and PayCycl's `updates.atomarkin.com` already uses it.**
-   Either upgrade Resend (Pro allows more domains) or use a separate Resend account for PlayChale.
-   Check Resend's current pricing page first.
-2. Resend → **Domains → Add domain** → `playchale.com`, region Ireland (eu-west-1, the
+1. Resend → **Domains → Add domain** → `playchale.com`, region Ireland (eu-west-1, the
    closest of Resend's regions).
-3. Resend lists DNS records: an MX and a TXT on `send.playchale.com`, and a DKIM TXT on
+2. Resend lists DNS records: an MX and a TXT on `send.playchale.com`, and a DKIM TXT on
    `resend._domainkey.playchale.com`. Use its **Sign in to Cloudflare** button to add them, or copy
    them into Cloudflare → DNS by hand. Leave them **DNS only**; Cloudflare doesn't proxy these types
    anyway. They don't touch your existing MX records for `playchale.com` (Namecheap's email
    forwarding), so forwarding keeps working.
-4. Also add a DMARC record in Cloudflare, which Gmail and Yahoo expect from senders:
+3. Also add a DMARC record in Cloudflare, which Gmail and Yahoo expect from senders:
 
    | Type | Name | Content |
    |---|---|---|
    | TXT | `_dmarc` | `v=DMARC1; p=none;` |
 
-5. Wait for Resend to show the domain as **Verified** (minutes, usually).
-6. Resend → **API Keys → Create**: name `playchale-production`, permission **Sending access**, domain
+4. Wait for Resend to show the domain as **Verified** (minutes, usually).
+5. Resend → **API Keys → Create**: name `playchale-production`, permission **Sending access**, domain
    `playchale.com`. Copy the key (`re_...`) into your password manager; Resend only shows it once.
 
 The API refuses to start without an email provider, since nobody could sign in. If Resend rejects
