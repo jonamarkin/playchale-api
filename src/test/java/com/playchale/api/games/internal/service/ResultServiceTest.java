@@ -94,7 +94,7 @@ class ResultServiceTest {
 	/** A game Kwame hosts that Kojo and Ama join, kicking off {@code hoursFromNow} after NOW. */
 	private GameResponse played(String sport, String format, int hoursFromNow) {
 		var game = games.create(new GameDetails(sport, format, null, NOW.plus(Duration.ofHours(hoursFromNow)), 60, "unlisted", null, null,
-				"Legon Park", null, 10, 0, "public", null), kwame);
+				"Legon Park", null, null, 10, 0, "public", null), kwame);
 		games.join(game.id(), kojo);
 		games.join(game.id(), ama);
 		return game;

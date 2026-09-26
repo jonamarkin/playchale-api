@@ -19,13 +19,13 @@ public final class CompetitionRequests {
 
 		public CompetitionDetails toDetails() {
 			return new CompetitionDetails(name, sport, format, "listed".equals(venue.kind()) ? "listed" : "unlisted", venue.venueId(),
-					venue.name(), venue.area(), startsAt, durationMinutes);
+					venue.name(), venue.area(), venue.mapUrl(), startsAt, durationMinutes);
 		}
 
 	}
 
 	/** The web app's VenueRef. */
-	public record Venue(String kind, UUID venueId, String name, String area, UUID pitchId, String pitchName) {
+	public record Venue(String kind, UUID venueId, String name, String area, UUID pitchId, String pitchName, String mapUrl) {
 	}
 
 	/** {"name", "captainId"?, "playerIds"?} */

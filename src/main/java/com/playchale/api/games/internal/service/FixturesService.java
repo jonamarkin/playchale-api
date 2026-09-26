@@ -45,7 +45,7 @@ class FixturesService implements Fixtures {
 				game.playAt(f.venueId(), f.venueName(), f.venueArea(), null, null);
 			}
 			else {
-				game.playAt(f.venueName(), f.venueArea());
+				game.playAt(f.venueName(), f.venueArea(), f.venueMapUrl());
 			}
 			games.save(game);
 		}

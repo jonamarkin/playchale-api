@@ -92,7 +92,7 @@ class BookingServiceTest {
 		clock.set(NOW);
 		owner = users.registerOrFind("+233244100200", "GH").id();
 		host = users.registerOrFind("+233244555123", "GH").id();
-		osu = venues.create(owner, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null,
+		osu = venues.create(owner, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null,
 				List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000),
 						new PitchDetails(null, "Pitch B", "football", "5-a-side", "turf", 25_000)),
 				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of()));
@@ -157,7 +157,7 @@ class BookingServiceTest {
 	@Test
 	void aPitchWithBookingsToComeCantBeRemoved() {
 		bookings.bookForGame(osu.id(), pitchA, TEN, ELEVEN, UUID.randomUUID(), host);
-		var onlyB = new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null,
+		var onlyB = new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null,
 				List.of(new PitchDetails(osu.pitches().get(1).id(), "Pitch B", "football", "5-a-side", "turf", 25_000)),
 				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of());
 		assertThatThrownBy(() -> venues.update(owner, osu.id(), onlyB))

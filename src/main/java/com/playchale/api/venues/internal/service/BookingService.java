@@ -17,6 +17,7 @@ import com.playchale.api.venues.api.PitchBookings;
 import com.playchale.api.venues.api.VenueSummary;
 import com.playchale.api.venues.internal.domain.Booking;
 import com.playchale.api.venues.internal.domain.Pitch;
+import com.playchale.api.venues.internal.domain.Venue;
 import com.playchale.api.venues.internal.repository.BookingRepository;
 import com.playchale.api.venues.internal.repository.VenueRepository;
 import org.springframework.beans.factory.ObjectProvider;
@@ -54,6 +55,16 @@ public class BookingService implements PitchBookings {
 	@Transactional(readOnly = true)
 	public Optional<VenueSummary> findVenue(UUID venueId) {
 		return venues.findById(venueId).map(v -> new VenueSummary(v.getId(), v.getName(), v.getArea(), v.getOwnerId()));
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Map<UUID, String> mapLinks(Collection<UUID> venueIds) {
+		if (venueIds.isEmpty()) {
+			return Map.of();
+		}
+		return venues.findAllById(venueIds).stream().filter(v -> v.getMapUrl() != null)
+			.collect(Collectors.toMap(Venue::getId, Venue::getMapUrl));
 	}
 
 	@Override

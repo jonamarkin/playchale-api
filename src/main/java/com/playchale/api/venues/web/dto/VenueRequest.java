@@ -10,7 +10,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 
 /** The web app's VenueInput. Closed days are null in {@code hours}. */
-public record VenueRequest(String name, String area, String description, String address, String phone,
+public record VenueRequest(String name, String area, String description, String address, String mapUrl, String phone,
 		@NotNull(message = "Add at least one pitch or court.") List<@Valid PitchRequest> pitches,
 		@NotNull(message = "Add your opening hours.") List<HoursRequest> hours, List<String> amenities) {
 
@@ -22,7 +22,7 @@ public record VenueRequest(String name, String area, String description, String 
 	}
 
 	public VenueDetails toDetails() {
-		return new VenueDetails(name, area, description, address, phone,
+		return new VenueDetails(name, area, description, address, mapUrl, phone,
 				pitches.stream().map(p -> new PitchDetails(p.id(), p.name(), p.sport(), p.format(), p.surface(), p.pricePerHour())).toList(),
 				hours.stream().map(h -> h == null ? null : new DayHours(h.open(), h.close())).toList(), amenities);
 	}

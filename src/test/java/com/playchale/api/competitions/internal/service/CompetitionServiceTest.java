@@ -106,7 +106,7 @@ class CompetitionServiceTest {
 
 	private CompetitionResponse league() {
 		return competitions.create(new CompetitionDetails("Office League", "football", "5-a-side", "unlisted", null, "Legon Park", "Legon",
-				FIRST_MATCHDAY, 60), organiser);
+				"https://maps.app.goo.gl/LegonPark", FIRST_MATCHDAY, 60), organiser);
 	}
 
 	/** Three teams captained by Kojo, Ama and Yaw. */
@@ -138,7 +138,9 @@ class CompetitionServiceTest {
 			assertThat(f.hostId()).isEqualTo(organiser);
 			assertThat(f.fixtureTeams()).isNotNull();
 			assertThat(f.players()).hasSize(2);
+			assertThat(f.venue().mapUrl()).as("the league's pin, for every fixture").isEqualTo("https://maps.app.goo.gl/LegonPark");
 		});
+		assertThat(drawn.venue().mapUrl()).isEqualTo("https://maps.app.goo.gl/LegonPark");
 		assertThat(drawn.fixtures()).extracting(GameResponse::startsAt)
 			.containsExactly(FIRST_MATCHDAY, FIRST_MATCHDAY.plus(Duration.ofDays(7)), FIRST_MATCHDAY.plus(Duration.ofDays(14)));
 		assertThat(titlesFor(kojo)).containsExactly("Office League: fixtures are out");

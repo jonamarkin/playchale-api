@@ -14,10 +14,11 @@ public interface Fixtures {
 	 * One fixture to create. The organiser hosts it; everyone in the two squads has a spot, and
 	 * nobody pays through the app for a league game.
 	 *
-	 * @param venueKind "listed" (with {@code venueId}) or "unlisted"
+	 * @param venueKind "listed" (with {@code venueId}) or "unlisted" (maybe with a {@code venueMapUrl})
 	 */
 	record FixtureSpec(UUID competitionId, int round, UUID homeTeamId, UUID awayTeamId, String title, String sport, String format,
-			Instant startsAt, int durationMinutes, String venueKind, UUID venueId, String venueName, String venueArea, UUID organiserId,
+			Instant startsAt, int durationMinutes, String venueKind, UUID venueId, String venueName, String venueArea, String venueMapUrl,
+			UUID organiserId,
 			List<UUID> squad) {
 	}
 

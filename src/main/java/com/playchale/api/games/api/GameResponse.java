@@ -49,9 +49,12 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 	public record Dispute(UUID userId, String reason, Instant at) {
 	}
 
-	/** Where it's played: {kind: "listed", venueId, name, area, pitchId?, pitchName?} or {kind: "unlisted", name, area?}. */
+	/**
+	 * Where it's played: {kind: "listed", venueId, name, area, pitchId?, pitchName?} or {kind: "unlisted", name, area?}, each
+	 * with a {@code mapUrl} for directions when there is one (for a listed venue, the venue's own).
+	 */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	public record VenueRef(String kind, UUID venueId, String name, String area, UUID pitchId, String pitchName) {
+	public record VenueRef(String kind, UUID venueId, String name, String area, UUID pitchId, String pitchName, String mapUrl) {
 	}
 
 	/**

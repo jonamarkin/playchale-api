@@ -101,7 +101,7 @@ public class CompetitionService {
 			competition.playAt(venue.id(), venue.name(), venue.area());
 		}
 		else {
-			competition.playAt(details.venueName(), details.venueArea());
+			competition.playAt(details.venueName(), details.venueArea(), details.venueMapUrl());
 		}
 		return views.of(competitions.save(competition), me);
 	}
@@ -168,7 +168,8 @@ public class CompetitionService {
 				var startsAt = firstDay.plusWeeks(round).plusMinutes((long) i * competition.getDurationMinutes()).toInstant();
 				specs.add(new Fixtures.FixtureSpec(id, round + 1, home.getId(), away.getId(), "%s vs %s".formatted(home.getName(), away.getName()),
 						competition.getSport(), competition.getFormat(), startsAt, competition.getDurationMinutes(), competition.getVenueKind(),
-						competition.getVenueId(), competition.getVenueName(), competition.getVenueArea(), competition.getOrganiserId(),
+						competition.getVenueId(), competition.getVenueName(), competition.getVenueArea(), competition.getMapUrl(),
+						competition.getOrganiserId(),
 						squadOf(home, away)));
 			}
 		}

@@ -12,6 +12,7 @@ import java.util.UUID;
 import com.playchale.api.catalog.api.SportCatalog;
 import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
+import com.playchale.api.shared.maps.MapLink;
 import com.playchale.api.shared.persistence.AuditableEntity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -67,6 +68,12 @@ public class Game extends AuditableEntity {
 	private String venueName;
 
 	private String venueArea;
+
+	/**
+	 * A map link for directions, for a game anywhere but a partner venue (see MapLink). A partner
+	 * venue's own link is looked up instead, so this stays null for those.
+	 */
+	private String mapUrl;
 
 	private UUID pitchId;
 
@@ -206,10 +213,14 @@ public class Game extends AuditableEntity {
 		this.venueArea = venueArea;
 		this.pitchId = pitchId;
 		this.pitchName = pitchName;
+		this.mapUrl = null;
 	}
 
-	/** Anywhere the host types: a school field, a beach, a friend's court. */
-	public void playAt(String venueName, String venueArea) {
+	/**
+	 * Anywhere the host types: a school field, a beach, a friend's court. {@code mapUrl} is optional:
+	 * a Google Maps, Apple Maps or Waze link, or coordinates.
+	 */
+	public void playAt(String venueName, String venueArea, String mapUrl) {
 		var name = venueName == null ? "" : venueName.strip();
 		if (name.isEmpty() || name.length() > 120) {
 			throw BusinessException.invalid("Say where you’re playing.");
@@ -218,6 +229,7 @@ public class Game extends AuditableEntity {
 		this.venueKind = UNLISTED;
 		this.venueName = name;
 		this.venueArea = area.isEmpty() ? null : area;
+		this.mapUrl = MapLink.normalise(mapUrl);
 	}
 
 	/** Joining is up to the player: allowed until kick-off, while there's a spot. */
@@ -482,6 +494,10 @@ public class Game extends AuditableEntity {
 		return venueArea;
 	}
 
+	public String getMapUrl() {
+		return mapUrl;
+	}
+
 	public UUID getPitchId() {
 		return pitchId;
 	}
@@ -549,7 +565,7 @@ public class Game extends AuditableEntity {
 	/** Everything needed to set the same game up again. */
 	public GameDetails details() {
 		return new GameDetails(sport, format, title, startsAt, durationMinutes, venueKind, venueId, pitchId, venueName,
-				venueArea, capacity, totalCost, visibility, notes);
+				venueArea, mapUrl, capacity, totalCost, visibility, notes);
 	}
 
 }

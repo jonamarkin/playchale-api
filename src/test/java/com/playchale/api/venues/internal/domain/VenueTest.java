@@ -21,7 +21,7 @@ class VenueTest {
 	private static final DayHours DAY = new DayHours("06:00", "23:00");
 
 	static VenueDetails details(List<DayHours> hours, PitchDetails... pitches) {
-		return new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, "024 410 0200", List.of(pitches), hours,
+		return new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, "024 410 0200", List.of(pitches), hours,
 				List.of("floodlights"));
 	}
 

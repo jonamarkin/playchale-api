@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import com.playchale.api.catalog.api.SportCatalog;
 import com.playchale.api.shared.error.BusinessException;
+import com.playchale.api.shared.maps.MapLink;
 import com.playchale.api.shared.persistence.AuditableEntity;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -47,6 +48,9 @@ public class Competition extends AuditableEntity {
 	private String venueName;
 
 	private String venueArea;
+
+	/** A map link for fixtures anywhere but a partner venue (a partner venue's own is looked up). See MapLink. */
+	private String mapUrl;
 
 	private Instant startsAt;
 
@@ -94,10 +98,11 @@ public class Competition extends AuditableEntity {
 		this.venueId = venueId;
 		this.venueName = venueName;
 		this.venueArea = venueArea;
+		this.mapUrl = null;
 	}
 
-	/** Fixtures played anywhere the organiser types. */
-	public void playAt(String venueName, String venueArea) {
+	/** Fixtures played anywhere the organiser types, maybe with a map link or coordinates. */
+	public void playAt(String venueName, String venueArea, String mapUrl) {
 		var name = venueName == null ? "" : venueName.strip();
 		if (name.isEmpty() || name.length() > 120) {
 			throw BusinessException.invalid("Say where the fixtures are played.");
@@ -106,6 +111,7 @@ public class Competition extends AuditableEntity {
 		this.venueKind = "unlisted";
 		this.venueName = name;
 		this.venueArea = area.isEmpty() ? null : area;
+		this.mapUrl = MapLink.normalise(mapUrl);
 	}
 
 	/** The fixtures are out: the league is under way. */
@@ -156,6 +162,10 @@ public class Competition extends AuditableEntity {
 
 	public String getVenueName() {
 		return venueName;
+	}
+
+	public String getMapUrl() {
+		return mapUrl;
 	}
 
 	public String getVenueArea() {

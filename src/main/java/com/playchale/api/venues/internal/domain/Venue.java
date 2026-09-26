@@ -13,6 +13,7 @@ import java.util.UUID;
 
 import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
+import com.playchale.api.shared.maps.MapLink;
 import com.playchale.api.shared.persistence.AuditableEntity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
@@ -49,6 +50,9 @@ public class Venue extends AuditableEntity {
 	private String description;
 
 	private String address;
+
+	/** Where it is on a map, for directions (see MapLink). Games and leagues here show it too. */
+	private String mapUrl;
 
 	private String phone;
 
@@ -124,6 +128,7 @@ public class Venue extends AuditableEntity {
 		this.area = area;
 		this.description = optional(details.description(), 1000);
 		this.address = optional(details.address(), 200);
+		this.mapUrl = MapLink.normalise(details.mapUrl());
 		this.phone = phone;
 		this.hours = new ArrayList<>(details.hours().stream().map(h -> h == null ? "" : h.stored()).toList());
 		this.amenities = new ArrayList<>(amenities.stream().distinct().toList());
@@ -227,6 +232,10 @@ public class Venue extends AuditableEntity {
 
 	public String getAddress() {
 		return address;
+	}
+
+	public String getMapUrl() {
+		return mapUrl;
 	}
 
 	public String getPhone() {

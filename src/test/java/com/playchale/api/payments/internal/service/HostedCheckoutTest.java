@@ -128,7 +128,7 @@ class HostedCheckoutTest {
 		provider.down = false;
 		var host = users.registerOrFind("+233244555123", "GH").id();
 		game = games.create(new GameDetails("football", "5-a-side", "Saturday 5s", NOW.plus(Duration.ofDays(1)), 60, "unlisted", null, null,
-				"Legon Park", null, 10, 25_000, "public", null), host).id();
+				"Legon Park", null, null, 10, 25_000, "public", null), host).id();
 		kojo = users.registerOrFind("+233244555124", "GH").id();
 		games.join(game, kojo);
 	}

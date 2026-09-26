@@ -64,6 +64,26 @@ class DemoSeed {
 		games();
 		league();
 		notifications();
+		mapPins();
+	}
+
+	/* ------------------------------------------------------------------ map pins */
+
+	/**
+	 * Directions for some places, as in the web app's seed: two partner venues and a beach a host
+	 * typed. The rest have none, so "Search in Google Maps" shows too. Approximate demo spots.
+	 */
+	private static final Map<String, String> VENUE_PINS = Map.of(
+			"v-osu", "https://www.google.com/maps/search/?api=1&query=5.5602,-0.1818",
+			"v-legon", "https://www.google.com/maps/search/?api=1&query=5.6358,-0.1601");
+
+	private static final Map<String, String> GAME_PINS = Map.of(
+			"g-volley-next", "https://www.google.com/maps/search/?api=1&query=5.5606,-0.1497",
+			"g-labadi-last", "https://www.google.com/maps/search/?api=1&query=5.5606,-0.1497");
+
+	private void mapPins() {
+		VENUE_PINS.forEach((venue, url) -> jdbc.sql("UPDATE venues SET map_url = :url WHERE id = :id").param("url", url).param("id", id(venue)).update());
+		GAME_PINS.forEach((game, url) -> jdbc.sql("UPDATE games SET map_url = :url WHERE id = :id").param("url", url).param("id", id(game)).update());
 	}
 
 	/* ------------------------------------------------------------------ times and ids */

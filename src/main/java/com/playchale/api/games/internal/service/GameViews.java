@@ -19,6 +19,7 @@ import com.playchale.api.games.internal.repository.GameResultRepository;
 import com.playchale.api.market.Market;
 import com.playchale.api.users.api.UserDirectory;
 import com.playchale.api.users.api.UserSummary;
+import com.playchale.api.venues.api.PitchBookings;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
@@ -38,10 +39,13 @@ class GameViews {
 
 	private final ObjectProvider<FixtureTeams> fixtureTeams;
 
-	GameViews(UserDirectory users, GameResultRepository results, ObjectProvider<FixtureTeams> fixtureTeams) {
+	private final PitchBookings venues;
+
+	GameViews(UserDirectory users, GameResultRepository results, ObjectProvider<FixtureTeams> fixtureTeams, PitchBookings venues) {
 		this.users = users;
 		this.results = results;
 		this.fixtureTeams = fixtureTeams;
+		this.venues = venues;
 	}
 
 	GameResponse of(Game game, UUID viewer) {
@@ -62,15 +66,18 @@ class GameViews {
 			.flatMap(g -> Stream.of(g.getHomeTeamId(), g.getAwayTeamId())).distinct().toList();
 		var teams = teamIds.isEmpty() ? Map.<UUID, FixtureTeams.TeamCard>of()
 				: fixtureTeams.stream().findFirst().map(f -> f.teams(teamIds)).orElseGet(Map::of);
-		return games.stream().map(g -> view(g, viewer, people, resultsByGame.get(g.getId()), teams)).toList();
+		// Partner venues' own map links, in one query: a pin the owner adds later reaches every game there.
+		var mapLinks = venues.mapLinks(games.stream().map(Game::getVenueId).filter(Objects::nonNull).distinct().toList());
+		return games.stream().map(g -> view(g, viewer, people, resultsByGame.get(g.getId()), teams, mapLinks)).toList();
 	}
 
 	private GameResponse view(Game g, UUID viewer, Map<UUID, UserSummary> people, GameResult result,
-			Map<UUID, FixtureTeams.TeamCard> teams) {
+			Map<UUID, FixtureTeams.TeamCard> teams, Map<UUID, String> mapLinks) {
 		var market = Market.get(Market.DEFAULT);
 		var hostView = g.isHost(viewer);
+		var mapUrl = g.getVenueId() != null ? mapLinks.get(g.getVenueId()) : g.getMapUrl();
 		var venue = new GameResponse.VenueRef(g.getVenueKind(), g.getVenueId(), g.getVenueName(), g.getVenueArea(), g.getPitchId(),
-				g.getPitchName());
+				g.getPitchName(), mapUrl);
 		var participants = g.getParticipants().stream()
 			.map(p -> new GameResponse.ParticipantResponse(p.isGuest() ? "" : p.getUserId().toString(), p.getJoinedAt(), p.isPaid(),
 					p.getPaymentId(), p.getPaidVia(), p.getRemindedAt(), guest(p, hostView)))

@@ -9,5 +9,5 @@ import java.util.UUID;
  * @param venueKind "listed" (a partner venue, {@code venueId} set) or "unlisted" (any name)
  */
 public record CompetitionDetails(String name, String sport, String format, String venueKind, UUID venueId, String venueName,
-		String venueArea, Instant startsAt, int durationMinutes) {
+		String venueArea, String venueMapUrl, Instant startsAt, int durationMinutes) {
 }

@@ -76,7 +76,7 @@ class PaymentServiceTest {
 		kojo = user("+233244555124", "Kojo Owusu");
 		ama = user("+233244555125", "Ama Serwaa");
 		game = games.create(new GameDetails("football", "5-a-side", "Saturday 5s", NOW.plus(Duration.ofDays(1)), 60, "unlisted", null,
-				null, "Legon Park", null, 10, 25_000, "public", null), kwame);
+				null, "Legon Park", null, null, 10, 25_000, "public", null), kwame);
 		games.join(game.id(), kojo);
 	}
 
@@ -142,7 +142,7 @@ class PaymentServiceTest {
 		assertThatThrownBy(() -> payments.start(game.id(), "bitcoin", null, kojo)).hasMessage("Pick how you’ll pay.");
 
 		var free = games.create(new GameDetails("football", "5-a-side", null, NOW.plus(Duration.ofDays(1)), 60, "unlisted", null, null,
-				"Legon", null, 10, 0, "public", null), kwame);
+				"Legon", null, null, 10, 0, "public", null), kwame);
 		assertThatThrownBy(() -> payments.start(free.id(), "card", null, kwame)).hasMessage("This game is free. There’s nothing to pay.");
 
 		var mine = payments.start(game.id(), "card", null, kojo);

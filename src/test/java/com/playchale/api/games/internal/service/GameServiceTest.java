@@ -17,6 +17,7 @@ import com.playchale.api.notifications.internal.service.NotificationResponse;
 import com.playchale.api.notifications.internal.service.NotificationService;
 import com.playchale.api.shared.TestClock;
 import com.playchale.api.shared.error.BusinessException;
+import com.playchale.api.shared.maps.MapLink;
 import com.playchale.api.users.api.UserDirectory;
 import com.playchale.api.venues.internal.domain.DayHours;
 import com.playchale.api.venues.internal.domain.PitchDetails;
@@ -103,7 +104,7 @@ class GameServiceTest {
 	}
 
 	private static GameDetails unlisted(int capacity, long totalCost) {
-		return new GameDetails("football", "5-a-side", "Saturday 5s", KICKOFF, 60, "unlisted", null, null, "Legon Park", "Legon",
+		return new GameDetails("football", "5-a-side", "Saturday 5s", KICKOFF, 60, "unlisted", null, null, "Legon Park", "Legon", null,
 				capacity, totalCost, "public", null);
 	}
 
@@ -142,12 +143,36 @@ class GameServiceTest {
 	}
 
 	@Test
+	void directionsComeFromTheHostOrThePartnerVenue() {
+		// Anywhere: the host's own pin (a pasted Google Maps share, or coordinates).
+		var park = games.create(new GameDetails("football", "5-a-side", null, KICKOFF, 60, "unlisted", null, null, "Legon Park", "Legon",
+				"Legon Park\nhttps://maps.app.goo.gl/Xy12AbCd", 10, 0, "public", null), kwame);
+		assertThat(park.venue().mapUrl()).isEqualTo("https://maps.app.goo.gl/Xy12AbCd");
+		assertThat(games.repeat(park.id(), kwame).venue().mapUrl()).as("repeating keeps it").isEqualTo("https://maps.app.goo.gl/Xy12AbCd");
+		assertThatThrownBy(() -> games.create(new GameDetails("football", "5-a-side", null, KICKOFF, 60, "unlisted", null, null, "Legon Park",
+				null, "https://evil.example/maps", 10, 0, "public", null), kwame)).hasMessage(MapLink.REFUSED);
+
+		// A partner venue: its own pin, looked up, so one the owner adds later reaches games already made.
+		var hours = Collections.nCopies(7, new DayHours("06:00", "23:00"));
+		var pitches = List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000));
+		var osu = venues.create(adwoa, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null, pitches, hours, List.of()));
+		var atOsu = games.create(new GameDetails("football", "5-a-side", null, KICKOFF, 60, "listed", osu.id(), null, null, null,
+				"https://maps.app.goo.gl/IgnoredForPartners", 10, 0, "public", null), kwame);
+		assertThat(atOsu.venue().mapUrl()).isNull();
+
+		var samePitches = List.of(new PitchDetails(osu.pitches().getFirst().id(), "Pitch A", "football", "5-a-side", "turf", 25_000));
+		venues.update(adwoa, osu.id(), new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, "5.5571, -0.1818", null, samePitches,
+				hours, List.of()));
+		assertThat(games.get(atOsu.id(), kojo).venue().mapUrl()).isEqualTo("https://www.google.com/maps/search/?api=1&query=5.5571,-0.1818");
+	}
+
+	@Test
 	void aGameOnAPartnerPitchBooksItAndCallingItOffReleasesIt() {
-		var osu = venues.create(adwoa, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null,
+		var osu = venues.create(adwoa, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null,
 				List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000)),
 				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of()));
 		var pitch = osu.pitches().getFirst().id();
-		var details = new GameDetails("football", "5-a-side", null, KICKOFF, 60, "listed", osu.id(), pitch, null, null, 10, 25_000,
+		var details = new GameDetails("football", "5-a-side", null, KICKOFF, 60, "listed", osu.id(), pitch, null, null, null, 10, 25_000,
 				"public", null);
 
 		var game = games.create(details, kwame);
@@ -223,7 +248,7 @@ class GameServiceTest {
 	void discoverShowsUpcomingGamesTheViewerMaySee() {
 		var saturday = games.create(unlisted(10, 0), kwame);
 		var privateGame = games.create(new GameDetails("basketball", "3x3", "Friends only", NOW.plus(Duration.ofHours(3)), 60, "unlisted",
-				null, null, "Kojo's court", "Tema", 6, 0, "private", null), kojo);
+				null, null, "Kojo's court", "Tema", null, 6, 0, "private", null), kojo);
 
 		assertThat(ids(games.list(new GameFilters(null, null, null), ama))).containsExactly(saturday.id());
 		assertThat(ids(games.list(new GameFilters(null, null, null), kojo))).containsExactly(privateGame.id(), saturday.id());

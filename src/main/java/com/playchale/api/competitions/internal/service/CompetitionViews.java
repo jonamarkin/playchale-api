@@ -18,6 +18,7 @@ import com.playchale.api.games.api.FixtureTeams.TeamCard;
 import com.playchale.api.games.api.Fixtures;
 import com.playchale.api.games.api.GameResponse;
 import com.playchale.api.users.api.UserDirectory;
+import com.playchale.api.venues.api.PitchBookings;
 import com.playchale.api.users.api.UserSummary;
 import org.springframework.stereotype.Component;
 
@@ -33,11 +34,14 @@ class CompetitionViews {
 
 	private final UserDirectory users;
 
-	CompetitionViews(TeamRepository teams, JoinRequestRepository requests, Fixtures fixtures, UserDirectory users) {
+	private final PitchBookings venues;
+
+	CompetitionViews(TeamRepository teams, JoinRequestRepository requests, Fixtures fixtures, UserDirectory users, PitchBookings venues) {
 		this.teams = teams;
 		this.requests = requests;
 		this.fixtures = fixtures;
 		this.users = users;
+		this.venues = venues;
 	}
 
 	List<CompetitionResponse> of(Collection<Competition> competitions, UUID viewer) {
@@ -61,7 +65,9 @@ class CompetitionViews {
 		var requestViews = pending.stream().map(r -> new CompetitionResponse.RequestView(r.getId(), r.getCompetitionId(), r.getTeamId(),
 				r.getUserId(), r.getStatus(), r.getCreatedAt(), shown(people.get(r.getUserId()), viewer))).toList();
 
-		var venue = new GameResponse.VenueRef(c.getVenueKind(), c.getVenueId(), c.getVenueName(), c.getVenueArea(), null, null);
+		// A partner venue's own map link, so a pin its owner adds later shows here too.
+		var mapUrl = c.getVenueId() != null ? venues.mapLinks(List.of(c.getVenueId())).get(c.getVenueId()) : c.getMapUrl();
+		var venue = new GameResponse.VenueRef(c.getVenueKind(), c.getVenueId(), c.getVenueName(), c.getVenueArea(), null, null, mapUrl);
 		return new CompetitionResponse(c.getId(), c.getName(), c.getSport(), c.getFormat(), c.getOrganiserId(), venue, c.getStartsAt(),
 				c.getDurationMinutes(), c.getStatus(), new CompetitionResponse.Points(c.getPointsWin(), c.getPointsDraw(), c.getPointsLoss()),
 				c.getCreatedAt(), shown(people.get(c.getOrganiserId()), viewer), teamViews, table(c, squads, summaries, viewer), views, rounds,

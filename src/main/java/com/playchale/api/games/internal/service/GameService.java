@@ -266,7 +266,7 @@ public class GameService {
 			game.playAt(venue.id(), venue.name(), venue.area(), null, null);
 		}
 		else {
-			game.playAt(details.venueName(), details.venueArea());
+			game.playAt(details.venueName(), details.venueArea(), details.venueMapUrl());
 		}
 		games.save(game);
 

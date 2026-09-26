@@ -26,13 +26,13 @@ class GameTest {
 	private final UUID ama = UUID.randomUUID();
 
 	static GameDetails details(int capacity, long totalCost) {
-		return new GameDetails("football", "5-a-side", " ", KICKOFF, 60, "unlisted", null, null, "Legon Park", null, capacity,
+		return new GameDetails("football", "5-a-side", " ", KICKOFF, 60, "unlisted", null, null, "Legon Park", null, null, capacity,
 				totalCost, "public", null);
 	}
 
 	private Game game(int capacity, long totalCost) {
 		var game = new Game(details(capacity, totalCost), host, Market.get("GH"), NOW);
-		game.playAt("Legon Park", null);
+		game.playAt("Legon Park", null, null);
 		return game;
 	}
 
@@ -51,13 +51,13 @@ class GameTest {
 	@Test
 	void newGamesAreChecked() {
 		assertThatThrownBy(() -> new Game(details(1, 0), host, Market.get("GH"), NOW)).hasMessage("A game needs at least 2 spots.");
-		var past = new GameDetails("football", "5-a-side", null, NOW.minusSeconds(60), 60, "unlisted", null, null, "Legon", null, 10, 0,
+		var past = new GameDetails("football", "5-a-side", null, NOW.minusSeconds(60), 60, "unlisted", null, null, "Legon", null, null, 10, 0,
 				"public", null);
 		assertThatThrownBy(() -> new Game(past, host, Market.get("GH"), NOW)).hasMessage("Pick a time in the future.");
-		var wrongFormat = new GameDetails("football", "Doubles", null, KICKOFF, 60, "unlisted", null, null, "Legon", null, 10, 0,
+		var wrongFormat = new GameDetails("football", "Doubles", null, KICKOFF, 60, "unlisted", null, null, "Legon", null, null, 10, 0,
 				"public", null);
 		assertThatThrownBy(() -> new Game(wrongFormat, host, Market.get("GH"), NOW)).hasMessage("Pick a sport and format.");
-		assertThatThrownBy(() -> game(10, 0).playAt(" ", null)).hasMessage("Say where you’re playing.");
+		assertThatThrownBy(() -> game(10, 0).playAt(" ", null, null)).hasMessage("Say where you’re playing.");
 	}
 
 	@Test

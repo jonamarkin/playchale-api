@@ -53,7 +53,7 @@ class DirectPaymentsTest {
 		host = users.registerOrFind("+233244555123", "GH").id();
 		profiles.update(host, new ProfileChanges(null, null, null, null, null, "020 123 4567", null));
 		game = games.create(new GameDetails("football", "5-a-side", "Saturday 5s", Instant.now().plus(Duration.ofDays(1)), 60, "unlisted", null,
-				null, "Legon Park", null, 10, 25_000, "public", null), host).id();
+				null, "Legon Park", null, null, 10, 25_000, "public", null), host).id();
 		kojo = users.registerOrFind("+233244555124", "GH").id();
 		games.join(game, kojo);
 	}

@@ -92,7 +92,7 @@ class AccountDeletionTest {
 
 	private UUID game(long cost) {
 		return games.create(new GameDetails("football", "5-a-side", "Saturday 5s", NOW.plus(Duration.ofDays(1)), 60, "unlisted", null, null,
-				"Legon Park", null, 10, cost, "public", null), host).id();
+				"Legon Park", null, null, 10, cost, "public", null), host).id();
 	}
 
 	@Test
@@ -141,13 +141,13 @@ class AccountDeletionTest {
 			.hasMessage("You’re hosting a game that hasn’t happened yet. Call it off first, then delete your account.");
 
 		var owner = users.registerOrFind("+233244100200", "GH").id();
-		venues.create(owner, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null,
+		venues.create(owner, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null,
 				List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000)),
 				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of()));
 		assertThatThrownBy(() -> profiles.deleteAccount(owner)).hasMessageStartingWith("You run a venue on PlayChale.");
 
 		var organiser = users.registerOrFind("+233244555120", "GH").id();
-		competitions.create(new CompetitionDetails("Office League", "football", "5-a-side", "unlisted", null, "Legon Park", null,
+		competitions.create(new CompetitionDetails("Office League", "football", "5-a-side", "unlisted", null, "Legon Park", null, null,
 				NOW.plus(Duration.ofDays(7)), 60), organiser);
 		assertThatThrownBy(() -> profiles.deleteAccount(organiser)).hasMessageStartingWith("You organise a league that’s still going.");
 	}

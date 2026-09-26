@@ -16,7 +16,7 @@ import com.playchale.api.venues.internal.domain.Venue;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record VenueResponse(UUID id, String name, String area, List<String> sports, boolean listed, UUID ownerId,
-		String description, String address, String phone, List<PitchResponse> pitches,
+		String description, String address, String mapUrl, String phone, List<PitchResponse> pitches,
 		@JsonInclude(JsonInclude.Include.ALWAYS) List<DayHours> hours, List<String> amenities, Instant createdAt,
 		UserSummary owner) {
 
@@ -30,7 +30,7 @@ public record VenueResponse(UUID id, String name, String area, List<String> spor
 
 	static VenueResponse of(Venue v, UserSummary owner) {
 		return new VenueResponse(v.getId(), v.getName(), v.getArea(), v.sports(), v.isListed(), v.getOwnerId(),
-				v.getDescription(), v.getAddress(), v.getPhone(), v.activePitches().stream().map(PitchResponse::of).toList(),
+				v.getDescription(), v.getAddress(), v.getMapUrl(), v.getPhone(), v.activePitches().stream().map(PitchResponse::of).toList(),
 				v.hours(), v.getAmenities(), v.getCreatedAt(), owner);
 	}
 
