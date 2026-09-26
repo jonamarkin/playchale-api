@@ -251,6 +251,55 @@ Sign-in rules: codes last 10 minutes, five wrong guesses lock a code, five codes
 number. Codes and session tokens are stored only as hashes. The session cookie is `HttpOnly`,
 `SameSite=Lax`, and `Secure` in production.
 
+## Deploying
+
+The API ships as a container image. CI (`.github/workflows/ci.yml`) runs every test on each push, and on
+`main` publishes `ghcr.io/<owner>/playchale-api:<commit>` and `:latest`. Build one locally with
+`docker build -t playchale-api .`. Any host that runs containers will do: Render, Railway or Fly.io
+to start (no server to look after), or a Hetzner server later. Postgres should be a managed one with
+daily backups and point-in-time recovery.
+
+**First deploy**
+
+1. Create the Postgres database (version 17) and note its JDBC URL, user and password.
+2. Create the service from the image, listening on port 8080, with a health check on
+   `/actuator/health/readiness` (and `/actuator/health/liveness` for restarts, where the host has both).
+3. Set the environment (no dev profile; every one of these is required unless noted):
+
+   | Variable | Value |
+   |---|---|
+   | `SPRING_DATASOURCE_URL` | `jdbc:postgresql://<host>:5432/<db>?sslmode=require` |
+   | `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | the database's |
+   | `PLAYCHALE_SECRET` | `openssl rand -hex 32`; keep it: changing it voids every sign-in code in flight |
+   | `PLAYCHALE_CORS_ORIGINS` | the web app's origin, e.g. `https://playchale.com` |
+   | `PLAYCHALE_PAYMENTS_WEB_APP_URL` | the same address, where Paystack sends payers back to |
+   | `PLAYCHALE_PAYSTACK_SECRET_KEY` | `sk_test_...` on staging, `sk_live_...` in production |
+   | an SMS and/or email provider's settings | when their adapters are added; at least one is needed |
+
+4. Give the API its own address on the same site as the web app (e.g. `api.playchale.com` next to
+   `playchale.com`), so the sign-in cookie counts as first-party. The host terminates HTTPS.
+5. In the Paystack dashboard, set the webhook URL to `https://api.<domain>/webhooks/paystack`.
+6. Point the web app at it: `NUXT_PUBLIC_API_BASE=https://api.<domain>` and
+   `NUXT_PUBLIC_DEMO_PAYMENTS=false` (webapp README).
+
+If a setting is missing or still a laptop value, the app refuses to start and says which. That's on
+purpose: a misconfigured deploy never serves a request.
+
+**Releasing.** Deploy the new image tag. Flyway applies any new migrations as the app starts, before it
+takes traffic. Because the old version may still be serving while the new one starts, a migration
+must work with the code before it: add columns and tables freely, but remove or rename them only in a
+later release, once nothing uses them.
+
+**Rolling back.** Deploy the previous image tag. Migrations aren't undone; the rule above means the
+previous version still works with the newer schema.
+
+**Several copies.** Any number can run behind the load balancer: sessions, rate limits and background
+jobs all live in Postgres, and each job runs on one copy at a time.
+
+**Logs** are JSON lines (Elastic Common Schema) in the container, each carrying its request's ID (also
+returned to the client in `X-Request-Id`), so a player's bug report can be matched to the server's logs.
+Watch for `ERROR` lines, the daily sign-in cap being hit, and payments left pending after a day of checks.
+
 ## The contract with the web app
 
 The web app talks to one interface, `PlayChaleApi` in `webapp/app/services/api.ts`. Today an
