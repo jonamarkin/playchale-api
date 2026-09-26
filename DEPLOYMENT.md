@@ -88,7 +88,8 @@ every push to `main`, so **push both repos first** and wait for their CI runs to
 GitHub's registry once. The API image is public.
 
 1. GitHub → Settings → Developer settings → **Personal access tokens (classic) → Generate new token**:
-   note `contabo pull images`, expiry of your choice, scope **`read:packages` only**.
+   note `contabo pull images`, scope **`read:packages` only**. When the token expires, pulls and
+   automatic deploys of the web app stop working, so pick "No expiration" or set a reminder to renew it.
 2. **On the server:**
    ```bash
    # Log Docker in to GitHub's registry. Paste the token when asked for a password.
@@ -295,7 +296,7 @@ docker stats                      # memory per container: the API is capped at 1
 | API log: "No SMS or email provider is configured" | `PLAYCHALE_RESEND_API_KEY` is empty |
 | API log: `PLAYCHALE_RESEND_FROM must name the sender` | The sender line is missing from `.env.api` |
 | API log: connection refused / timeout to the database | Wrong host or port (use the **Session pooler**), or the Supabase project is paused |
-| `docker compose pull` says "denied" for `playchale-web` | The server isn't logged in to ghcr.io (step 4), or the token lacks `read:packages` |
+| `docker compose pull` says "denied" for `playchale-web` | The server isn't logged in to ghcr.io (step 4), or the token has expired or lacks `read:packages` |
 | Sign-in says "We couldn't send the email just now" | Resend refused it: `docker compose logs api \| grep Resend` shows why (usually the domain isn't verified yet) |
 | Codes arrive in spam | Check the domain is verified in Resend and the `_dmarc` record exists. It improves as people open the emails |
 | Browser console: CORS error calling the API | `PLAYCHALE_CORS_ORIGINS` isn't exactly `https://playchale.com` |

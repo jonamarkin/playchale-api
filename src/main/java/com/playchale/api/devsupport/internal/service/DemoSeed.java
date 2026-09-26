@@ -77,10 +77,16 @@ class DemoSeed {
 		return at(days, hours, 0);
 	}
 
-	/** Days to the next Saturday, or 0 if it's Saturday. */
+	/**
+	 * Days to the next Saturday whose games are still to come: 0 if it's Saturday before 08:00 (the
+	 * earliest Saturday game is at 09:00), otherwise the one after. Mirrors the web app's seed.
+	 */
 	private int daysToSaturday() {
 		int jsDay = now.getDayOfWeek().getValue() % 7; // Sunday 0 ... Saturday 6, like JavaScript
-		return (6 - jsDay + 7) % 7;
+		if (jsDay == 6) {
+			return now.getHour() < 8 ? 0 : 7;
+		}
+		return 6 - jsDay;
 	}
 
 	private static UUID id(String mockId) {
