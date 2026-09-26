@@ -13,12 +13,14 @@ import com.playchale.api.venues.internal.service.SlotResponse;
 import com.playchale.api.venues.internal.service.VenueResponse;
 import com.playchale.api.venues.internal.service.VenueService;
 import com.playchale.api.venues.web.dto.BlockRequest;
+import com.playchale.api.venues.web.dto.BookingRequests;
 import com.playchale.api.venues.web.dto.VenueRequest;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -90,11 +92,30 @@ class VenueController {
 		return bookings.block(me.id(), id, request.pitchId(), request.startsAt(), request.endsAt(), request.note());
 	}
 
-	/** venues.cancelBlock */
+	/** venues.bookInPerson */
+	@PostMapping("/venues/{id}/in-person")
+	@ResponseStatus(HttpStatus.CREATED)
+	BookingResponse bookInPerson(CurrentUser me, @PathVariable UUID id, @Valid @RequestBody BookingRequests.InPerson request) {
+		return bookings.bookInPerson(me.id(), id, request.pitchId(), request.startsAt(), request.endsAt(), request.details());
+	}
+
+	/** venues.updateBooking: an in-person booking's details. */
+	@PatchMapping("/bookings/{id}")
+	BookingResponse updateBooking(CurrentUser me, @PathVariable UUID id, @RequestBody BookingRequests.Changes request) {
+		return bookings.updateInPerson(me.id(), id, request.details());
+	}
+
+	/** venues.moveBooking */
+	@PostMapping("/bookings/{id}/move")
+	BookingResponse moveBooking(CurrentUser me, @PathVariable UUID id, @Valid @RequestBody BookingRequests.Move request) {
+		return bookings.move(me.id(), id, request.pitchId(), request.startsAt(), request.endsAt());
+	}
+
+	/** venues.cancelBooking: blocks and in-person bookings (a game's goes when the game is called off). */
 	@DeleteMapping("/bookings/{id}")
 	@ResponseStatus(HttpStatus.NO_CONTENT)
-	void cancelBlock(CurrentUser me, @PathVariable UUID id) {
-		bookings.cancelBlock(me.id(), id);
+	void cancelBooking(CurrentUser me, @PathVariable UUID id) {
+		bookings.cancel(me.id(), id);
 	}
 
 }

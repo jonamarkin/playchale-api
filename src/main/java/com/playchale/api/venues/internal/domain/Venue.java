@@ -206,6 +206,11 @@ public class Venue extends AuditableEntity {
 		return ownerId.equals(userId);
 	}
 
+	/** The market it's in: its phone numbers, currency and time. */
+	public Market market() {
+		return Market.get(country);
+	}
+
 	public ZoneId zone() {
 		return ZoneId.of(timezone);
 	}

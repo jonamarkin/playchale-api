@@ -321,6 +321,9 @@ class DemoSeed {
 		block("b-blk-1", "v-osu", "p-osu-a", at(0, 17), at(0, 18), "Tuesday regulars — pay cash", at(-5, 9));
 		block("b-blk-2", "v-osu", "p-osu-b", at(1, 6), at(1, 8), "Turf maintenance", at(-5, 9));
 		block("b-blk-3", "v-osu", "p-osu-7", at(2, 19), at(2, 21), "Corporate booking (invoice)", at(-4, 9));
+		// Taken at the gate or on the phone, as in the web app's seed: one paid, one still owed.
+		inPerson("b-inp-1", "v-osu", "p-osu-b", at(1, 20), at(1, 21), "Labone Old Boys", "+233241112222", 25000, "cash", at(-1, 12));
+		inPerson("b-inp-2", "v-osu", "p-osu-7", at(2, 17), at(2, 18), "Airport Hills FC", null, 35000, null, at(-1, 15));
 	}
 
 	private static Game unpaid(Game g, Set<String> unpaid) {
@@ -441,6 +444,19 @@ class DemoSeed {
 				""")
 			.param("id", id(id)).param("venue", id(venue)).param("pitch", id(pitch)).param("starts", utc(starts)).param("ends", utc(ends))
 			.param("owner", id(venue(venue).owner())).param("note", note).param("created", utc(created))
+			.update();
+	}
+
+	private void inPerson(String id, String venue, String pitch, Instant starts, Instant ends, String customer, String phone, long price,
+			String paidVia, Instant created) {
+		jdbc.sql("""
+				INSERT INTO bookings (id, venue_id, pitch_id, starts_at, ends_at, kind, booked_by, price, customer_name, customer_phone, paid_via,
+				                      status, created_at)
+				VALUES (:id, :venue, :pitch, :starts, :ends, 'in-person', :owner, :price, :customer, :phone, :paid, 'confirmed', :created)
+				""")
+			.param("id", id(id)).param("venue", id(venue)).param("pitch", id(pitch)).param("starts", utc(starts)).param("ends", utc(ends))
+			.param("owner", id(venue(venue).owner())).param("price", price).param("customer", customer).param("phone", phone)
+			.param("paid", paidVia).param("created", utc(created))
 			.update();
 	}
 

@@ -8,12 +8,13 @@ import com.playchale.api.venues.internal.domain.Booking;
 
 /**
  * A booking as the web app's Booking type. In an owner's schedule it's a BookingView: the pitch and
- * booker named, and for games the title and how many are in.
+ * booker named, and for games the title and how many are in. Only the venue's owner ever sees one,
+ * so an in-person booking's customer details are included.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record BookingResponse(UUID id, UUID venueId, UUID pitchId, Instant startsAt, Instant endsAt, String kind,
-		UUID gameId, UUID bookedBy, long price, String note, String status, Instant createdAt, String pitchName,
-		String bookedByName, String gameTitle, Integer players) {
+		UUID gameId, UUID bookedBy, long price, String note, String status, Instant createdAt, String customerName,
+		String customerPhone, String paidVia, String pitchName, String bookedByName, String gameTitle, Integer players) {
 
 	static BookingResponse of(Booking b) {
 		return of(b, null, null, null, null);
@@ -21,7 +22,8 @@ public record BookingResponse(UUID id, UUID venueId, UUID pitchId, Instant start
 
 	static BookingResponse of(Booking b, String pitchName, String bookedByName, String gameTitle, Integer players) {
 		return new BookingResponse(b.getId(), b.getVenueId(), b.getPitchId(), b.getStartsAt(), b.getEndsAt(), b.getKind(),
-				b.getGameId(), b.getBookedBy(), b.getPrice(), b.getNote(), b.getStatus(), b.getCreatedAt(), pitchName,
+				b.getGameId(), b.getBookedBy(), b.getPrice(), b.getNote(), b.getStatus(), b.getCreatedAt(), b.getCustomerName(),
+				b.getCustomerPhone(), b.getPaidVia(), pitchName,
 				bookedByName, gameTitle, players);
 	}
 

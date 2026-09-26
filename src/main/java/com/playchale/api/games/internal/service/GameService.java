@@ -27,8 +27,10 @@ import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.users.api.UserDirectory;
 import com.playchale.api.users.api.UserSummary;
+import com.playchale.api.venues.api.GameBookingMoved;
 import com.playchale.api.venues.api.PitchBookings;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.event.EventListener;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -297,6 +299,20 @@ public class GameService {
 
 	private static long share(Game game) {
 		return game.share(Market.get(Market.DEFAULT));
+	}
+
+	/**
+	 * The venue moved this game's pitch booking (venues module, in the same transaction): the game
+	 * moves with it, and everyone in it is told.
+	 */
+	@EventListener
+	void on(GameBookingMoved e) {
+		var game = locked(e.gameId());
+		var from = game.getStartsAt();
+		var fromPitch = game.getPitchName();
+		game.movedByVenue(e.pitchId(), e.pitchName(), e.startsAt(), clock.instant());
+		var players = game.getParticipants().stream().map(Participant::getUserId).filter(Objects::nonNull).toList();
+		events.publishEvent(new GameEvents.GameMoved(info(game), from, fromPitch, e.pitchName(), players));
 	}
 
 	static GameEvents.GameInfo info(Game game) {

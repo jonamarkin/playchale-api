@@ -167,6 +167,40 @@ class GameServiceTest {
 	}
 
 	@Test
+	void theVenueMovesAGameAndEveryoneInItHears() {
+		var osu = venues.create(adwoa, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null,
+				List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000),
+						new PitchDetails(null, "Pitch B", "football", "5-a-side", "turf", 25_000),
+						new PitchDetails(null, "Court", "basketball", "5v5", "hard", 15_000)),
+				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of()));
+		var pitchB = osu.pitches().get(1).id();
+		var court = osu.pitches().get(2).id();
+		var game = games.create(new GameDetails("football", "5-a-side", "Saturday 5s", KICKOFF, 60, "listed", osu.id(),
+				osu.pitches().getFirst().id(), null, null, null, 10, 25_000, null, "public", null), kwame);
+		games.join(game.id(), kojo);
+		var booking = bookings.schedule(adwoa, osu.id(), KICKOFF, KICKOFF.plusSeconds(3600)).getFirst().id();
+
+		// Another pitch, an hour later: the game follows, and host and players hear.
+		var later = KICKOFF.plusSeconds(3600);
+		bookings.move(adwoa, booking, pitchB, later, later.plusSeconds(3600));
+		var moved = games.get(game.id(), kojo);
+		assertThat(moved.venue().pitchName()).isEqualTo("Pitch B");
+		assertThat(moved.startsAt()).isEqualTo(later);
+		assertThat(titlesFor(kwame)).contains("Saturday 5s has moved");
+		assertThat(titlesFor(kojo)).containsExactly("Saturday 5s has moved");
+		assertThat(notifications.list(kojo).getFirst().body()).startsWith("Osu Astro Turf moved it to Pitch B, ");
+
+		// A game keeps its length and its sport, within opening hours.
+		assertThatThrownBy(() -> bookings.move(adwoa, booking, pitchB, later, later.plusSeconds(7200)))
+			.hasMessage("A game keeps its length. Move its start instead.");
+		assertThatThrownBy(() -> bookings.move(adwoa, booking, court, later, later.plusSeconds(3600)))
+			.hasMessage("Pick a pitch for the same sport.");
+		assertThatThrownBy(() -> bookings.move(adwoa, booking, pitchB, KICKOFF.plusSeconds(18 * 3600), KICKOFF.plusSeconds(19 * 3600)))
+			.hasMessageEndingWith("is closed at that time.");
+		assertThatThrownBy(() -> bookings.cancel(adwoa, booking)).hasMessage("Game bookings are cancelled by the game’s host.");
+	}
+
+	@Test
 	void aGameOnAPartnerPitchBooksItAndCallingItOffReleasesIt() {
 		var osu = venues.create(adwoa, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null,
 				List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000)),

@@ -87,6 +87,20 @@ class GameNotifications {
 		}
 	}
 
+	/** The venue moved a game: everyone in it hears where and when it is now. */
+	@EventListener
+	void on(GameEvents.GameMoved e) {
+		var game = e.game();
+		var timeChanged = !e.from().equals(game.startsAt());
+		var pitchChanged = e.fromPitch() == null || !e.fromPitch().equals(e.pitchName());
+		var body = timeChanged && pitchChanged ? "%s moved it to %s, %s.".formatted(game.venueName(), e.pitchName(), kickoff(game.startsAt()))
+				: timeChanged ? "%s moved it to %s, still on %s.".formatted(game.venueName(), kickoff(game.startsAt()), e.pitchName())
+				: "%s moved it to %s. Same time: %s.".formatted(game.venueName(), e.pitchName(), kickoff(game.startsAt()));
+		for (var player : e.playerIds()) {
+			notifications.send(player, "game-moved", "%s has moved".formatted(game.title()), body, "/games/%s".formatted(game.gameId()), null);
+		}
+	}
+
 	@EventListener
 	void on(GameEvents.PlayersInvited e) {
 		var game = e.game();

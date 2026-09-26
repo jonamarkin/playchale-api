@@ -235,6 +235,19 @@ public class Game extends AuditableEntity {
 	}
 
 	/**
+	 * The venue moved this game's booking: another pitch, another time, or both (same length). Only
+	 * for a game that's still to come.
+	 */
+	public void movedByVenue(UUID pitchId, String pitchName, Instant startsAt, Instant now) {
+		if (CANCELLED.equals(status) || COMPLETED.equals(status) || !this.startsAt.isAfter(now)) {
+			throw BusinessException.conflict("That game has already been played or called off, so it can’t be moved.");
+		}
+		this.pitchId = pitchId;
+		this.pitchName = pitchName;
+		this.startsAt = startsAt;
+	}
+
+	/**
 	 * Anywhere the host types: a school field, a beach, a friend's court. {@code mapUrl} is optional:
 	 * a Google Maps, Apple Maps or Waze link, or coordinates.
 	 */

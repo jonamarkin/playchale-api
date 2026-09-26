@@ -167,13 +167,74 @@ class BookingServiceTest {
 		assertThat(venues.update(owner, osu.id(), onlyB).pitches()).extracting(VenueResponse.PitchResponse::name).containsExactly("Pitch B");
 	}
 
+	private static InPersonDetails walkIn(String name, Long price, String paidVia) {
+		return new InPersonDetails(name, "024 111 2222", price, paidVia, null);
+	}
+
+	@Test
+	void anInPersonBookingIsNamedPricedAndPaidOrOwed() {
+		var booked = bookings.bookInPerson(owner, osu.id(), pitchA, TEN, ELEVEN, walkIn(" Labone Old Boys ", null, ""));
+		assertThat(booked.kind()).isEqualTo("in-person");
+		assertThat(booked.customerName()).isEqualTo("Labone Old Boys");
+		assertThat(booked.customerPhone()).isEqualTo("+233241112222");
+		assertThat(booked.price()).as("the pitch's rate, unless agreed otherwise").isEqualTo(25_000);
+		assertThat(booked.paidVia()).as("still owed").isNull();
+
+		// Players see the hour as taken; another booking can't have it.
+		var slots = venues.availability(osu.id(), LocalDate.parse("2026-09-26"));
+		assertThat(slots.stream().filter(sl -> sl.pitchId().equals(pitchA)).toList().get(4).reason()).isEqualTo("booked");
+		assertThatThrownBy(() -> bookings.block(owner, osu.id(), pitchA, TEN, ELEVEN, null)).hasMessage("That time is already booked in person.");
+
+		var paid = bookings.updateInPerson(owner, booked.id(), new InPersonDetails(null, null, 20_000L, "cash", "Regulars' rate"));
+		assertThat(paid.paidVia()).isEqualTo("cash");
+		assertThat(paid.price()).isEqualTo(20_000);
+		assertThat(paid.customerName()).as("left as it was").isEqualTo("Labone Old Boys");
+		assertThat(bookings.updateInPerson(owner, booked.id(), new InPersonDetails(null, null, null, "", null)).paidVia())
+			.as("back to owed").isNull();
+
+		assertThatThrownBy(() -> bookings.bookInPerson(owner, osu.id(), pitchA, ELEVEN, ELEVEN.plusSeconds(3600), walkIn(" ", null, null)))
+			.hasMessage("Say who the booking is for.");
+		assertThatThrownBy(() -> bookings.bookInPerson(owner, osu.id(), pitchA, ELEVEN, ELEVEN.plusSeconds(3600), walkIn("Ama", null, "card")))
+			.hasMessage("Say whether it was paid in cash or by mobile money.");
+		assertThatThrownBy(() -> bookings.bookInPerson(owner, osu.id(), pitchA, NOW.minusSeconds(7200), NOW.minusSeconds(3600), walkIn("Ama", null, null)))
+			.hasMessage("That time has already passed.");
+		assertThatThrownBy(() -> bookings.bookInPerson(host, osu.id(), pitchA, ELEVEN, ELEVEN.plusSeconds(3600), walkIn("Ama", null, null)))
+			.hasMessage("Only the venue’s owner can do that.");
+
+		bookings.cancel(owner, booked.id());
+		assertThat(bookings.schedule(owner, osu.id(), TEN, ELEVEN)).isEmpty();
+	}
+
+	@Test
+	void theManagerMovesBookingsToAnotherPitchOrTime() {
+		var pitchB = osu.pitches().get(1).id();
+		var walkIn = bookings.bookInPerson(owner, osu.id(), pitchA, TEN, ELEVEN, walkIn("Labone Old Boys", null, "momo"));
+		var block = bookings.block(owner, osu.id(), pitchB, TEN, ELEVEN, "Maintenance");
+
+		// Another time on the same pitch, longer too.
+		var later = bookings.move(owner, walkIn.id(), pitchA, ELEVEN, ELEVEN.plusSeconds(7200));
+		assertThat(later.startsAt()).isEqualTo(ELEVEN);
+		assertThat(later.price()).as("what they agreed stays").isEqualTo(25_000);
+		// Onto the other pitch, where the block is: refused; next to it: fine.
+		assertThatThrownBy(() -> bookings.move(owner, walkIn.id(), pitchB, TEN, ELEVEN)).hasMessage("That time is already blocked.");
+		assertThat(bookings.move(owner, block.id(), pitchB, ELEVEN.plusSeconds(7200), ELEVEN.plusSeconds(10_800)).pitchId()).isEqualTo(pitchB);
+		// Moving a booking onto itself, a little later, doesn't clash with where it was.
+		assertThat(bookings.move(owner, walkIn.id(), pitchA, ELEVEN.plusSeconds(1800), ELEVEN.plusSeconds(5400)).startsAt())
+			.isEqualTo(ELEVEN.plusSeconds(1800));
+
+		assertThatThrownBy(() -> bookings.move(host, walkIn.id(), pitchA, TEN, ELEVEN)).hasMessage("Only the venue’s owner can do that.");
+		clock.set(ELEVEN.plusSeconds(6000));
+		assertThatThrownBy(() -> bookings.move(owner, walkIn.id(), pitchA, ELEVEN.plusSeconds(7200), ELEVEN.plusSeconds(10_800)))
+			.hasMessage("That booking is over, so it can’t be moved.");
+	}
+
 	@Test
 	void onlyTheOwnerManagesTheVenue() {
 		assertThatThrownBy(() -> bookings.block(host, osu.id(), pitchA, TEN, ELEVEN, null))
 			.hasMessage("Only the venue’s owner can do that.");
 		var block = bookings.block(owner, osu.id(), pitchA, TEN, ELEVEN, null);
-		assertThatThrownBy(() -> bookings.cancelBlock(host, block.id())).hasMessage("Only the venue’s owner can do that.");
-		bookings.cancelBlock(owner, block.id());
+		assertThatThrownBy(() -> bookings.cancel(host, block.id())).hasMessage("Only the venue’s owner can do that.");
+		bookings.cancel(owner, block.id());
 		assertThat(bookings.schedule(owner, osu.id(), TEN, ELEVEN)).isEmpty();
 	}
 

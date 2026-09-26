@@ -21,6 +21,15 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
 			""")
 	Optional<Booking> findClash(UUID pitchId, Instant start, Instant end);
 
+	/** The same, leaving out one booking: for moving it without it clashing with itself. */
+	@Query("""
+			select b from Booking b
+			where b.pitchId = :pitchId and b.status = 'confirmed' and b.startsAt < :end and b.endsAt > :start and b.id <> :except
+			order by b.startsAt
+			limit 1
+			""")
+	Optional<Booking> findClashExcept(UUID pitchId, Instant start, Instant end, UUID except);
+
 	/** Confirmed bookings at a venue overlapping [from, to), earliest first. */
 	@Query("""
 			select b from Booking b

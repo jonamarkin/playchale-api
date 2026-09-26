@@ -18,6 +18,16 @@ public final class GameEvents {
 	public record GameInfo(UUID gameId, String title, Instant startsAt, UUID hostId, String venueName) {
 	}
 
+	/**
+	 * The venue moved a game's booking: to another pitch, another time, or both.
+	 *
+	 * @param from        the kick-off before the move ({@code game.startsAt()} is the new one)
+	 * @param fromPitch   the pitch before the move
+	 * @param playerIds   everyone in the game, host included
+	 */
+	public record GameMoved(GameInfo game, Instant from, String fromPitch, String pitchName, List<UUID> playerIds) {
+	}
+
 	/** A game was created on a partner venue's pitch. */
 	public record PitchBooked(GameInfo game, UUID venueId, UUID venueOwnerId, String pitchName) {
 	}
