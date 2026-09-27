@@ -9,6 +9,7 @@ import com.playchale.api.notifications.internal.domain.Notification;
 import com.playchale.api.notifications.internal.repository.NotificationRepository;
 import com.playchale.api.users.api.UserDirectory;
 import org.springframework.data.domain.Limit;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,11 +24,14 @@ public class NotificationService {
 
 	private final UserDirectory users;
 
+	private final ApplicationEventPublisher events;
+
 	private final Clock clock;
 
-	NotificationService(NotificationRepository notifications, UserDirectory users, Clock clock) {
+	NotificationService(NotificationRepository notifications, UserDirectory users, ApplicationEventPublisher events, Clock clock) {
 		this.notifications = notifications;
 		this.users = users;
+		this.events = events;
 		this.clock = clock;
 	}
 
@@ -48,8 +52,10 @@ public class NotificationService {
 		notifications.markAllRead(me, clock.instant());
 	}
 
+	/** Saves the notification; once that's committed, it goes on to the player's phones (PushDispatch). */
 	void send(UUID to, String kind, String title, String body, String link, UUID actor) {
-		notifications.save(new Notification(to, kind, title, body, link, actor, clock.instant()));
+		var saved = notifications.save(new Notification(to, kind, title, body, link, actor, clock.instant()));
+		events.publishEvent(new NotificationSaved(saved.getId(), to, kind, title, body, link));
 	}
 
 }
