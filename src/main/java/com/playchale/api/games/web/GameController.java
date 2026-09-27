@@ -77,7 +77,7 @@ class GameController {
 	@PostMapping("/games")
 	@ResponseStatus(HttpStatus.CREATED)
 	GameResponse create(CurrentUser me, @Valid @RequestBody NewGameRequest request) {
-		return games.create(request.toDetails(), me.id());
+		return games.create(request.toDetails(), request.homeTeamId(), request.awayTeamId(), me.id());
 	}
 
 	/** games.repeat */
@@ -124,6 +124,12 @@ class GameController {
 			throw BusinessException.invalid("Pick a team to invite.");
 		}
 		return new InviteResponse(games.inviteTeam(id, request.teamId(), me.id()));
+	}
+
+	/** games.answerChallenge: the challenged team's captain. */
+	@PostMapping("/games/{id}/challenge")
+	GameResponse answerChallenge(CurrentUser me, @PathVariable UUID id, @RequestBody InviteAnswer request) {
+		return games.answerChallenge(id, request.accept(), me.id());
 	}
 
 	/** games.answerInvite */

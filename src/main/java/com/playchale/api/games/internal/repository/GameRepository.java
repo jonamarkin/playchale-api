@@ -43,6 +43,15 @@ public interface GameRepository extends JpaRepository<Game, UUID> {
 	@Query("select count(g) > 0 from Game g where g.hostId = :hostId and g.status in ('open', 'full') and g.startsAt > :now")
 	boolean isHostingUpcoming(UUID hostId, Instant now);
 
+	/** A team's fixtures and friendlies, latest first: not called off, and not challenges its opponent turned down. */
+	@Query("""
+			select g from Game g
+			where (g.homeTeamId = :teamId or g.awayTeamId = :teamId) and g.status <> 'cancelled'
+			  and (g.opponentStatus is null or g.opponentStatus <> 'declined')
+			order by g.startsAt desc
+			""")
+	List<Game> ofTeam(UUID teamId, Limit limit);
+
 	/** Games someone hosts or has a spot in, in kick-off order. */
 	@Query("""
 			select g from Game g

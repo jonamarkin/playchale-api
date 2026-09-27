@@ -33,4 +33,7 @@ public interface TeamRepository extends JpaRepository<Team, UUID> {
 
 	List<Team> findByCaptainId(UUID captainId);
 
+	/** Teams whose name has this in it, for finding one to play. */
+	List<Team> findTop20ByNameContainingIgnoreCaseOrderByName(String name);
+
 }

@@ -77,9 +77,12 @@ class GameViews {
 			.distinct()
 			.toList();
 		var people = users.findAll(ids);
-		var invitedTeams = invitesByGame.values().stream().flatMap(List::stream).map(GameInvite::getTeamId).filter(Objects::nonNull).distinct().toList();
-		var teamNames = invitedTeams.isEmpty() ? Map.<UUID, String>of()
-				: teams.findAll(invitedTeams).values().stream().collect(Collectors.toMap(TeamCard::id, TeamCard::name));
+		// Teams named by invites and friendlies, in one lookup.
+		var namedTeams = Stream.concat(invitesByGame.values().stream().flatMap(List::stream).map(GameInvite::getTeamId),
+				games.stream().filter(Game::isFriendly).flatMap(g -> Stream.of(g.getHomeTeamId(), g.getAwayTeamId())))
+			.filter(Objects::nonNull).distinct().toList();
+		var standingTeams = namedTeams.isEmpty() ? Map.<UUID, TeamCard>of() : teams.findAll(namedTeams);
+		var teamNames = standingTeams.values().stream().collect(Collectors.toMap(TeamCard::id, TeamCard::name));
 		var played = games.stream().filter(g -> Game.COMPLETED.equals(g.getStatus())).map(Game::getId).toList();
 		var resultsByGame = played.isEmpty() ? Map.<UUID, GameResult>of()
 				: results.findAllById(played).stream().collect(Collectors.toMap(GameResult::getGameId, r -> r));
@@ -92,7 +95,7 @@ class GameViews {
 		var mapLinks = venues.mapLinks(games.stream().map(Game::getVenueId).filter(Objects::nonNull).distinct().toList());
 		return games.stream().map(g -> view(g, viewer, people, resultsByGame.get(g.getId()),
 				g.getCompetitionId() == null ? Map.of() : teamsByLeague.getOrDefault(g.getCompetitionId(), Map.of()), mapLinks,
-				invites(invitesByGame.get(g.getId()), people, teamNames, viewer))).toList();
+				invites(invitesByGame.get(g.getId()), people, teamNames, viewer), friendly(g, standingTeams))).toList();
 	}
 
 	/** Invites as the viewer sees them, or null (left out) when there are none to show. */
@@ -107,8 +110,24 @@ class GameViews {
 			.toList();
 	}
 
+	/** A friendly's sides, or null for any other game (or once one of its teams is deleted). */
+	private static GameResponse.FriendlyResponse friendly(Game g, Map<UUID, TeamCard> teams) {
+		if (!g.isFriendly()) {
+			return null;
+		}
+		var home = teams.get(g.getHomeTeamId());
+		var away = teams.get(g.getAwayTeamId());
+		if (home == null || away == null) {
+			return null;
+		}
+		var side = (Function<TeamCard, GameResponse.TeamSide>) t -> new GameResponse.TeamSide(t.id(), t.name(), t.tint(),
+				t.captainId(), g.getParticipants().stream().filter(p -> t.id().equals(p.getTeamId())).map(Participant::playerKey).toList());
+		return new GameResponse.FriendlyResponse(side.apply(home), side.apply(away), g.getOpponentStatus());
+	}
+
 	private GameResponse view(Game g, UUID viewer, Map<UUID, UserSummary> people, GameResult result,
-			Map<UUID, FixtureTeams.TeamCard> teams, Map<UUID, String> mapLinks, List<GameResponse.InviteResponse> invites) {
+			Map<UUID, FixtureTeams.TeamCard> teams, Map<UUID, String> mapLinks, List<GameResponse.InviteResponse> invites,
+			GameResponse.FriendlyResponse friendly) {
 		var market = Market.get(Market.DEFAULT);
 		var hostView = g.isHost(viewer);
 		var mapUrl = g.getVenueId() != null ? mapLinks.get(g.getVenueId()) : g.getMapUrl();
@@ -135,7 +154,7 @@ class GameViews {
 				g.getCapacity(), g.getTotalCost(), g.getPricing(), g.getCurrency(), g.getVisibility(), g.getHostId(), g.getNotes(), participants,
 				g.getStatus(), result == null ? null : result(result), fixture, g.getCreatedAt(), g.getCancelledAt(), g.getCancelReason(),
 				host == null ? null : host.as(viewer), players, fixtureTeams, g.share(market), g.spotsLeft(),
-				host != null && viewer != null && g.spotOf(viewer).isPresent() ? host.payoutPhone() : null, invites);
+				host != null && viewer != null && g.spotOf(viewer).isPresent() ? host.payoutPhone() : null, invites, friendly);
 	}
 
 	private static GameResponse.ResultResponse result(GameResult r) {

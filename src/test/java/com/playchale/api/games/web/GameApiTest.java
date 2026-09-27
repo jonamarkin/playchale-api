@@ -169,12 +169,18 @@ class GameApiTest {
 		var kojo = TestSignIn.as(mvc, "024 455 5124");
 		var kojoId = json.readTree(mvc.perform(post("/games/" + id + "/players").cookie(kojo)).andReturn().getResponse().getContentAsString())
 			.get("players").get(1).get("id").asString();
-		Thread.sleep(2500);
-
-		mvc.perform(put("/games/" + id + "/result").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("""
+		var result = """
 				{"homeScore":2,"awayScore":1,"sides":{"home":["%s"],"away":["%s"]},"scorers":[{"userId":"%s","goals":1}]}
-				""".formatted(game.get("hostId").asString(), kojoId, kojoId)))
-			.andExpect(status().isOk())
+				""".formatted(game.get("hostId").asString(), kojoId, kojoId);
+		// Kick-off is two seconds after the game was made: wait for it rather than guess how long that takes on this machine.
+		var deadline = System.currentTimeMillis() + 10_000;
+		var recorded = mvc.perform(put("/games/" + id + "/result").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content(result));
+		while (recorded.andReturn().getResponse().getContentAsString().contains("once the game has started") && System.currentTimeMillis() < deadline) {
+			Thread.sleep(250);
+			recorded = mvc.perform(put("/games/" + id + "/result").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content(result));
+		}
+
+		recorded.andExpect(status().isOk())
 			.andExpect(jsonPath("$.status").value("completed"))
 			.andExpect(jsonPath("$.result.homeScore").value(2))
 			.andExpect(jsonPath("$.result.scorers[0].goals").value(1))

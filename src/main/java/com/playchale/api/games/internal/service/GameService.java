@@ -29,6 +29,7 @@ import com.playchale.api.games.internal.repository.GameInviteRepository;
 import com.playchale.api.games.internal.repository.GameRepository;
 import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
+import com.playchale.api.teams.api.TeamCard;
 import com.playchale.api.teams.api.TeamDirectory;
 import com.playchale.api.users.api.UserDirectory;
 import com.playchale.api.users.api.UserSummary;
@@ -138,11 +139,52 @@ public class GameService {
 		return views.of(game, host);
 	}
 
-	/** games.repeat: the same game a week later, on the same pitch if it's free. */
+	/**
+	 * games.create with two teams: a friendly. The host captains the home team, whose players are
+	 * invited now; the away team's captain is challenged, and their players are asked once they accept.
+	 * Without teams, an ordinary game.
+	 */
+	@Transactional
+	public GameResponse create(GameDetails details, UUID homeTeamId, UUID awayTeamId, UUID host) {
+		if (homeTeamId == null && awayTeamId == null) {
+			return create(details, host);
+		}
+		return views.of(createFriendly(details, homeTeamId, awayTeamId, host), host);
+	}
+
+	/** games.repeat: the same game a week later, on the same pitch if it's free. A friendly challenges the same team again. */
 	@Transactional
 	public GameResponse repeat(UUID gameId, UUID host) {
 		var game = hosted(gameId, host);
-		return views.of(createGame(game.details().weekLater(), host), host);
+		var details = game.details().weekLater();
+		return views.of(game.isFriendly() ? createFriendly(details, game.getHomeTeamId(), game.getAwayTeamId(), host) : createGame(details, host), host);
+	}
+
+	/** games.answerChallenge: the away team's captain. Yes puts the team in (and them, if they play for it) and asks its players. */
+	@Transactional
+	public GameResponse answerChallenge(UUID gameId, boolean accept, UUID me) {
+		var game = locked(gameId);
+		if (!game.awaitsOpponent()) {
+			throw BusinessException.notFound("That challenge has already been answered.");
+		}
+		var away = teams.find(game.getAwayTeamId()).orElseThrow(() -> BusinessException.notFound("That team doesn’t exist any more."));
+		if (!away.captainId().equals(me)) {
+			throw BusinessException.conflict("Only %s can answer for %s.".formatted(firstName(away.captainId()), away.name()));
+		}
+		var home = teams.find(game.getHomeTeamId()).map(TeamCard::name).orElse("The other team");
+		var now = clock.instant();
+		game.answerChallenge(accept, now);
+		events.publishEvent(new GameEvents.ChallengeAnswered(info(game), home, away.name(), me, accept));
+		if (accept) {
+			if (away.memberIds().contains(me) && game.spotOf(me).isEmpty() && game.spotsLeft() > 0) {
+				game.join(me, away.id(), now);
+				events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.getCapacity() - game.spotsLeft(), game.getCapacity(), false));
+			}
+			if (game.spotsLeft() > 0) {
+				ask(game, away.memberIds(), away.id(), away.name(), me);
+			}
+		}
+		return views.of(game, me);
 	}
 
 	/** games.join */
@@ -150,7 +192,7 @@ public class GameService {
 	public GameResponse join(UUID gameId, UUID me) {
 		var game = locked(gameId);
 		if (game.spotOf(me).isEmpty()) {
-			game.join(me, clock.instant());
+			game.join(me, sideFor(game, me), clock.instant());
 			events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.getCapacity() - game.spotsLeft(), game.getCapacity(), false));
 		}
 		// Joining is saying yes to an invite, however they got here.
@@ -242,7 +284,7 @@ public class GameService {
 		var now = clock.instant();
 		if (accept) {
 			if (game.spotOf(me).isEmpty()) {
-				game.join(me, now);
+				game.join(me, sideFor(game, me), now);
 				events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.getCapacity() - game.spotsLeft(), game.getCapacity(), false));
 			}
 			invite.accept(now);
@@ -292,6 +334,7 @@ public class GameService {
 			.orElseThrow(() -> BusinessException.notFound("That invite has already been used, or the host removed the spot."));
 		var phone = users.find(me).map(UserSummary::phone).orElse(null);
 		game.claim(spot, me, phone);
+		game.playFor(me, sideFor(game, me));
 		events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.getCapacity() - game.spotsLeft(), game.getCapacity(), true));
 		invites.findById(new InviteId(gameId, me)).filter(i -> !i.isAccepted()).ifPresent(i -> i.accept(clock.instant()));
 		return views.of(game, me);
@@ -358,8 +401,11 @@ public class GameService {
 		return game;
 	}
 
-	/** Invites (or asks again) real players who aren't the host and aren't in the game yet, and tells them. Returns how many. */
-	private int ask(Game game, Collection<UUID> userIds, UUID teamId, String teamName, UUID host) {
+	/**
+	 * Invites (or asks again) real players who aren't the host and aren't in the game yet, and tells
+	 * them. Returns how many. {@code by} is the host, or a friendly's away captain asking their players.
+	 */
+	private int ask(Game game, Collection<UUID> userIds, UUID teamId, String teamName, UUID by) {
 		var candidates = userIds.stream().filter(id -> !id.equals(game.getHostId()) && game.spotOf(id).isEmpty()).toList();
 		var real = users.findAll(candidates).keySet();
 		var invited = candidates.stream().filter(real::contains).distinct().toList();
@@ -369,16 +415,66 @@ public class GameService {
 		for (var userId : invited) {
 			var invite = existing.get(userId);
 			if (invite == null) {
-				invites.save(new GameInvite(game.getId(), userId, teamId, host, now));
+				invites.save(new GameInvite(game.getId(), userId, teamId, by, now));
 			}
 			else {
-				invite.ask(teamId, host, now);
+				invite.ask(teamId, by, now);
 			}
 		}
 		if (!invited.isEmpty()) {
-			events.publishEvent(new GameEvents.PlayersInvited(info(game), invited, share(game), game.getCurrency(), teamName));
+			events.publishEvent(new GameEvents.PlayersInvited(info(game), by, invited, share(game), game.getCurrency(), teamName));
 		}
 		return invited.size();
+	}
+
+	/**
+	 * Which side someone plays for in a friendly: the team they were invited with, else the team
+	 * they're in (the away team only once it has accepted). Null outside friendlies, or for anyone
+	 * in neither team: the host puts them on a side on the day.
+	 */
+	private UUID sideFor(Game game, UUID userId) {
+		if (!game.isFriendly()) {
+			return null;
+		}
+		var invitedWith = invites.findById(new InviteId(game.getId(), userId)).map(GameInvite::getTeamId)
+			.filter(t -> t.equals(game.getHomeTeamId()) || (t.equals(game.getAwayTeamId()) && game.opponentIn()));
+		if (invitedWith.isPresent()) {
+			return invitedWith.get();
+		}
+		var sides = teams.findAll(List.of(game.getHomeTeamId(), game.getAwayTeamId()));
+		var home = sides.get(game.getHomeTeamId());
+		if (home != null && (home.memberIds().contains(userId) || home.captainId().equals(userId))) {
+			return home.id();
+		}
+		var away = sides.get(game.getAwayTeamId());
+		return away != null && game.opponentIn() && (away.memberIds().contains(userId) || away.captainId().equals(userId)) ? away.id() : null;
+	}
+
+	/** A friendly: the host's team at home, the other team challenged (or straight in, when the host captains both). */
+	private Game createFriendly(GameDetails details, UUID homeTeamId, UUID awayTeamId, UUID host) {
+		if (homeTeamId == null || awayTeamId == null) {
+			throw BusinessException.invalid("Pick your team and the team you’re playing.");
+		}
+		if (homeTeamId.equals(awayTeamId)) {
+			throw BusinessException.invalid("A team can’t play itself. Pick another team to play.");
+		}
+		var home = teams.find(homeTeamId).orElseThrow(() -> BusinessException.notFound("That team doesn’t exist any more."));
+		var away = teams.find(awayTeamId).orElseThrow(() -> BusinessException.notFound("The team you’re playing doesn’t exist any more."));
+		if (!home.captainId().equals(host)) {
+			throw BusinessException.conflict("Only %s can set up a game for %s.".formatted(firstName(home.captainId()), home.name()));
+		}
+		var named = details.title() == null || details.title().isBlank() ? details.withTitle("%s vs %s".formatted(home.name(), away.name())) : details;
+		var game = createGame(named, host);
+		var accepted = away.captainId().equals(host);
+		game.challenge(home.id(), away.id(), accepted);
+		ask(game, home.memberIds(), home.id(), home.name(), host);
+		if (accepted) {
+			ask(game, away.memberIds(), away.id(), away.name(), host);
+		}
+		else {
+			events.publishEvent(new GameEvents.ChallengeSent(info(game), home.name(), away.name(), away.captainId()));
+		}
+		return game;
 	}
 
 	private Game hosted(UUID gameId, UUID userId) {

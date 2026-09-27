@@ -18,6 +18,12 @@ public record GameDetails(String sport, String format, String title, Instant sta
 		String venueKind, UUID venueId, UUID pitchId, String venueName, String venueArea, String venueMapUrl, int capacity, long totalCost,
 		String pricing, String visibility, String notes) {
 
+	/** The same, called something else: a friendly is named after its teams when the host leaves it blank. */
+	public GameDetails withTitle(String title) {
+		return new GameDetails(sport, format, title, startsAt, durationMinutes, venueKind, venueId, pitchId, venueName, venueArea, venueMapUrl,
+				capacity, totalCost, pricing, visibility, notes);
+	}
+
 	/** The same game a week later: how a host repeats last week's. */
 	public GameDetails weekLater() {
 		return new GameDetails(sport, format, title, startsAt.plus(Duration.ofDays(7)), durationMinutes, venueKind,

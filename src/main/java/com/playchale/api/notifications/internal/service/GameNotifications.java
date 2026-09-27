@@ -104,14 +104,36 @@ class GameNotifications {
 	@EventListener
 	void on(GameEvents.PlayersInvited e) {
 		var game = e.game();
-		var host = firstName(game.hostId());
+		var host = firstName(e.invitedBy());
 		var cost = e.share() > 0 ? " · %s each".formatted(market().formatMoney(e.share())) : " · free";
 		var title = e.teamName() == null ? "%s invited you to %s".formatted(host, game.title())
 				: "%s invited %s to %s".formatted(host, e.teamName(), game.title());
 		for (var player : e.playerIds()) {
 			notifications.send(player, "game-invite", title,
 					"%s · %s%s. Say if you’re in.".formatted(kickoff(game.startsAt()), game.venueName(), cost), "/games/%s".formatted(game.gameId()),
-					game.hostId());
+					e.invitedBy());
+		}
+	}
+
+	@EventListener
+	void on(GameEvents.ChallengeSent e) {
+		var game = e.game();
+		notifications.send(e.awayCaptainId(), "game-invite", "%s challenged %s".formatted(e.homeTeam(), e.awayTeam()),
+				"%s · %s · %s. Accept or decline from the game.".formatted(game.title(), kickoff(game.startsAt()), game.venueName()),
+				"/games/%s".formatted(game.gameId()), game.hostId());
+	}
+
+	@EventListener
+	void on(GameEvents.ChallengeAnswered e) {
+		var game = e.game();
+		var link = "/games/%s".formatted(game.gameId());
+		if (e.accepted()) {
+			notifications.send(game.hostId(), "squad-reply", "%s accepted your challenge".formatted(e.awayTeam()),
+					"%s · %s. Their players are being asked who’s in.".formatted(game.title(), kickoff(game.startsAt())), link, e.captainId());
+		}
+		else {
+			notifications.send(game.hostId(), "squad-reply", "%s can’t play".formatted(e.awayTeam()),
+					"They turned down %s, %s.".formatted(game.title(), kickoff(game.startsAt())), link, e.captainId());
 		}
 	}
 

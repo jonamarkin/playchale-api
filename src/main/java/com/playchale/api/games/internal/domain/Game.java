@@ -53,6 +53,12 @@ public class Game extends AuditableEntity {
 
 	static final Set<String> VISIBILITIES = Set.of("public", "private");
 
+	public static final String CHALLENGE_PENDING = "pending";
+
+	public static final String CHALLENGE_ACCEPTED = "accepted";
+
+	public static final String CHALLENGE_DECLINED = "declined";
+
 	@Id
 	@UuidGenerator(style = UuidGenerator.Style.VERSION_7)
 	private UUID id;
@@ -115,6 +121,12 @@ public class Game extends AuditableEntity {
 	private UUID homeTeamId;
 
 	private UUID awayTeamId;
+
+	/**
+	 * A friendly's challenge: {@link #CHALLENGE_PENDING} until the other team's captain answers. Null
+	 * for any other game.
+	 */
+	private String opponentStatus;
 
 	@OneToMany(mappedBy = "game", cascade = CascadeType.ALL, orphanRemoval = true)
 	@OrderBy("joinedAt")
@@ -208,6 +220,40 @@ public class Game extends AuditableEntity {
 		return game;
 	}
 
+	/**
+	 * Makes this a friendly between two teams: the host's team at home. The host plays for it. The
+	 * away team is in once its captain accepts ({@code accepted} when the host captains both).
+	 */
+	public void challenge(UUID homeTeamId, UUID awayTeamId, boolean accepted) {
+		this.homeTeamId = homeTeamId;
+		this.awayTeamId = awayTeamId;
+		this.opponentStatus = accepted ? CHALLENGE_ACCEPTED : CHALLENGE_PENDING;
+		spotOf(hostId).ifPresent(p -> p.playFor(homeTeamId));
+	}
+
+	/** The away team's captain answered the challenge. */
+	public void answerChallenge(boolean accept, Instant now) {
+		if (accept) {
+			requireOn("This game was called off.");
+			requireNotPlayed(now);
+		}
+		this.opponentStatus = accept ? CHALLENGE_ACCEPTED : CHALLENGE_DECLINED;
+	}
+
+	/** A game between two teams outside a league. */
+	public boolean isFriendly() {
+		return opponentStatus != null;
+	}
+
+	public boolean awaitsOpponent() {
+		return CHALLENGE_PENDING.equals(opponentStatus);
+	}
+
+	/** Whether the away team is playing: the challenge was accepted. */
+	public boolean opponentIn() {
+		return CHALLENGE_ACCEPTED.equals(opponentStatus);
+	}
+
 	/** Brings an unplayed fixture's roster in line with its squads. Played, started or called-off fixtures stay as they were. */
 	public void syncSquad(List<UUID> squad, Instant now) {
 		if (competitionId == null || COMPLETED.equals(status) || CANCELLED.equals(status) || hasStarted(now)) {
@@ -265,6 +311,11 @@ public class Game extends AuditableEntity {
 
 	/** Joining is up to the player: allowed until kick-off, while there's a spot. */
 	public void join(UUID userId, Instant now) {
+		join(userId, null, now);
+	}
+
+	/** Takes a spot, on {@code teamId}'s side in a friendly (null: no side yet, the host picks on the day). */
+	public void join(UUID userId, UUID teamId, Instant now) {
 		if (spotOf(userId).isPresent()) {
 			return;
 		}
@@ -273,8 +324,17 @@ public class Game extends AuditableEntity {
 		if (isFull()) {
 			throw BusinessException.conflict("Sorry, this game just filled up.");
 		}
-		participants.add(Participant.player(this, userId, totalCost == 0, now));
+		var spot = Participant.player(this, userId, totalCost == 0, now);
+		spot.playFor(isFriendly() ? teamId : null);
+		participants.add(spot);
 		syncStatus();
+	}
+
+	/** Puts a player on a side in a friendly (claiming a held spot, say). */
+	public void playFor(UUID userId, UUID teamId) {
+		if (isFriendly()) {
+			spotOf(userId).ifPresent(p -> p.playFor(teamId));
+		}
 	}
 
 	/** A player dropping out. Once they've paid, getting their money back comes first. */
@@ -607,6 +667,10 @@ public class Game extends AuditableEntity {
 
 	public UUID getAwayTeamId() {
 		return awayTeamId;
+	}
+
+	public String getOpponentStatus() {
+		return opponentStatus;
 	}
 
 	public List<Participant> getParticipants() {

@@ -14,6 +14,7 @@ import com.playchale.api.teams.api.JoinRequestCard;
 import com.playchale.api.teams.api.TeamCard;
 import com.playchale.api.teams.api.TeamDirectory;
 import com.playchale.api.teams.api.TeamEvents;
+import com.playchale.api.teams.api.TeamGames;
 import com.playchale.api.teams.api.TeamLeagues;
 import com.playchale.api.teams.api.TeamMemberships;
 import com.playchale.api.teams.internal.domain.JoinRequest;
@@ -42,16 +43,19 @@ public class TeamService implements TeamDirectory, TeamMemberships {
 
 	private final ObjectProvider<TeamLeagues> leagues;
 
+	private final ObjectProvider<TeamGames> games;
+
 	private final ApplicationEventPublisher events;
 
 	private final Clock clock;
 
 	TeamService(TeamRepository teams, JoinRequestRepository requests, UserDirectory users, ObjectProvider<TeamLeagues> leagues,
-			ApplicationEventPublisher events, Clock clock) {
+			ObjectProvider<TeamGames> games, ApplicationEventPublisher events, Clock clock) {
 		this.teams = teams;
 		this.requests = requests;
 		this.users = users;
 		this.leagues = leagues;
+		this.games = games;
 		this.events = events;
 		this.clock = clock;
 	}
@@ -76,6 +80,19 @@ public class TeamService implements TeamDirectory, TeamMemberships {
 	@Transactional(readOnly = true)
 	public List<TeamResponse> mine(UUID me) {
 		return teams.involving(me).stream().map(t -> view(t, me)).toList();
+	}
+
+	/** teams.search: teams whose name has the query in it (at least two letters), to challenge or look up. */
+	@Transactional(readOnly = true)
+	public List<TeamResponse.Found> search(String query, UUID viewer) {
+		var q = query == null ? "" : query.strip();
+		if (q.length() < 2) {
+			return List.of();
+		}
+		var found = teams.findTop20ByNameContainingIgnoreCaseOrderByName(q);
+		var captains = users.findAll(found.stream().map(Team::getCaptainId).distinct().toList());
+		return found.stream().map(t -> new TeamResponse.Found(t.getId(), t.getName(), t.getTint(), t.getCaptainId(),
+				shown(captains.get(t.getCaptainId()), viewer), t.memberIds().size())).toList();
 	}
 
 	/** teams.update: captain only. Name, colours, or handing the armband over. */
@@ -152,6 +169,9 @@ public class TeamService implements TeamDirectory, TeamMemberships {
 		leaguesOf(id).stream().filter(TeamLeagues.TeamLeague::started).findFirst().ifPresent(league -> {
 			throw BusinessException.conflict("%s is in %s. A team can’t be deleted once its league has started.".formatted(team.getName(), league.name()));
 		});
+		if (!gamesOf(id).upcoming().isEmpty()) {
+			throw BusinessException.conflict("%s has a game coming up. Call it off, or turn the challenge down, first.".formatted(team.getName()));
+		}
 		teams.delete(team);
 	}
 
@@ -263,12 +283,18 @@ public class TeamService implements TeamDirectory, TeamMemberships {
 		var people = users.findAll(Stream.of(Stream.of(team.getCaptainId()), team.memberIds().stream(), pending.stream().map(JoinRequest::getUserId))
 			.flatMap(s -> s).distinct().toList());
 		var requested = viewer != null && !team.has(viewer) && requests.existsByTeamIdAndUserIdAndStatus(team.getId(), viewer, JoinRequest.PENDING);
+		var played = gamesOf(team.getId());
 		return new TeamResponse(team.getId(), team.getName(), team.getTint(), team.getCaptainId(), shown(people.get(team.getCaptainId()), viewer),
 				team.memberIds(), team.memberIds().stream().map(people::get).filter(u -> u != null).map(u -> u.as(viewer)).toList(),
 				captain ? team.getJoinToken() : "", team.getCreatedAt(), leaguesOf(team.getId()),
 				captain ? pending.stream().map(r -> new TeamResponse.RequestView(r.getId(), r.getTeamId(), r.getUserId(), r.getStatus(),
 						r.getCreatedAt(), shown(people.get(r.getUserId()), viewer))).toList() : null,
-				requested);
+				requested, played.record(), played.upcoming(), played.recent());
+	}
+
+	private TeamGames.Summary gamesOf(UUID teamId) {
+		return games.stream().findFirst().map(g -> g.of(teamId))
+			.orElseGet(() -> new TeamGames.Summary(new TeamGames.Record(0, 0, 0, 0), List.of(), List.of()));
 	}
 
 	private List<TeamLeagues.TeamLeague> leaguesOf(UUID teamId) {

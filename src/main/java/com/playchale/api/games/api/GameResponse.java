@@ -18,7 +18,18 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 		VenueRef venue, int capacity, long totalCost, String pricing, String currency, String visibility, UUID hostId, String notes,
 		List<ParticipantResponse> participants, String status, ResultResponse result, FixtureRef fixture, Instant createdAt,
 		Instant cancelledAt, String cancelReason, UserSummary host, List<PlayerResponse> players, FixtureTeamsResponse fixtureTeams,
-		long share, int spotsLeft, String hostPayoutPhone, List<InviteResponse> invites) {
+		long share, int spotsLeft, String hostPayoutPhone, List<InviteResponse> invites, FriendlyResponse friendly) {
+
+	/**
+	 * A friendly's two teams, each with who's playing for it here, and where the challenge stands:
+	 * "pending" (the away captain hasn't answered), "accepted" or "declined".
+	 */
+	public record FriendlyResponse(TeamSide home, TeamSide away, String opponentStatus) {
+	}
+
+	/** One side of a friendly. {@code playerIds} are the roster keys of those playing for it. */
+	public record TeamSide(UUID id, String name, String tint, UUID captainId, List<String> playerIds) {
+	}
 
 	/**
 	 * An invite and its answer: status "pending", "accepted" or "declined". The host sees everyone's;

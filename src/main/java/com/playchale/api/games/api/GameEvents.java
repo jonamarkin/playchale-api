@@ -57,9 +57,18 @@ public final class GameEvents {
 	 * The host invited players: people they've played with, or a team they're in. Each accepts or
 	 * declines; nobody is put in the game without saying yes.
 	 *
-	 * @param teamName set when the host invited a team
+	 * @param invitedBy the host, or in a friendly the away team's captain asking their own players
+	 * @param teamName  set when a team was invited
 	 */
-	public record PlayersInvited(GameInfo game, List<UUID> playerIds, long share, String currency, String teamName) {
+	public record PlayersInvited(GameInfo game, UUID invitedBy, List<UUID> playerIds, long share, String currency, String teamName) {
+	}
+
+	/** A team's captain challenged another team to a friendly; that team's captain accepts or declines. */
+	public record ChallengeSent(GameInfo game, String homeTeam, String awayTeam, UUID awayCaptainId) {
+	}
+
+	/** The challenged team's captain answered. */
+	public record ChallengeAnswered(GameInfo game, String homeTeam, String awayTeam, UUID captainId, boolean accepted) {
 	}
 
 	/** An invited player said they can't make it. */

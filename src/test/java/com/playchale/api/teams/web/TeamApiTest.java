@@ -31,7 +31,7 @@ class TeamApiTest {
 
 	/** The web app's TeamProfile. */
 	private static final Set<String> VIEW_FIELDS = Set.of("id", "name", "tint", "captainId", "captain", "memberIds", "members", "joinToken",
-			"createdAt", "leagues", "requests", "requested");
+			"createdAt", "leagues", "requests", "requested", "record", "upcoming", "recent");
 
 	@Autowired
 	MockMvc mvc;
@@ -69,6 +69,10 @@ class TeamApiTest {
 		var token = created.get("joinToken").asString();
 
 		mvc.perform(get("/teams/" + id)).andExpect(status().isOk()).andExpect(jsonPath("$.joinToken").value(""));
+		mvc.perform(get("/teams").cookie(esi).param("query", "osu"))
+			.andExpect(jsonPath("$[0].name").value("Osu Ballers"))
+			.andExpect(jsonPath("$[0].memberCount").value(1))
+			.andExpect(jsonPath("$[0].joinToken").doesNotExist());
 		mvc.perform(post("/teams/" + id + "/joins").cookie(esi).contentType(MediaType.APPLICATION_JSON).content("{\"token\":\"nope\"}"))
 			.andExpect(status().isNotFound());
 		var joined = json.readTree(mvc.perform(post("/teams/" + id + "/joins").cookie(esi).contentType(MediaType.APPLICATION_JSON)

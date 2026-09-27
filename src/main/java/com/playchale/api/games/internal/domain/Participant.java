@@ -51,6 +51,9 @@ public class Participant {
 
 	private UUID guestAddedBy;
 
+	/** The side they play for in a friendly: the home or away team. Null elsewhere. */
+	private UUID teamId;
+
 	protected Participant() {
 	}
 
@@ -73,6 +76,14 @@ public class Participant {
 		p.paid = paid;
 		p.joinedAt = now;
 		return p;
+	}
+
+	void playFor(UUID teamId) {
+		this.teamId = teamId;
+	}
+
+	public UUID getTeamId() {
+		return teamId;
 	}
 
 	/** The guest's spot becomes theirs: from now on it's an ordinary player's spot. */
