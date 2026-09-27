@@ -2,6 +2,7 @@ package com.playchale.api.notifications.web;
 
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.playchale.api.notifications.internal.service.PushService;
 import com.playchale.api.shared.security.CurrentUser;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,9 +21,14 @@ class PushController {
 		this.push = push;
 	}
 
-	/** {"endpoint", "keys": {"p256dh", "auth"}}: a browser's PushSubscription, as it serialises itself. */
+	/**
+	 * {"endpoint", "keys": {"p256dh", "auth"}}: a browser's PushSubscription, as it serialises itself.
+	 * Browsers add fields of their own (expirationTime, say), which are ignored.
+	 */
+	@JsonIgnoreProperties(ignoreUnknown = true)
 	record Subscription(String endpoint, Keys keys) {
 
+		@JsonIgnoreProperties(ignoreUnknown = true)
 		record Keys(String p256dh, String auth) {
 		}
 

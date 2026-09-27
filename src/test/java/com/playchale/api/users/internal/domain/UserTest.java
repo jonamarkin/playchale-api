@@ -120,6 +120,16 @@ class UserTest {
 	}
 
 	@Test
+	void theirCountrySetsHowTheirNumbersLook() {
+		assertThatThrownBy(() -> user.liveIn("Atlantis")).hasMessage("Pick your country from the list.");
+		user.liveIn("gb");
+		assertThat(user.getCountry()).isEqualTo("GB");
+		user.payTo("07400 123456");
+		assertThat(user.getPayoutPhone()).isEqualTo("+447400123456");
+		assertThatThrownBy(() -> user.payTo("020 123 4567")).hasMessage("Enter a valid United Kingdom mobile number for payouts, e.g. 07400 123456.");
+	}
+
+	@Test
 	void onboardingNeedsANameAndAHandle() {
 		assertThatThrownBy(user::finishOnboarding).hasMessage("Add your name and a username to finish.");
 		user.rename("Kwame");

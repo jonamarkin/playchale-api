@@ -207,6 +207,14 @@ public class User extends AuditableEntity {
 		this.avatarSeed = seed;
 	}
 
+	/** The country they live in: their phone numbers, and what they see first, go by it. */
+	public void liveIn(String country) {
+		if (!Market.exists(country)) {
+			throw BusinessException.invalid("Pick your country from the list.");
+		}
+		this.country = country.strip().toUpperCase(Locale.ROOT);
+	}
+
 	/** The mobile money number money should reach them on. Blank clears it. */
 	public void payTo(String phone) {
 		if (phone.isBlank()) {
@@ -215,7 +223,7 @@ public class User extends AuditableEntity {
 		}
 		var market = Market.get(country);
 		this.payoutPhone = market.normalisePhone(phone)
-			.orElseThrow(() -> BusinessException.invalid("Enter a valid %s mobile number for payouts, e.g. 024 123 4567.".formatted(market.countryName())));
+			.orElseThrow(() -> BusinessException.invalid("Enter a valid %s mobile number for payouts, e.g. %s.".formatted(market.countryName(), market.phoneExample())));
 	}
 
 	/** Where payment receipts go, stored lower-case. Blank clears it. */

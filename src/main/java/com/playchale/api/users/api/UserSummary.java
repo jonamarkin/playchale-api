@@ -19,7 +19,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record UserSummary(UUID id, String phone, String name, String handle, String avatar, String avatarSeed, String tint, String area,
 		List<String> sports, Map<String, List<String>> roles, Instant createdAt, boolean onboarded, String payoutPhone,
-		String email, String signInEmail) {
+		String email, String signInEmail, String country) {
 
 	/**
 	 * @param roles positions (or athletics events) per sport, as catalogue ids, main one first:
@@ -37,7 +37,7 @@ public record UserSummary(UUID id, String phone, String name, String handle, Str
 	 * app only ever shows to the player themselves.
 	 */
 	public UserSummary toPublic() {
-		return new UserSummary(id, "", name, handle, avatar, avatarSeed, tint, area, sports, roles, createdAt, onboarded, null, null, null);
+		return new UserSummary(id, "", name, handle, avatar, avatarSeed, tint, area, sports, roles, createdAt, onboarded, null, null, null, country);
 	}
 
 	/** Everything to the player themselves; the public view to anyone else. */

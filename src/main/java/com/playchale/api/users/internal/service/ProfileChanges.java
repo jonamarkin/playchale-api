@@ -10,10 +10,15 @@ import java.util.Map;
  * per sport, catalogue ids, main one first.
  */
 public record ProfileChanges(String name, String handle, String area, List<String> sports, Map<String, List<String>> roles,
-		String payoutPhone, String email, String avatarSeed) {
+		String payoutPhone, String email, String avatarSeed, String country) {
 
 	public ProfileChanges(String name, String handle, String area, List<String> sports, Map<String, List<String>> roles,
 			String payoutPhone, String email) {
-		this(name, handle, area, sports, roles, payoutPhone, email, null);
+		this(name, handle, area, sports, roles, payoutPhone, email, null, null);
+	}
+
+	public ProfileChanges(String name, String handle, String area, List<String> sports, Map<String, List<String>> roles,
+			String payoutPhone, String email, String avatarSeed) {
+		this(name, handle, area, sports, roles, payoutPhone, email, avatarSeed, null);
 	}
 }

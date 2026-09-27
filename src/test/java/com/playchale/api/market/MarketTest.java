@@ -29,6 +29,43 @@ class MarketTest {
 	@Test
 	void unknownCountriesFallBackToTheDefault() {
 		assertThat(Market.get("ZZ").country()).isEqualTo(Market.DEFAULT);
+		assertThat(Market.exists("ZZ")).isFalse();
+		assertThat(Market.exists("gb")).isTrue();
+	}
+
+	/** Any country, from ISO data and libphonenumber: nobody typed these in. */
+	@Test
+	void anyCountryHasItsCurrencyAndPhoneNumbers() {
+		var uk = Market.get("GB");
+		assertThat(uk.countryName()).isEqualTo("United Kingdom");
+		assertThat(uk.currency()).isEqualTo("GBP");
+		assertThat(uk.currencySymbol()).isEqualTo("£");
+		assertThat(uk.dialCode()).isEqualTo("+44");
+		assertThat(uk.normalisePhone("07400 123456")).contains("+447400123456");
+		assertThat(uk.normalisePhone("020 7946 0018")).as("a London landline, not a mobile").isEmpty();
+		assertThat(uk.formatMoney(500)).isEqualTo("£ 5");
+		assertThat(uk.shareOf(1_000, 3)).as("£3.333 rounds up to the next 10p").isEqualTo(340);
+
+		var nigeria = Market.get("NG");
+		assertThat(nigeria.currency()).isEqualTo("NGN");
+		assertThat(nigeria.normalisePhone("0803 123 4567")).contains("+2348031234567");
+
+		var us = Market.get("US");
+		assertThat(us.normalisePhone("(201) 555-0123")).as("US numbers can be mobile or landline").contains("+12015550123");
+
+		var japan = Market.get("JP");
+		assertThat(japan.minorUnits()).as("the yen has no minor unit").isEqualTo(1);
+		assertThat(japan.formatMoney(500)).isEqualTo("¥ 500");
+		assertThat(japan.shareOf(1_000, 3)).isEqualTo(334);
+
+		assertThat(Market.all()).extracting(Market::country).contains("GH", "GB", "NG", "US", "JP", "KE", "ZA", "DE", "CA");
+	}
+
+	@Test
+	void aMobileNumberFromAnywhereFindsItsCountry() {
+		assertThat(ghana.normaliseAnyPhone("+44 7400 123456")).contains(new Market.PhoneInCountry("+447400123456", "GB"));
+		assertThat(ghana.normaliseAnyPhone("024 123 4567")).as("local to Ghana").contains(new Market.PhoneInCountry("+233241234567", "GH"));
+		assertThat(ghana.normaliseAnyPhone("+44 20 7946 0018")).as("a landline").isEmpty();
 	}
 
 	@org.junit.jupiter.api.Test

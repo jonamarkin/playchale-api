@@ -114,6 +114,10 @@ public class UserProfileService {
 		if (changes.roles() != null) {
 			user.playRoles(changes.roles());
 		}
+		// Before the payout number, which is checked against their country.
+		if (changes.country() != null) {
+			user.liveIn(changes.country());
+		}
 		if (changes.payoutPhone() != null) {
 			user.payTo(changes.payoutPhone());
 		}

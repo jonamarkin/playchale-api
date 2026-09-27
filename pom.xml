@@ -60,6 +60,12 @@
 			<groupId>org.flywaydb</groupId>
 			<artifactId>flyway-database-postgresql</artifactId>
 		</dependency>
+		<!-- Phone numbers for every country: validation, E.164 and local formats (Google's own library). -->
+		<dependency>
+			<groupId>com.googlecode.libphonenumber</groupId>
+			<artifactId>libphonenumber</artifactId>
+			<version>9.0.40</version>
+		</dependency>
 
 		<!-- Development only: starts compose.yaml's Postgres when the app runs, and points the app at it. -->
 		<dependency>

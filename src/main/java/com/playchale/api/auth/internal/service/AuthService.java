@@ -57,8 +57,15 @@ public class AuthService {
 	public record Options(boolean phone, boolean email) {
 	}
 
-	/** Where a code goes: "sms" to a phone (E.164) or "email" to an address (lower-case). */
-	private record Recipient(String channel, String address) {
+	/**
+	 * Where a code goes: "sms" to a phone (E.164) or "email" to an address (lower-case). A phone's
+	 * {@code country} is the one its number belongs to; null for an email.
+	 */
+	private record Recipient(String channel, String address, String country) {
+
+		Recipient(String channel, String address) {
+			this(channel, address, null);
+		}
 
 		boolean bySms() {
 			return "sms".equals(channel);
@@ -170,6 +177,15 @@ public class AuthService {
 	 */
 	@Transactional(noRollbackFor = BusinessException.class)
 	public SignedIn signIn(String typedPhone, String typedEmail, String code) {
+		return signIn(typedPhone, typedEmail, code, null);
+	}
+
+	/**
+	 * As above. {@code country} is where someone new is, as the web app guesses it (they can change it
+	 * in onboarding): used for a new account by email. A phone number carries its own country.
+	 */
+	@Transactional(noRollbackFor = BusinessException.class)
+	public SignedIn signIn(String typedPhone, String typedEmail, String code, String country) {
 		var from = recipient(typedPhone, typedEmail);
 		var now = clock.instant();
 
@@ -186,8 +202,8 @@ public class AuthService {
 		}
 
 		// The code row stays locked until commit, so two sign-ins at once can't both register them.
-		var country = Market.get(Market.DEFAULT).country();
-		var user = from.bySms() ? users.registerOrFind(from.address(), country) : users.registerOrFindByEmail(from.address(), country);
+		var user = from.bySms() ? users.registerOrFind(from.address(), from.country())
+				: users.registerOrFindByEmail(from.address(), Market.get(country).country());
 		var token = SessionToken.generate();
 		sessions.save(new Session(token, user.id(), now));
 		return new SignedIn(user, token.value(), Session.LIFETIME);
@@ -233,9 +249,9 @@ public class AuthService {
 			if (sms.getIfAvailable() == null) {
 				throw BusinessException.conflict("Signing in with a phone number isn’t available yet. Use your email address.");
 			}
-			var market = Market.get(Market.DEFAULT);
-			return new Recipient("sms", market.normalisePhone(typedPhone)
-				.orElseThrow(() -> BusinessException.invalid("Enter a valid %s mobile number, e.g. 024 123 4567.".formatted(market.countryName()))));
+			var phone = Market.get(Market.DEFAULT).normaliseAnyPhone(typedPhone)
+				.orElseThrow(() -> BusinessException.invalid("Enter a valid mobile number, like 024 123 4567, or with its country code (+44 7400 123456)."));
+			return new Recipient("sms", phone.e164(), phone.country());
 		}
 		if (email.getIfAvailable() == null) {
 			throw BusinessException.conflict("Signing in with email isn’t available yet. Use your mobile number.");

@@ -17,10 +17,10 @@ import jakarta.validation.constraints.Size;
 public record ProfileUpdateRequest(String name, String handle, String area,
 		@Size(max = 10, message = "Pick sports from the list.") List<String> sports,
 		@Size(max = 10, message = "Pick sports from the list.") Map<String, List<String>> roles, @Deprecated String position,
-		String payoutPhone, String email, String avatarSeed) {
+		String payoutPhone, String email, String avatarSeed, String country) {
 
 	public ProfileChanges toChanges() {
-		return new ProfileChanges(name, handle, area, sports, roles, payoutPhone, email, avatarSeed);
+		return new ProfileChanges(name, handle, area, sports, roles, payoutPhone, email, avatarSeed, country);
 	}
 
 }

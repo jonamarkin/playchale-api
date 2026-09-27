@@ -54,7 +54,7 @@ class AuthController {
 	/** auth.verifyOtp and auth.verifyEmailCode: the signed-in player, plus the session cookie. */
 	@PostMapping("/sessions")
 	ResponseEntity<UserSummary> signIn(@Valid @RequestBody SignInRequest request) {
-		var signedIn = auth.signIn(request.phone(), request.email(), request.code());
+		var signedIn = auth.signIn(request.phone(), request.email(), request.code(), request.country());
 		return ResponseEntity.ok()
 			.header(HttpHeaders.SET_COOKIE, cookies.issue(signedIn.token(), signedIn.validFor()).toString())
 			.body(signedIn.user());
