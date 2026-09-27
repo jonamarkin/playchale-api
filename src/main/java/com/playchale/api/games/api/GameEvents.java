@@ -53,8 +53,17 @@ public final class GameEvents {
 			String pitchName) {
 	}
 
-	/** The host invited players they've played with. Joining stays their choice. */
-	public record PlayersInvited(GameInfo game, List<UUID> playerIds, long share, String currency) {
+	/**
+	 * The host invited players: people they've played with, or a team they're in. Each accepts or
+	 * declines; nobody is put in the game without saying yes.
+	 *
+	 * @param teamName set when the host invited a team
+	 */
+	public record PlayersInvited(GameInfo game, List<UUID> playerIds, long share, String currency, String teamName) {
+	}
+
+	/** An invited player said they can't make it. */
+	public record InviteDeclined(GameInfo game, UUID playerId) {
 	}
 
 	/**

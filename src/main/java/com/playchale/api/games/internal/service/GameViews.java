@@ -13,11 +13,15 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.playchale.api.games.internal.domain.Game;
+import com.playchale.api.games.internal.domain.GameInvite;
 import com.playchale.api.games.internal.domain.GameResult;
 import com.playchale.api.games.internal.domain.Participant;
 import com.playchale.api.games.internal.domain.ResultLine;
+import com.playchale.api.games.internal.repository.GameInviteRepository;
 import com.playchale.api.games.internal.repository.GameResultRepository;
 import com.playchale.api.market.Market;
+import com.playchale.api.teams.api.TeamCard;
+import com.playchale.api.teams.api.TeamDirectory;
 import com.playchale.api.users.api.UserDirectory;
 import com.playchale.api.users.api.UserSummary;
 import com.playchale.api.venues.api.PitchBookings;
@@ -42,11 +46,18 @@ class GameViews {
 
 	private final PitchBookings venues;
 
-	GameViews(UserDirectory users, GameResultRepository results, ObjectProvider<FixtureTeams> fixtureTeams, PitchBookings venues) {
+	private final GameInviteRepository invites;
+
+	private final TeamDirectory teams;
+
+	GameViews(UserDirectory users, GameResultRepository results, ObjectProvider<FixtureTeams> fixtureTeams, PitchBookings venues,
+			GameInviteRepository invites, TeamDirectory teams) {
 		this.users = users;
 		this.results = results;
 		this.fixtureTeams = fixtureTeams;
 		this.venues = venues;
+		this.invites = invites;
+		this.teams = teams;
 	}
 
 	GameResponse of(Game game, UUID viewer) {
@@ -54,12 +65,21 @@ class GameViews {
 	}
 
 	List<GameResponse> of(Collection<Game> games, UUID viewer) {
-		var ids = games.stream()
-			.flatMap(g -> Stream.concat(Stream.of(g.getHostId()), g.getParticipants().stream().map(Participant::getUserId)))
+		// Invites the viewer may see: all of them in games they host, their own anywhere else.
+		var invitesByGame = viewer == null || games.isEmpty() ? Map.<UUID, List<GameInvite>>of()
+				: invites.ofGames(games.stream().map(Game::getId).toList()).stream()
+					.filter(i -> i.getUserId().equals(viewer) || games.stream().anyMatch(g -> g.getId().equals(i.getGameId()) && g.isHost(viewer)))
+					.collect(Collectors.groupingBy(GameInvite::getGameId));
+		var ids = Stream.concat(games.stream()
+			.flatMap(g -> Stream.concat(Stream.of(g.getHostId()), g.getParticipants().stream().map(Participant::getUserId))),
+				invitesByGame.values().stream().flatMap(List::stream).map(GameInvite::getUserId))
 			.filter(Objects::nonNull)
 			.distinct()
 			.toList();
 		var people = users.findAll(ids);
+		var invitedTeams = invitesByGame.values().stream().flatMap(List::stream).map(GameInvite::getTeamId).filter(Objects::nonNull).distinct().toList();
+		var teamNames = invitedTeams.isEmpty() ? Map.<UUID, String>of()
+				: teams.findAll(invitedTeams).values().stream().collect(Collectors.toMap(TeamCard::id, TeamCard::name));
 		var played = games.stream().filter(g -> Game.COMPLETED.equals(g.getStatus())).map(Game::getId).toList();
 		var resultsByGame = played.isEmpty() ? Map.<UUID, GameResult>of()
 				: results.findAllById(played).stream().collect(Collectors.toMap(GameResult::getGameId, r -> r));
@@ -71,11 +91,24 @@ class GameViews {
 		// Partner venues' own map links, in one query: a pin the owner adds later reaches every game there.
 		var mapLinks = venues.mapLinks(games.stream().map(Game::getVenueId).filter(Objects::nonNull).distinct().toList());
 		return games.stream().map(g -> view(g, viewer, people, resultsByGame.get(g.getId()),
-				g.getCompetitionId() == null ? Map.of() : teamsByLeague.getOrDefault(g.getCompetitionId(), Map.of()), mapLinks)).toList();
+				g.getCompetitionId() == null ? Map.of() : teamsByLeague.getOrDefault(g.getCompetitionId(), Map.of()), mapLinks,
+				invites(invitesByGame.get(g.getId()), people, teamNames, viewer))).toList();
+	}
+
+	/** Invites as the viewer sees them, or null (left out) when there are none to show. */
+	private static List<GameResponse.InviteResponse> invites(List<GameInvite> invites, Map<UUID, UserSummary> people,
+			Map<UUID, String> teamNames, UUID viewer) {
+		if (invites == null) {
+			return null;
+		}
+		return invites.stream().filter(i -> people.containsKey(i.getUserId()))
+			.map(i -> new GameResponse.InviteResponse(i.getUserId(), i.getTeamId(), i.getTeamId() == null ? null : teamNames.get(i.getTeamId()),
+					i.getInvitedBy(), i.getStatus(), i.getInvitedAt(), i.getAnsweredAt(), people.get(i.getUserId()).as(viewer)))
+			.toList();
 	}
 
 	private GameResponse view(Game g, UUID viewer, Map<UUID, UserSummary> people, GameResult result,
-			Map<UUID, FixtureTeams.TeamCard> teams, Map<UUID, String> mapLinks) {
+			Map<UUID, FixtureTeams.TeamCard> teams, Map<UUID, String> mapLinks, List<GameResponse.InviteResponse> invites) {
 		var market = Market.get(Market.DEFAULT);
 		var hostView = g.isHost(viewer);
 		var mapUrl = g.getVenueId() != null ? mapLinks.get(g.getVenueId()) : g.getMapUrl();
@@ -102,7 +135,7 @@ class GameViews {
 				g.getCapacity(), g.getTotalCost(), g.getPricing(), g.getCurrency(), g.getVisibility(), g.getHostId(), g.getNotes(), participants,
 				g.getStatus(), result == null ? null : result(result), fixture, g.getCreatedAt(), g.getCancelledAt(), g.getCancelReason(),
 				host == null ? null : host.as(viewer), players, fixtureTeams, g.share(market), g.spotsLeft(),
-				host != null && viewer != null && g.spotOf(viewer).isPresent() ? host.payoutPhone() : null);
+				host != null && viewer != null && g.spotOf(viewer).isPresent() ? host.payoutPhone() : null, invites);
 	}
 
 	private static GameResponse.ResultResponse result(GameResult r) {

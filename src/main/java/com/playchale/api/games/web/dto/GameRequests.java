@@ -19,6 +19,14 @@ public final class GameRequests {
 	public record InviteRequest(List<UUID> userIds) {
 	}
 
+	/** {"teamId": "..."}: a team the host is in. */
+	public record TeamInviteRequest(UUID teamId) {
+	}
+
+	/** {"accept": true} */
+	public record InviteAnswer(boolean accept) {
+	}
+
 	/** {"invited": 3} */
 	public record InviteResponse(int invited) {
 	}

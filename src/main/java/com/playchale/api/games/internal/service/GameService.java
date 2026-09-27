@@ -17,14 +17,19 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import com.playchale.api.games.api.GameEvents;
 import com.playchale.api.games.internal.domain.Game;
 import com.playchale.api.games.internal.domain.GameDetails;
+import com.playchale.api.games.internal.domain.GameInvite;
+import com.playchale.api.games.internal.domain.InviteId;
 import com.playchale.api.games.internal.domain.Participant;
+import com.playchale.api.games.internal.repository.GameInviteRepository;
 import com.playchale.api.games.internal.repository.GameRepository;
 import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
+import com.playchale.api.teams.api.TeamDirectory;
 import com.playchale.api.users.api.UserDirectory;
 import com.playchale.api.users.api.UserSummary;
 import com.playchale.api.venues.api.GameBookingMoved;
@@ -50,22 +55,28 @@ public class GameService {
 
 	private final GameRepository games;
 
+	private final GameInviteRepository invites;
+
 	private final GameViews views;
 
 	private final UserDirectory users;
 
 	private final PitchBookings pitches;
 
+	private final TeamDirectory teams;
+
 	private final ApplicationEventPublisher events;
 
 	private final Clock clock;
 
-	GameService(GameRepository games, GameViews views, UserDirectory users, PitchBookings pitches,
-			ApplicationEventPublisher events, Clock clock) {
+	GameService(GameRepository games, GameInviteRepository invites, GameViews views, UserDirectory users, PitchBookings pitches,
+			TeamDirectory teams, ApplicationEventPublisher events, Clock clock) {
 		this.games = games;
+		this.invites = invites;
 		this.views = views;
 		this.users = users;
 		this.pitches = pitches;
+		this.teams = teams;
 		this.events = events;
 		this.clock = clock;
 	}
@@ -106,6 +117,14 @@ public class GameService {
 		return views.of(games.involving(me, Limit.of(LIST_LIMIT * 2)), me);
 	}
 
+	/** games.invitations: games the player is invited to and hasn't answered, still to come, soonest first. */
+	@Transactional(readOnly = true)
+	public List<GameResponse> invitations(UUID me) {
+		var ids = invites.waitingFor(me, clock.instant());
+		var byId = games.findAllById(ids).stream().collect(Collectors.toMap(Game::getId, g -> g));
+		return views.of(ids.stream().map(byId::get).filter(Objects::nonNull).toList(), me);
+	}
+
 	/** games.get. Private games are open to anyone with the link, like a WhatsApp group invite. */
 	@Transactional(readOnly = true)
 	public GameResponse get(UUID id, UUID viewer) {
@@ -134,6 +153,8 @@ public class GameService {
 			game.join(me, clock.instant());
 			events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.getCapacity() - game.spotsLeft(), game.getCapacity(), false));
 		}
+		// Joining is saying yes to an invite, however they got here.
+		invites.findById(new InviteId(gameId, me)).filter(i -> !i.isAccepted()).ifPresent(i -> i.accept(clock.instant()));
 		return views.of(game, me);
 	}
 
@@ -141,7 +162,12 @@ public class GameService {
 	@Transactional
 	public GameResponse leave(UUID gameId, UUID me) {
 		var game = locked(gameId);
+		var wasIn = game.spotOf(me).isPresent();
 		game.leave(me);
+		// Out after saying yes: the host sees they can't make it after all.
+		if (wasIn) {
+			invites.findById(new InviteId(gameId, me)).filter(GameInvite::isAccepted).ifPresent(i -> i.decline(clock.instant()));
+		}
 		return views.of(game, me);
 	}
 
@@ -153,6 +179,8 @@ public class GameService {
 		var name = spot.isGuest() ? spot.getGuestName() : firstName(spot.getUserId());
 		if (game.remove(spot, host, name, clock.instant())) {
 			events.publishEvent(new GameEvents.PlayerRemoved(info(game), spot.getUserId()));
+			// Taken off by the host: no longer invited either.
+			invites.findById(new InviteId(gameId, spot.getUserId())).ifPresent(invites::delete);
 		}
 		return views.of(game, host);
 	}
@@ -180,22 +208,55 @@ public class GameService {
 		return views.of(game, host);
 	}
 
-	/** games.invite: host only. Invited players get a notification, not a spot. */
+	/**
+	 * games.invite: host only. Invited players get a notification, not a spot: each accepts (and is
+	 * in) or declines. Inviting someone again asks afresh, as a nudge.
+	 */
 	@Transactional
 	public int invite(UUID gameId, Collection<UUID> userIds, UUID host) {
-		var game = hosted(gameId, host);
-		if (game.isCancelled()) {
-			throw BusinessException.conflict("This game was called off.");
+		var game = invitable(gameId, host);
+		return ask(game, userIds.stream().distinct().toList(), null, null, host);
+	}
+
+	/** games.inviteTeam: host only, for a team they're in. Its members not in the game yet are each invited. */
+	@Transactional
+	public int inviteTeam(UUID gameId, UUID teamId, UUID host) {
+		var game = invitable(gameId, host);
+		var team = teams.find(teamId).orElseThrow(() -> BusinessException.notFound("That team doesn’t exist any more."));
+		if (!team.captainId().equals(host) && !team.memberIds().contains(host)) {
+			throw BusinessException.conflict("You can only invite a team you’re in.");
 		}
-		if (game.spotsLeft() == 0) {
-			throw BusinessException.conflict("The game is full. There’s no spot to offer.");
+		var invited = ask(game, team.memberIds(), team.id(), team.name(), host);
+		if (invited == 0) {
+			throw BusinessException.conflict("Everyone in %s is already in the game.".formatted(team.name()));
 		}
-		var candidates = userIds.stream().distinct().filter(id -> !id.equals(host) && game.spotOf(id).isEmpty()).toList();
-		var invited = List.copyOf(users.findAll(candidates).keySet());
-		if (!invited.isEmpty()) {
-			events.publishEvent(new GameEvents.PlayersInvited(info(game), invited, share(game), game.getCurrency()));
+		return invited;
+	}
+
+	/** games.answerInvite: yes is joining (the usual rules apply); no is recorded and the host is told. */
+	@Transactional
+	public GameResponse answerInvite(UUID gameId, boolean accept, UUID me) {
+		var game = locked(gameId);
+		var invite = invites.findById(new InviteId(gameId, me))
+			.orElseThrow(() -> BusinessException.notFound("You don’t have an invite to this game."));
+		var now = clock.instant();
+		if (accept) {
+			if (game.spotOf(me).isEmpty()) {
+				game.join(me, now);
+				events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.getCapacity() - game.spotsLeft(), game.getCapacity(), false));
+			}
+			invite.accept(now);
 		}
-		return invited.size();
+		else {
+			if (game.spotOf(me).isPresent()) {
+				throw BusinessException.conflict("You’re in this game. Leave it instead.");
+			}
+			if (invite.isPending()) {
+				events.publishEvent(new GameEvents.InviteDeclined(info(game), me));
+			}
+			invite.decline(now);
+		}
+		return views.of(game, me);
 	}
 
 	/** What the host gets back from holding a spot: the game, and the token for the claim link. */
@@ -232,6 +293,7 @@ public class GameService {
 		var phone = users.find(me).map(UserSummary::phone).orElse(null);
 		game.claim(spot, me, phone);
 		events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.getCapacity() - game.spotsLeft(), game.getCapacity(), true));
+		invites.findById(new InviteId(gameId, me)).filter(i -> !i.isAccepted()).ifPresent(i -> i.accept(clock.instant()));
 		return views.of(game, me);
 	}
 
@@ -279,6 +341,44 @@ public class GameService {
 			events.publishEvent(new GameEvents.PitchBooked(info(game), booked.venueId(), booked.ownerId(), booked.pitchName()));
 		}
 		return game;
+	}
+
+	/** A game the host can still invite people to: on, not kicked off, with a spot to offer. */
+	private Game invitable(UUID gameId, UUID host) {
+		var game = hosted(gameId, host);
+		if (game.isCancelled()) {
+			throw BusinessException.conflict("This game was called off.");
+		}
+		if (game.hasStarted(clock.instant())) {
+			throw BusinessException.conflict("This game has already kicked off.");
+		}
+		if (game.spotsLeft() == 0) {
+			throw BusinessException.conflict("The game is full. There’s no spot to offer.");
+		}
+		return game;
+	}
+
+	/** Invites (or asks again) real players who aren't the host and aren't in the game yet, and tells them. Returns how many. */
+	private int ask(Game game, Collection<UUID> userIds, UUID teamId, String teamName, UUID host) {
+		var candidates = userIds.stream().filter(id -> !id.equals(game.getHostId()) && game.spotOf(id).isEmpty()).toList();
+		var real = users.findAll(candidates).keySet();
+		var invited = candidates.stream().filter(real::contains).distinct().toList();
+		var now = clock.instant();
+		var existing = invites.findAllById(invited.stream().map(u -> new InviteId(game.getId(), u)).toList()).stream()
+			.collect(Collectors.toMap(GameInvite::getUserId, i -> i));
+		for (var userId : invited) {
+			var invite = existing.get(userId);
+			if (invite == null) {
+				invites.save(new GameInvite(game.getId(), userId, teamId, host, now));
+			}
+			else {
+				invite.ask(teamId, host, now);
+			}
+		}
+		if (!invited.isEmpty()) {
+			events.publishEvent(new GameEvents.PlayersInvited(info(game), invited, share(game), game.getCurrency(), teamName));
+		}
+		return invited.size();
 	}
 
 	private Game hosted(UUID gameId, UUID userId) {

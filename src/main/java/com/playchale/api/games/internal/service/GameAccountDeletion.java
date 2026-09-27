@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.playchale.api.games.internal.domain.Game;
+import com.playchale.api.games.internal.repository.GameInviteRepository;
 import com.playchale.api.games.internal.repository.GameRepository;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.users.api.AccountDeleted;
@@ -15,17 +16,20 @@ import org.springframework.stereotype.Component;
 
 /**
  * Games and a player deleting their account: a host can't leave players without their game, and
- * someone leaving gives up the spots they haven't paid for, so others can have them.
+ * someone leaving gives up the spots they haven't paid for, so others can have them, and their invites.
  */
 @Component
 class GameAccountDeletion implements AccountHolds {
 
 	private final GameRepository games;
 
+	private final GameInviteRepository invites;
+
 	private final Clock clock;
 
-	GameAccountDeletion(GameRepository games, Clock clock) {
+	GameAccountDeletion(GameRepository games, GameInviteRepository invites, Clock clock) {
 		this.games = games;
+		this.invites = invites;
 		this.clock = clock;
 	}
 
@@ -41,6 +45,8 @@ class GameAccountDeletion implements AccountHolds {
 	 */
 	@EventListener
 	void on(AccountDeleted e) {
+		// Their invites go: nobody is waiting on a deleted player's answer.
+		invites.forget(e.userId());
 		var now = clock.instant();
 		for (var game : games.involving(e.userId(), Limit.of(1000))) {
 			if (!game.hasStarted(now) && !game.isCancelled() && !Game.COMPLETED.equals(game.getStatus())) {

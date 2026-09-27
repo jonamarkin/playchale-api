@@ -18,7 +18,18 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 		VenueRef venue, int capacity, long totalCost, String pricing, String currency, String visibility, UUID hostId, String notes,
 		List<ParticipantResponse> participants, String status, ResultResponse result, FixtureRef fixture, Instant createdAt,
 		Instant cancelledAt, String cancelReason, UserSummary host, List<PlayerResponse> players, FixtureTeamsResponse fixtureTeams,
-		long share, int spotsLeft, String hostPayoutPhone) {
+		long share, int spotsLeft, String hostPayoutPhone, List<InviteResponse> invites) {
+
+	/**
+	 * An invite and its answer: status "pending", "accepted" or "declined". The host sees everyone's;
+	 * an invited player sees only their own; everyone else sees none.
+	 *
+	 * @param teamName set when they were invited with their team
+	 */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record InviteResponse(UUID userId, UUID teamId, String teamName, UUID invitedBy, String status, Instant invitedAt,
+			Instant answeredAt, UserSummary user) {
+	}
 
 	/** What makes a game a league fixture: which league, which round, who's playing. */
 	public record FixtureRef(UUID competitionId, int round, UUID homeTeamId, UUID awayTeamId) {

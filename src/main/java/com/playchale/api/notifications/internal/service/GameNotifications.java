@@ -106,11 +106,20 @@ class GameNotifications {
 		var game = e.game();
 		var host = firstName(game.hostId());
 		var cost = e.share() > 0 ? " · %s each".formatted(market().formatMoney(e.share())) : " · free";
+		var title = e.teamName() == null ? "%s invited you to %s".formatted(host, game.title())
+				: "%s invited %s to %s".formatted(host, e.teamName(), game.title());
 		for (var player : e.playerIds()) {
-			notifications.send(player, "game-invite", "%s invited you to %s".formatted(host, game.title()),
-					"%s · %s%s".formatted(kickoff(game.startsAt()), game.venueName(), cost), "/games/%s".formatted(game.gameId()),
+			notifications.send(player, "game-invite", title,
+					"%s · %s%s. Say if you’re in.".formatted(kickoff(game.startsAt()), game.venueName(), cost), "/games/%s".formatted(game.gameId()),
 					game.hostId());
 		}
+	}
+
+	@EventListener
+	void on(GameEvents.InviteDeclined e) {
+		var game = e.game();
+		notifications.send(game.hostId(), "invite-declined", "%s can’t make %s".formatted(firstName(e.playerId()), game.title()),
+				"They said no to your invite for %s.".formatted(kickoff(game.startsAt())), "/games/%s".formatted(game.gameId()), e.playerId());
 	}
 
 	@EventListener

@@ -13,8 +13,11 @@ import com.playchale.api.games.web.dto.GameRequests.ClaimRequest;
 import com.playchale.api.games.web.dto.GameRequests.DisputeRequest;
 import com.playchale.api.games.web.dto.GameRequests.GuestRequest;
 import com.playchale.api.games.web.dto.GameRequests.GuestResponse;
+import com.playchale.api.games.web.dto.GameRequests.InviteAnswer;
+import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.games.web.dto.GameRequests.InviteRequest;
 import com.playchale.api.games.web.dto.GameRequests.InviteResponse;
+import com.playchale.api.games.web.dto.GameRequests.TeamInviteRequest;
 import com.playchale.api.games.web.dto.GameRequests.RemindRequest;
 import com.playchale.api.games.web.dto.GameRequests.RemindResponse;
 import com.playchale.api.games.web.dto.NewGameRequest;
@@ -56,6 +59,12 @@ class GameController {
 	@GetMapping("/me/games")
 	List<GameResponse> mine(CurrentUser me) {
 		return games.mine(me.id());
+	}
+
+	/** games.invitations: invites waiting for the player's answer. */
+	@GetMapping("/me/invites")
+	List<GameResponse> invitations(CurrentUser me) {
+		return games.invitations(me.id());
 	}
 
 	/** games.get: 404 when it doesn't exist, which the web app reads as null. */
@@ -106,6 +115,21 @@ class GameController {
 	@PostMapping("/games/{id}/invites")
 	InviteResponse invite(CurrentUser me, @PathVariable UUID id, @RequestBody InviteRequest request) {
 		return new InviteResponse(games.invite(id, request.userIds() == null ? List.of() : request.userIds(), me.id()));
+	}
+
+	/** games.inviteTeam */
+	@PostMapping("/games/{id}/team-invites")
+	InviteResponse inviteTeam(CurrentUser me, @PathVariable UUID id, @RequestBody TeamInviteRequest request) {
+		if (request.teamId() == null) {
+			throw BusinessException.invalid("Pick a team to invite.");
+		}
+		return new InviteResponse(games.inviteTeam(id, request.teamId(), me.id()));
+	}
+
+	/** games.answerInvite */
+	@PostMapping("/games/{id}/invite-answers")
+	GameResponse answerInvite(CurrentUser me, @PathVariable UUID id, @RequestBody InviteAnswer request) {
+		return games.answerInvite(id, request.accept(), me.id());
 	}
 
 	/** games.addGuest */
