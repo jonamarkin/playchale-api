@@ -2,6 +2,7 @@ package com.playchale.api.notifications.internal.service;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Map;
 import java.util.UUID;
 
@@ -40,7 +41,7 @@ class GameNotifications {
 			return;
 		}
 		notifications.send(e.venueOwnerId(), "booking", "%s booked %s".formatted(firstName(e.game().hostId()), e.pitchName()),
-				"%s · %s · %s".formatted(e.game().title(), kickoff(e.game().startsAt()), e.game().venueName()),
+				"%s · %s · %s".formatted(e.game().title(), kickoff(e.game()), e.game().venueName()),
 				"/venues/%s/manage".formatted(e.venueId()), e.game().hostId());
 	}
 
@@ -51,7 +52,7 @@ class GameNotifications {
 		var link = "/games/%s".formatted(game.gameId());
 		if (e.claimedGuestSpot()) {
 			notifications.send(game.hostId(), "player-joined", "%s claimed their spot in %s".formatted(who, game.title()),
-					"%d of %d spots filled · %s".formatted(e.filled(), e.capacity(), kickoff(game.startsAt())), link, e.playerId());
+					"%d of %d spots filled · %s".formatted(e.filled(), e.capacity(), kickoff(game)), link, e.playerId());
 		}
 		else if (e.filled() >= e.capacity()) {
 			notifications.send(game.hostId(), "game-full", "%s is full".formatted(game.title()),
@@ -59,7 +60,7 @@ class GameNotifications {
 		}
 		else {
 			notifications.send(game.hostId(), "player-joined", "%s joined %s".formatted(who, game.title()),
-					"%d of %d spots filled · %s".formatted(e.filled(), e.capacity(), kickoff(game.startsAt())), link, e.playerId());
+					"%d of %d spots filled · %s".formatted(e.filled(), e.capacity(), kickoff(game)), link, e.playerId());
 		}
 	}
 
@@ -67,7 +68,7 @@ class GameNotifications {
 	void on(GameEvents.PlayerRemoved e) {
 		var game = e.game();
 		notifications.send(e.playerId(), "removed-from-game", "You’re no longer in %s".formatted(game.title()),
-				"%s removed you from this game, %s. Nothing was charged.".formatted(firstName(game.hostId()), kickoff(game.startsAt())),
+				"%s removed you from this game, %s. Nothing was charged.".formatted(firstName(game.hostId()), kickoff(game)),
 				"/games", game.hostId());
 	}
 
@@ -78,11 +79,11 @@ class GameNotifications {
 		var note = e.reason() == null ? "" : " “%s”".formatted(e.reason());
 		for (var player : e.playerIds()) {
 			notifications.send(player, "game-cancelled", "%s is off".formatted(game.title()),
-					"%s called off the game, %s.%s".formatted(host, kickoff(game.startsAt()), note), "/games", game.hostId());
+					"%s called off the game, %s.%s".formatted(host, kickoff(game), note), "/games", game.hostId());
 		}
 		if (e.venueOwnerId() != null && !e.venueOwnerId().equals(game.hostId())) {
 			notifications.send(e.venueOwnerId(), "booking", "%s released %s".formatted(host, e.pitchName() == null ? "a pitch" : e.pitchName()),
-					"%s was called off · %s · the slot is free again".formatted(game.title(), kickoff(game.startsAt())),
+					"%s was called off · %s · the slot is free again".formatted(game.title(), kickoff(game)),
 					"/venues/%s/manage".formatted(e.venueId()), game.hostId());
 		}
 	}
@@ -93,9 +94,9 @@ class GameNotifications {
 		var game = e.game();
 		var timeChanged = !e.from().equals(game.startsAt());
 		var pitchChanged = e.fromPitch() == null || !e.fromPitch().equals(e.pitchName());
-		var body = timeChanged && pitchChanged ? "%s moved it to %s, %s.".formatted(game.venueName(), e.pitchName(), kickoff(game.startsAt()))
-				: timeChanged ? "%s moved it to %s, still on %s.".formatted(game.venueName(), kickoff(game.startsAt()), e.pitchName())
-				: "%s moved it to %s. Same time: %s.".formatted(game.venueName(), e.pitchName(), kickoff(game.startsAt()));
+		var body = timeChanged && pitchChanged ? "%s moved it to %s, %s.".formatted(game.venueName(), e.pitchName(), kickoff(game))
+				: timeChanged ? "%s moved it to %s, still on %s.".formatted(game.venueName(), kickoff(game), e.pitchName())
+				: "%s moved it to %s. Same time: %s.".formatted(game.venueName(), e.pitchName(), kickoff(game));
 		for (var player : e.playerIds()) {
 			notifications.send(player, "game-moved", "%s has moved".formatted(game.title()), body, "/games/%s".formatted(game.gameId()), null);
 		}
@@ -105,12 +106,12 @@ class GameNotifications {
 	void on(GameEvents.PlayersInvited e) {
 		var game = e.game();
 		var host = firstName(e.invitedBy());
-		var cost = e.share() > 0 ? " · %s each".formatted(market().formatMoney(e.share())) : " · free";
+		var cost = e.share() > 0 ? " · %s each".formatted(money(game, e.share())) : " · free";
 		var title = e.teamName() == null ? "%s invited you to %s".formatted(host, game.title())
 				: "%s invited %s to %s".formatted(host, e.teamName(), game.title());
 		for (var player : e.playerIds()) {
 			notifications.send(player, "game-invite", title,
-					"%s · %s%s. Say if you’re in.".formatted(kickoff(game.startsAt()), game.venueName(), cost), "/games/%s".formatted(game.gameId()),
+					"%s · %s%s. Say if you’re in.".formatted(kickoff(game), game.venueName(), cost), "/games/%s".formatted(game.gameId()),
 					e.invitedBy());
 		}
 	}
@@ -119,7 +120,7 @@ class GameNotifications {
 	void on(GameEvents.ChallengeSent e) {
 		var game = e.game();
 		notifications.send(e.awayCaptainId(), "game-invite", "%s challenged %s".formatted(e.homeTeam(), e.awayTeam()),
-				"%s · %s · %s. Accept or decline from the game.".formatted(game.title(), kickoff(game.startsAt()), game.venueName()),
+				"%s · %s · %s. Accept or decline from the game.".formatted(game.title(), kickoff(game), game.venueName()),
 				"/games/%s".formatted(game.gameId()), game.hostId());
 	}
 
@@ -129,11 +130,11 @@ class GameNotifications {
 		var link = "/games/%s".formatted(game.gameId());
 		if (e.accepted()) {
 			notifications.send(game.hostId(), "squad-reply", "%s accepted your challenge".formatted(e.awayTeam()),
-					"%s · %s. Their players are being asked who’s in.".formatted(game.title(), kickoff(game.startsAt())), link, e.captainId());
+					"%s · %s. Their players are being asked who’s in.".formatted(game.title(), kickoff(game)), link, e.captainId());
 		}
 		else {
 			notifications.send(game.hostId(), "squad-reply", "%s can’t play".formatted(e.awayTeam()),
-					"They turned down %s, %s.".formatted(game.title(), kickoff(game.startsAt())), link, e.captainId());
+					"They turned down %s, %s.".formatted(game.title(), kickoff(game)), link, e.captainId());
 		}
 	}
 
@@ -141,7 +142,7 @@ class GameNotifications {
 	void on(GameEvents.InviteDeclined e) {
 		var game = e.game();
 		notifications.send(game.hostId(), "invite-declined", "%s can’t make %s".formatted(firstName(e.playerId()), game.title()),
-				"They said no to your invite for %s.".formatted(kickoff(game.startsAt())), "/games/%s".formatted(game.gameId()), e.playerId());
+				"They said no to your invite for %s.".formatted(kickoff(game)), "/games/%s".formatted(game.gameId()), e.playerId());
 	}
 
 	@EventListener
@@ -150,10 +151,10 @@ class GameNotifications {
 		var host = firstName(game.hostId());
 		for (var player : e.playerIds()) {
 			// A share of a total, or the price to take part: each said as what it is.
-			var title = e.perPlayer() ? "Pay %s for %s".formatted(market().formatMoney(e.share()), game.title())
-					: "Pay your %s share".formatted(market().formatMoney(e.share()));
+			var title = e.perPlayer() ? "Pay %s for %s".formatted(money(game, e.share()), game.title())
+					: "Pay your %s share".formatted(money(game, e.share()));
 			notifications.send(player, "payment-reminder", title,
-					"%s is collecting for %s, %s.".formatted(host, game.title(), kickoff(game.startsAt())),
+					"%s is collecting for %s, %s.".formatted(host, game.title(), kickoff(game)),
 					"/games/%s?pay=1".formatted(game.gameId()), game.hostId());
 		}
 	}
@@ -182,7 +183,8 @@ class GameNotifications {
 
 	@EventListener
 	void on(PaymentReceived e) {
-		notifications.send(e.hostId(), "payment-received", "%s paid %s".formatted(firstName(e.payerId()), market().formatMoney(e.amount())),
+		// Paying in the app is only in Ghana, so this is always cedis.
+		notifications.send(e.hostId(), "payment-received", "%s paid %s".formatted(firstName(e.payerId()), Market.get(Market.DEFAULT).formatMoney(e.amount())),
 				"%s · %d of %d paid".formatted(e.gameTitle(), e.paid(), e.players()), "/games/%s".formatted(e.gameId()), e.payerId());
 	}
 
@@ -190,12 +192,14 @@ class GameNotifications {
 		return users.find(userId).map(u -> u.name().split(" ")[0]).filter(n -> !n.isBlank()).orElse("Someone");
 	}
 
-	private String kickoff(Instant at) {
-		return market().formatKickoff(at, clock.instant());
+	/** Kick-off in the game's own local time: where it's played. */
+	private String kickoff(GameEvents.GameInfo game) {
+		return Market.get(game.country()).formatKickoff(game.startsAt(), clock.instant(), ZoneId.of(game.timezone()));
 	}
 
-	private static Market market() {
-		return Market.get(Market.DEFAULT);
+	/** Money the game's country's way: "GH₵ 25", "£ 5". */
+	private static String money(GameEvents.GameInfo game, long amount) {
+		return Market.get(game.country()).formatMoney(amount);
 	}
 
 }

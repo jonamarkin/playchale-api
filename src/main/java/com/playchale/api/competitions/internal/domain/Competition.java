@@ -1,17 +1,23 @@
 package com.playchale.api.competitions.internal.domain;
 
+import java.time.DateTimeException;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
 import com.playchale.api.catalog.api.SportCatalog;
+import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.shared.maps.MapLink;
 import com.playchale.api.shared.persistence.AuditableEntity;
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UuidGenerator;
+import org.hibernate.type.SqlTypes;
 
 /**
  * A league: teams play each other in fixtures that are ordinary games. Called a competition so it
@@ -67,6 +73,18 @@ public class Competition extends AuditableEntity {
 
 	/** {@link #PLAYERS_EXPECTED} or {@link #PLAYERS_OPTIONAL}. */
 	private String playerLists = PLAYERS_EXPECTED;
+
+	/** Where it's played (ISO 3166-1), and its money: fixtures take both. */
+	@JdbcTypeCode(SqlTypes.CHAR)
+	@Column(length = 2)
+	private String country = Market.DEFAULT;
+
+	@JdbcTypeCode(SqlTypes.CHAR)
+	@Column(length = 3)
+	private String currency = Market.get(Market.DEFAULT).currency();
+
+	/** Matchdays are in this local time (IANA). */
+	private String timezone = Market.get(Market.DEFAULT).timezone();
 
 	private int pointsWin = 3;
 
@@ -127,6 +145,26 @@ public class Competition extends AuditableEntity {
 		this.venueName = name;
 		this.venueArea = area.isEmpty() ? null : area;
 		this.mapUrl = MapLink.normalise(mapUrl);
+	}
+
+	/** Where it's played: its country's money, and kick-offs in {@code timezone} (left out: the country's own). */
+	public void placeIn(Market market, String timezone) {
+		this.country = market.country();
+		this.currency = market.currency();
+		if (timezone == null || timezone.isBlank()) {
+			this.timezone = market.timezone();
+			return;
+		}
+		try {
+			this.timezone = ZoneId.of(timezone.strip()).getId();
+		}
+		catch (DateTimeException e) {
+			throw BusinessException.invalid("Pick a time zone from the list.");
+		}
+	}
+
+	public ZoneId zone() {
+		return ZoneId.of(timezone);
 	}
 
 	/** The fixtures are out: the league is under way. */
@@ -193,6 +231,18 @@ public class Competition extends AuditableEntity {
 
 	public int getDurationMinutes() {
 		return durationMinutes;
+	}
+
+	public String getCountry() {
+		return country;
+	}
+
+	public String getCurrency() {
+		return currency;
+	}
+
+	public String getTimezone() {
+		return timezone;
 	}
 
 	public String getPlayerLists() {

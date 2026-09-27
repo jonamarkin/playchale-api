@@ -135,8 +135,14 @@ public class GameService {
 	/** games.create. At a partner venue with a pitch picked, the pitch is booked in the same transaction. */
 	@Transactional
 	public GameResponse create(GameDetails details, UUID host) {
-		var game = createGame(details, host);
-		return views.of(game, host);
+		return create(details, null, null, null, host);
+	}
+
+	/**
+	 * Where a game is played: its country (money, phone numbers) and its local time. At a partner
+	 * venue, the venue's; anywhere else, the host's country and the timezone their app sends.
+	 */
+	private record Place(String country, String timezone) {
 	}
 
 	/**
@@ -146,10 +152,17 @@ public class GameService {
 	 */
 	@Transactional
 	public GameResponse create(GameDetails details, UUID homeTeamId, UUID awayTeamId, UUID host) {
+		return create(details, null, homeTeamId, awayTeamId, host);
+	}
+
+	/** As above. {@code timezone} is where a game at a typed-in place is played, as the host's app sends it (IANA). */
+	@Transactional
+	public GameResponse create(GameDetails details, String timezone, UUID homeTeamId, UUID awayTeamId, UUID host) {
+		var place = new Place(countryOf(host), timezone);
 		if (homeTeamId == null && awayTeamId == null) {
-			return create(details, host);
+			return views.of(createGame(details, place, host), host);
 		}
-		return views.of(createFriendly(details, homeTeamId, awayTeamId, host), host);
+		return views.of(createFriendly(details, place, homeTeamId, awayTeamId, host), host);
 	}
 
 	/** games.repeat: the same game a week later, on the same pitch if it's free. A friendly challenges the same team again. */
@@ -157,7 +170,9 @@ public class GameService {
 	public GameResponse repeat(UUID gameId, UUID host) {
 		var game = hosted(gameId, host);
 		var details = game.details().weekLater();
-		return views.of(game.isFriendly() ? createFriendly(details, game.getHomeTeamId(), game.getAwayTeamId(), host) : createGame(details, host), host);
+		var place = new Place(game.getCountry(), game.getTimezone());
+		return views.of(game.isFriendly() ? createFriendly(details, place, game.getHomeTeamId(), game.getAwayTeamId(), host)
+				: createGame(details, place, host), host);
 	}
 
 	/** games.answerChallenge: the away team's captain. Yes puts the team in (and them, if they play for it) and asks its players. */
@@ -311,7 +326,7 @@ public class GameService {
 		var game = hosted(gameId, host);
 		String e164 = null;
 		if (phone != null && !phone.isBlank()) {
-			e164 = Market.get(Market.DEFAULT).normalisePhone(phone)
+			e164 = game.market().normalisePhone(phone)
 				.orElseThrow(() -> BusinessException.invalid("That number doesn’t look right. Leave it blank if you’re not sure."));
 			var number = e164;
 			var players = users.findAll(game.getParticipants().stream().map(Participant::getUserId).filter(Objects::nonNull).toList());
@@ -363,16 +378,21 @@ public class GameService {
 		return views.of(game, host);
 	}
 
-	private Game createGame(GameDetails details, UUID host) {
-		var game = new Game(details, host, Market.get(Market.DEFAULT), clock.instant());
+	/** A new game where it's played: at a partner venue, the venue's country and time; anywhere else, {@code place}. */
+	private Game createGame(GameDetails details, Place place, UUID host) {
+		Game game;
 		if (Game.LISTED.equals(details.venueKind())) {
 			if (details.venueId() == null) {
 				throw BusinessException.invalid("Pick a venue.");
 			}
 			var venue = pitches.findVenue(details.venueId()).orElseThrow(() -> BusinessException.invalid("That venue could not be found."));
+			game = new Game(details, host, Market.get(venue.country()), clock.instant());
+			game.keepTime(venue.timezone());
 			game.playAt(venue.id(), venue.name(), venue.area(), null, null);
 		}
 		else {
+			game = new Game(details, host, Market.get(place.country()), clock.instant());
+			game.keepTime(place.timezone());
 			game.playAt(details.venueName(), details.venueArea(), details.venueMapUrl());
 		}
 		games.save(game);
@@ -451,7 +471,7 @@ public class GameService {
 	}
 
 	/** A friendly: the host's team at home, the other team challenged (or straight in, when the host captains both). */
-	private Game createFriendly(GameDetails details, UUID homeTeamId, UUID awayTeamId, UUID host) {
+	private Game createFriendly(GameDetails details, Place place, UUID homeTeamId, UUID awayTeamId, UUID host) {
 		if (homeTeamId == null || awayTeamId == null) {
 			throw BusinessException.invalid("Pick your team and the team you’re playing.");
 		}
@@ -464,7 +484,7 @@ public class GameService {
 			throw BusinessException.conflict("Only %s can set up a game for %s.".formatted(firstName(home.captainId()), home.name()));
 		}
 		var named = details.title() == null || details.title().isBlank() ? details.withTitle("%s vs %s".formatted(home.name(), away.name())) : details;
-		var game = createGame(named, host);
+		var game = createGame(named, place, host);
 		var accepted = away.captainId().equals(host);
 		game.challenge(home.id(), away.id(), accepted);
 		ask(game, home.memberIds(), home.id(), home.name(), host);
@@ -494,7 +514,12 @@ public class GameService {
 	}
 
 	private static long share(Game game) {
-		return game.share(Market.get(Market.DEFAULT));
+		return game.share();
+	}
+
+	/** The host's country: where a game at a typed-in place is, unless it says otherwise. */
+	private String countryOf(UUID userId) {
+		return users.find(userId).map(UserSummary::country).filter(Market::exists).orElse(Market.DEFAULT);
 	}
 
 	/**
@@ -512,7 +537,8 @@ public class GameService {
 	}
 
 	static GameEvents.GameInfo info(Game game) {
-		return new GameEvents.GameInfo(game.getId(), game.getTitle(), game.getStartsAt(), game.getHostId(), game.getVenueName());
+		return new GameEvents.GameInfo(game.getId(), game.getTitle(), game.getStartsAt(), game.getHostId(), game.getVenueName(), game.getCountry(),
+				game.getTimezone());
 	}
 
 	static BusinessException notFound() {

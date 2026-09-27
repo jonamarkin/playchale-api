@@ -64,10 +64,24 @@ public class VenueService {
 		return venues.findByOwnerIdOrderByCreatedAt(owner).stream().map(v -> VenueResponse.of(v, null)).toList();
 	}
 
-	/** venues.create: listed in the owner's market straight away. */
+	/** venues.create: listed straight away, in the owner's country unless another is given. */
 	@Transactional
 	public VenueResponse create(UUID owner, VenueDetails details) {
-		var venue = new Venue(owner, Market.get(Market.DEFAULT));
+		return create(owner, details, null, null);
+	}
+
+	/**
+	 * As above, in {@code country} and {@code timezone} (where it is: its money and opening hours go by
+	 * them). Left out: the owner's country, and its own time.
+	 */
+	@Transactional
+	public VenueResponse create(UUID owner, VenueDetails details, String country, String timezone) {
+		var where = country == null || country.isBlank() ? users.find(owner).map(u -> u.country()).orElse(Market.DEFAULT) : country;
+		if (!Market.exists(where)) {
+			throw BusinessException.invalid("Pick the country your venue is in.");
+		}
+		var venue = new Venue(owner, Market.get(where));
+		venue.keepTime(timezone);
 		venue.apply(details, clock.instant());
 		return VenueResponse.of(venues.save(venue), null);
 	}

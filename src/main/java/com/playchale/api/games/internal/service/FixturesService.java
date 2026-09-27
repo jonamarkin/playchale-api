@@ -37,10 +37,9 @@ class FixturesService implements Fixtures {
 	@Transactional
 	public void create(List<FixtureSpec> fixtures) {
 		var now = clock.instant();
-		var market = Market.get(Market.DEFAULT);
 		for (var f : fixtures) {
 			var game = Game.fixture(f.competitionId(), f.round(), f.homeTeamId(), f.awayTeamId(), f.title(), f.sport(), f.format(),
-					f.startsAt(), f.durationMinutes(), f.organiserId(), f.squad(), market, now);
+					f.startsAt(), f.durationMinutes(), f.organiserId(), f.squad(), Market.get(f.country()), f.timezone(), now);
 			if (Game.LISTED.equals(f.venueKind())) {
 				game.playAt(f.venueId(), f.venueName(), f.venueArea(), null, null);
 			}

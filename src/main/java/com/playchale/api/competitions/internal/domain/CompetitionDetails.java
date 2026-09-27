@@ -9,7 +9,15 @@ import java.util.UUID;
  * @param venueKind   "listed" (a partner venue, {@code venueId} set) or "unlisted" (any name)
  * @param playerLists "expected" (teams of players; the default when left out) or "optional" (schools or
  *                    organisations, whose teams may list no players)
+ * @param timezone    where it's played, as the organiser's app sends it (IANA), for a typed-in place;
+ *                    a partner venue's is its own
  */
 public record CompetitionDetails(String name, String sport, String format, String venueKind, UUID venueId, String venueName,
-		String venueArea, String venueMapUrl, Instant startsAt, int durationMinutes, String playerLists) {
+		String venueArea, String venueMapUrl, Instant startsAt, int durationMinutes, String playerLists, String timezone) {
+
+	public CompetitionDetails(String name, String sport, String format, String venueKind, UUID venueId, String venueName,
+			String venueArea, String venueMapUrl, Instant startsAt, int durationMinutes, String playerLists) {
+		this(name, sport, format, venueKind, venueId, venueName, venueArea, venueMapUrl, startsAt, durationMinutes, playerLists, null);
+	}
+
 }

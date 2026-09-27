@@ -76,6 +76,9 @@ public class PaymentService implements InitializingBean {
 		this.clock = clock;
 	}
 
+	/** The one currency paid in the app so far: Paystack in Ghana. */
+	static final String IN_APP_CURRENCY = "GHS";
+
 	/**
 	 * payments.start: starts collecting the player's share. It stays pending until they approve it on
 	 * their phone, or pay on the provider's checkout page (its link comes back as authorizationUrl).
@@ -87,6 +90,10 @@ public class PaymentService implements InitializingBean {
 		}
 		var provider = providers.getObject();
 		var share = games.shareDue(gameId, me);
+		// Paystack here takes cedis: a game anywhere else is paid to its host directly.
+		if (!IN_APP_CURRENCY.equals(share.currency())) {
+			throw BusinessException.conflict("Paying in the app isn’t available in this country yet. Pay the host directly, and they’ll mark you as paid.");
+		}
 		var email = users.find(me).map(u -> u.email()).orElse(null);
 		if (provider.needsEmail() && email == null) {
 			throw BusinessException.invalid("Add your email address first. Paystack sends your receipt there.");

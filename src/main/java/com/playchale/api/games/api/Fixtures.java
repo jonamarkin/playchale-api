@@ -15,11 +15,12 @@ public interface Fixtures {
 	 * nobody pays through the app for a league game.
 	 *
 	 * @param venueKind "listed" (with {@code venueId}) or "unlisted" (maybe with a {@code venueMapUrl})
+	 * @param country   the league's country (ISO 3166-1)
+	 * @param timezone  the league's local time (IANA)
 	 */
 	record FixtureSpec(UUID competitionId, int round, UUID homeTeamId, UUID awayTeamId, String title, String sport, String format,
 			Instant startsAt, int durationMinutes, String venueKind, UUID venueId, String venueName, String venueArea, String venueMapUrl,
-			UUID organiserId,
-			List<UUID> squad) {
+			UUID organiserId, List<UUID> squad, String country, String timezone) {
 	}
 
 	/**

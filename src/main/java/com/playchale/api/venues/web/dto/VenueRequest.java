@@ -9,10 +9,14 @@ import com.playchale.api.venues.internal.domain.VenueDetails;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 
-/** The web app's VenueInput. Closed days are null in {@code hours}. */
+/**
+ * The web app's VenueInput. Closed days are null in {@code hours}. {@code country} and
+ * {@code timezone} are where it is, and only count when the venue is listed: they're fixed after,
+ * since its prices are in that country's money.
+ */
 public record VenueRequest(String name, String area, String description, String address, String mapUrl, String phone,
 		@NotNull(message = "Add at least one pitch or court.") List<@Valid PitchRequest> pitches,
-		@NotNull(message = "Add your opening hours.") List<HoursRequest> hours, List<String> amenities) {
+		@NotNull(message = "Add your opening hours.") List<HoursRequest> hours, List<String> amenities, String country, String timezone) {
 
 	/** Existing pitches keep their id, so their bookings stay attached; new ones leave it out. */
 	public record PitchRequest(UUID id, String name, String sport, String format, String surface, long pricePerHour) {

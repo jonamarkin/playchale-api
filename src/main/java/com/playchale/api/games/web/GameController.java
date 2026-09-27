@@ -77,7 +77,7 @@ class GameController {
 	@PostMapping("/games")
 	@ResponseStatus(HttpStatus.CREATED)
 	GameResponse create(CurrentUser me, @Valid @RequestBody NewGameRequest request) {
-		return games.create(request.toDetails(), request.homeTeamId(), request.awayTeamId(), me.id());
+		return games.create(request.toDetails(), request.timezone(), request.homeTeamId(), request.awayTeamId(), me.id());
 	}
 
 	/** games.repeat */

@@ -1,7 +1,9 @@
 package com.playchale.api.games.internal.domain;
 
 import java.time.Duration;
+import java.time.DateTimeException;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -102,6 +104,14 @@ public class Game extends AuditableEntity {
 	@Column(length = 3)
 	private String currency;
 
+	/** Where it's played, ISO 3166-1: its money and phone numbers go by this country. */
+	@JdbcTypeCode(SqlTypes.CHAR)
+	@Column(length = 2)
+	private String country;
+
+	/** Where it's played, IANA: kick-off is shown in this local time. */
+	private String timezone;
+
 	private String visibility;
 
 	private UUID hostId;
@@ -183,6 +193,8 @@ public class Game extends AuditableEntity {
 		}
 		this.pricing = details.totalCost() == 0 ? SPLIT : pricing;
 		this.currency = market.currency();
+		this.country = market.country();
+		this.timezone = market.timezone();
 		this.visibility = details.visibility();
 		this.hostId = hostId;
 		var notes = details.notes() == null ? "" : details.notes().strip();
@@ -199,7 +211,8 @@ public class Game extends AuditableEntity {
 	 * app for a league game.
 	 */
 	public static Game fixture(UUID competitionId, int round, UUID homeTeamId, UUID awayTeamId, String title, String sport,
-			String format, Instant startsAt, int durationMinutes, UUID organiserId, List<UUID> squad, Market market, Instant now) {
+			String format, Instant startsAt, int durationMinutes, UUID organiserId, List<UUID> squad, Market market, String timezone,
+			Instant now) {
 		var game = new Game();
 		game.sport = sport;
 		game.format = format;
@@ -208,6 +221,8 @@ public class Game extends AuditableEntity {
 		game.durationMinutes = durationMinutes;
 		game.totalCost = 0;
 		game.currency = market.currency();
+		game.country = market.country();
+		game.keepTime(timezone);
 		game.visibility = "public";
 		game.hostId = organiserId;
 		game.competitionId = competitionId;
@@ -400,6 +415,42 @@ public class Game extends AuditableEntity {
 			throw BusinessException.conflict("This invite was sent to a different number. Ask the host to add yours.");
 		}
 		spot.claimFor(userId);
+	}
+
+	/**
+	 * Kick-off is in this local time: where it's played. Anything that isn't a real IANA zone is
+	 * refused; left out, the country's own.
+	 */
+	public void keepTime(String timezone) {
+		if (timezone == null || timezone.isBlank()) {
+			this.timezone = Market.get(country).timezone();
+			return;
+		}
+		try {
+			this.timezone = ZoneId.of(timezone.strip()).getId();
+		}
+		catch (DateTimeException e) {
+			throw BusinessException.invalid("Pick a time zone from the list.");
+		}
+	}
+
+	/** Its country's market: money and phone numbers here go by it. */
+	public Market market() {
+		return Market.get(country);
+	}
+
+	public ZoneId zone() {
+		return ZoneId.of(timezone);
+	}
+
+	/** What a player owes before paying in the app, in the game's own money. */
+	public long shareDue(UUID userId) {
+		return shareDue(userId, market());
+	}
+
+	/** What each spot pays, in the game's own money. */
+	public long share() {
+		return share(market());
 	}
 
 	/** What a player owes before paying in the app. */
@@ -645,6 +696,14 @@ public class Game extends AuditableEntity {
 
 	public String getCurrency() {
 		return currency;
+	}
+
+	public String getCountry() {
+		return country;
+	}
+
+	public String getTimezone() {
+		return timezone;
 	}
 
 	public String getVisibility() {

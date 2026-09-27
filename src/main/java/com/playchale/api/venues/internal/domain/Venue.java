@@ -2,6 +2,7 @@ package com.playchale.api.venues.internal.domain;
 
 import java.time.DayOfWeek;
 import java.time.Duration;
+import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -89,6 +90,19 @@ public class Venue extends AuditableEntity {
 		this.currency = market.currency();
 		this.timezone = market.timezone();
 		this.listed = true;
+	}
+
+	/** Its opening hours and bookings are in this local time (IANA). Left out, its country's own. */
+	public void keepTime(String timezone) {
+		if (timezone == null || timezone.isBlank()) {
+			return;
+		}
+		try {
+			this.timezone = ZoneId.of(timezone.strip()).getId();
+		}
+		catch (DateTimeException e) {
+			throw BusinessException.invalid("Pick a time zone from the list.");
+		}
 	}
 
 	/**
@@ -245,6 +259,14 @@ public class Venue extends AuditableEntity {
 
 	public String getPhone() {
 		return phone;
+	}
+
+	public String getCountry() {
+		return country;
+	}
+
+	public String getTimezone() {
+		return timezone;
 	}
 
 	public String getCurrency() {

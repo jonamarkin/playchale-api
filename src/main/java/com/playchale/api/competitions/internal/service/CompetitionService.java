@@ -104,9 +104,11 @@ public class CompetitionService {
 			var venue = venues.findVenue(details.venueId() == null ? new UUID(0, 0) : details.venueId())
 				.orElseThrow(() -> BusinessException.invalid("That venue could not be found."));
 			competition.playAt(venue.id(), venue.name(), venue.area());
+			competition.placeIn(Market.get(venue.country()), venue.timezone());
 		}
 		else {
 			competition.playAt(details.venueName(), details.venueArea(), details.venueMapUrl());
+			competition.placeIn(Market.get(users.find(me).map(u -> u.country()).orElse(Market.DEFAULT)), details.timezone());
 		}
 		return views.of(competitions.save(competition), me);
 	}
@@ -205,7 +207,8 @@ public class CompetitionService {
 		}
 		var byId = squads.stream().collect(Collectors.toMap(Entry::getTeamId, e -> e));
 		var rounds = RoundRobin.rounds(squads.stream().map(Entry::getTeamId).toList());
-		var firstDay = competition.getStartsAt().atZone(Market.get(Market.DEFAULT).zone());
+		// Matchdays a week apart in local time, so a clock change doesn't move kick-off.
+		var firstDay = competition.getStartsAt().atZone(competition.zone());
 		var specs = new ArrayList<Fixtures.FixtureSpec>();
 		for (int round = 0; round < rounds.size(); round++) {
 			var pairs = rounds.get(round);
@@ -217,8 +220,7 @@ public class CompetitionService {
 						"%s vs %s".formatted(cards.get(home.getTeamId()).name(), cards.get(away.getTeamId()).name()),
 						competition.getSport(), competition.getFormat(), startsAt, competition.getDurationMinutes(), competition.getVenueKind(),
 						competition.getVenueId(), competition.getVenueName(), competition.getVenueArea(), competition.getMapUrl(),
-						competition.getOrganiserId(),
-						squadOf(home, away)));
+						competition.getOrganiserId(), squadOf(home, away), competition.getCountry(), competition.getTimezone()));
 			}
 		}
 		fixtures.create(specs);
@@ -417,7 +419,7 @@ public class CompetitionService {
 	}
 
 	private static LeagueInfo info(Competition c) {
-		return new LeagueInfo(c.getId(), c.getName());
+		return new LeagueInfo(c.getId(), c.getName(), c.getCountry(), c.getTimezone());
 	}
 
 }

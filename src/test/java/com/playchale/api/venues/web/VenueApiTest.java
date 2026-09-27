@@ -31,7 +31,7 @@ class VenueApiTest {
 
 	/** The web app's Venue type (webapp/app/types/domain.ts). If this changes, both must. */
 	private static final Set<String> VENUE_FIELDS = Set.of("id", "name", "area", "sports", "listed", "ownerId", "description",
-			"address", "phone", "pitches", "hours", "amenities", "createdAt");
+			"address", "phone", "pitches", "hours", "amenities", "createdAt", "country", "currency", "timezone");
 
 	/** What the web app's venue form sends: Sundays closed. */
 	private static final String OSU = """

@@ -11,14 +11,16 @@ import com.playchale.api.users.api.UserSummary;
 /**
  * A game as the web app's GameView type: the game, with the people it mentions filled in, each
  * player's share and the spots left. {@code hostPayoutPhone} is where to send the host your share,
- * shown only to players in the game.
+ * shown only to players in the game. {@code country} and {@code timezone} are where it's played: its
+ * money is in that country's currency, and kick-off is in that local time.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record GameResponse(UUID id, String sport, String format, String title, Instant startsAt, int durationMinutes,
 		VenueRef venue, int capacity, long totalCost, String pricing, String currency, String visibility, UUID hostId, String notes,
 		List<ParticipantResponse> participants, String status, ResultResponse result, FixtureRef fixture, Instant createdAt,
 		Instant cancelledAt, String cancelReason, UserSummary host, List<PlayerResponse> players, FixtureTeamsResponse fixtureTeams,
-		long share, int spotsLeft, String hostPayoutPhone, List<InviteResponse> invites, FriendlyResponse friendly) {
+		long share, int spotsLeft, String hostPayoutPhone, List<InviteResponse> invites, FriendlyResponse friendly, String country,
+		String timezone) {
 
 	/**
 	 * A friendly's two teams, each with who's playing for it here, and where the challenge stands:

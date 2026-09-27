@@ -12,13 +12,13 @@ import com.playchale.api.venues.internal.domain.Venue;
 
 /**
  * A venue as the web app's Venue type, or VenueView when {@code owner} is filled in. Closed days are
- * null in {@code hours}.
+ * null in {@code hours}. Prices are in {@code currency}, hours and bookings in {@code timezone}.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record VenueResponse(UUID id, String name, String area, List<String> sports, boolean listed, UUID ownerId,
 		String description, String address, String mapUrl, String phone, List<PitchResponse> pitches,
 		@JsonInclude(JsonInclude.Include.ALWAYS) List<DayHours> hours, List<String> amenities, Instant createdAt,
-		UserSummary owner) {
+		UserSummary owner, String country, String currency, String timezone) {
 
 	public record PitchResponse(UUID id, String name, String sport, String format, String surface, long pricePerHour) {
 
@@ -31,7 +31,7 @@ public record VenueResponse(UUID id, String name, String area, List<String> spor
 	static VenueResponse of(Venue v, UserSummary owner) {
 		return new VenueResponse(v.getId(), v.getName(), v.getArea(), v.sports(), v.isListed(), v.getOwnerId(),
 				v.getDescription(), v.getAddress(), v.getMapUrl(), v.getPhone(), v.activePitches().stream().map(PitchResponse::of).toList(),
-				v.hours(), v.getAmenities(), v.getCreatedAt(), owner);
+				v.hours(), v.getAmenities(), v.getCreatedAt(), owner, v.getCountry(), v.getCurrency(), v.getTimezone());
 	}
 
 }

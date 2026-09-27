@@ -14,8 +14,13 @@ public final class GameEvents {
 	private GameEvents() {
 	}
 
-	/** The facts about a game most events need. */
-	public record GameInfo(UUID gameId, String title, Instant startsAt, UUID hostId, String venueName) {
+	/**
+	 * The facts about a game most events need.
+	 *
+	 * @param country  where it's played (ISO 3166-1): its money is written that country's way
+	 * @param timezone where it's played (IANA): kick-off is said in this local time
+	 */
+	public record GameInfo(UUID gameId, String title, Instant startsAt, UUID hostId, String venueName, String country, String timezone) {
 	}
 
 	/**

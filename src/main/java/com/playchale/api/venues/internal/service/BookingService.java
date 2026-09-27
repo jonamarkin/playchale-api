@@ -60,7 +60,7 @@ public class BookingService implements PitchBookings {
 	@Override
 	@Transactional(readOnly = true)
 	public Optional<VenueSummary> findVenue(UUID venueId) {
-		return venues.findById(venueId).map(v -> new VenueSummary(v.getId(), v.getName(), v.getArea(), v.getOwnerId()));
+		return venues.findById(venueId).map(v -> new VenueSummary(v.getId(), v.getName(), v.getArea(), v.getOwnerId(), v.getCountry(), v.getCurrency(), v.getTimezone()));
 	}
 
 	@Override

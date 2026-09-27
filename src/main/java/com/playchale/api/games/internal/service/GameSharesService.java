@@ -8,7 +8,6 @@ import java.util.stream.Collectors;
 import com.playchale.api.games.api.GameShares;
 import com.playchale.api.games.internal.domain.Game;
 import com.playchale.api.games.internal.repository.GameRepository;
-import com.playchale.api.market.Market;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,7 +25,7 @@ class GameSharesService implements GameShares {
 	@Transactional(readOnly = true)
 	public ShareDue shareDue(UUID gameId, UUID userId) {
 		var game = games.findById(gameId).orElseThrow(GameService::notFound);
-		var amount = game.shareDue(userId, Market.get(Market.DEFAULT));
+		var amount = game.shareDue(userId);
 		return new ShareDue(game.getId(), game.getTitle(), game.getHostId(), amount, game.getCurrency());
 	}
 

@@ -19,7 +19,6 @@ import com.playchale.api.games.internal.domain.Participant;
 import com.playchale.api.games.internal.domain.ResultLine;
 import com.playchale.api.games.internal.repository.GameInviteRepository;
 import com.playchale.api.games.internal.repository.GameResultRepository;
-import com.playchale.api.market.Market;
 import com.playchale.api.teams.api.TeamCard;
 import com.playchale.api.teams.api.TeamDirectory;
 import com.playchale.api.users.api.UserDirectory;
@@ -128,7 +127,6 @@ class GameViews {
 	private GameResponse view(Game g, UUID viewer, Map<UUID, UserSummary> people, GameResult result,
 			Map<UUID, FixtureTeams.TeamCard> teams, Map<UUID, String> mapLinks, List<GameResponse.InviteResponse> invites,
 			GameResponse.FriendlyResponse friendly) {
-		var market = Market.get(Market.DEFAULT);
 		var hostView = g.isHost(viewer);
 		var mapUrl = g.getVenueId() != null ? mapLinks.get(g.getVenueId()) : g.getMapUrl();
 		var venue = new GameResponse.VenueRef(g.getVenueKind(), g.getVenueId(), g.getVenueName(), g.getVenueArea(), g.getPitchId(),
@@ -153,8 +151,9 @@ class GameViews {
 		return new GameResponse(g.getId(), g.getSport(), g.getFormat(), g.getTitle(), g.getStartsAt(), g.getDurationMinutes(), venue,
 				g.getCapacity(), g.getTotalCost(), g.getPricing(), g.getCurrency(), g.getVisibility(), g.getHostId(), g.getNotes(), participants,
 				g.getStatus(), result == null ? null : result(result), fixture, g.getCreatedAt(), g.getCancelledAt(), g.getCancelReason(),
-				host == null ? null : host.as(viewer), players, fixtureTeams, g.share(market), g.spotsLeft(),
-				host != null && viewer != null && g.spotOf(viewer).isPresent() ? host.payoutPhone() : null, invites, friendly);
+				host == null ? null : host.as(viewer), players, fixtureTeams, g.share(), g.spotsLeft(),
+				host != null && viewer != null && g.spotOf(viewer).isPresent() ? host.payoutPhone() : null, invites, friendly, g.getCountry(),
+				g.getTimezone());
 	}
 
 	private static GameResponse.ResultResponse result(GameResult r) {

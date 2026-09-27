@@ -1,6 +1,7 @@
 package com.playchale.api.notifications.internal.service;
 
 import java.time.Clock;
+import java.time.ZoneId;
 import java.util.UUID;
 
 import com.playchale.api.competitions.api.CompetitionEvents;
@@ -75,7 +76,9 @@ class CompetitionNotifications {
 
 	@EventListener
 	void on(CompetitionEvents.FixturesDrawn e) {
-		var kickoff = Market.get(Market.DEFAULT).formatKickoff(e.startsAt(), clock.instant());
+		// In the league's own local time: where it's played.
+		var league = e.league();
+		var kickoff = Market.get(league.country()).formatKickoff(e.startsAt(), clock.instant(), ZoneId.of(league.timezone()));
 		for (var player : e.playerIds()) {
 			notifications.send(player, "game-invite", "%s: fixtures are out".formatted(e.league().name()),
 					"%d rounds, starting %s.".formatted(e.rounds(), kickoff), link(e.league()), e.organiserId());

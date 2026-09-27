@@ -64,7 +64,7 @@ class VenueController {
 	@PostMapping("/venues")
 	@ResponseStatus(HttpStatus.CREATED)
 	VenueResponse create(CurrentUser me, @Valid @RequestBody VenueRequest request) {
-		return venues.create(me.id(), request.toDetails());
+		return venues.create(me.id(), request.toDetails(), request.country(), request.timezone());
 	}
 
 	/** venues.update */

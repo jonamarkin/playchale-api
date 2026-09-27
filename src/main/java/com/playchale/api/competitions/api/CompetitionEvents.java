@@ -10,7 +10,8 @@ public final class CompetitionEvents {
 	private CompetitionEvents() {
 	}
 
-	public record LeagueInfo(UUID competitionId, String name) {
+	/** @param country and @param timezone where it's played: kick-offs are said in that local time */
+	public record LeagueInfo(UUID competitionId, String name, String country, String timezone) {
 	}
 
 	/** A captain or the organiser put players in a squad. */

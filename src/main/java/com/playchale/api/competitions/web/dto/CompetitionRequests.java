@@ -15,11 +15,12 @@ public final class CompetitionRequests {
 
 	/** The web app's NewCompetitionInput. */
 	public record NewCompetition(String name, String sport, String format, @NotNull(message = "Say where the fixtures are played.") Venue venue,
-			@NotNull(message = "Pick a first matchday in the future.") Instant startsAt, int durationMinutes, String playerLists) {
+			@NotNull(message = "Pick a first matchday in the future.") Instant startsAt, int durationMinutes, String playerLists,
+			String timezone) {
 
 		public CompetitionDetails toDetails() {
 			return new CompetitionDetails(name, sport, format, "listed".equals(venue.kind()) ? "listed" : "unlisted", venue.venueId(),
-					venue.name(), venue.area(), venue.mapUrl(), startsAt, durationMinutes, playerLists);
+					venue.name(), venue.area(), venue.mapUrl(), startsAt, durationMinutes, playerLists, timezone);
 		}
 
 	}
