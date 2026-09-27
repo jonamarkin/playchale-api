@@ -33,7 +33,7 @@ class GameApiTest {
 	/** The web app's GameView (Game plus host, players, share, spotsLeft). Optional fields may be absent. */
 	private static final Set<String> GAME_VIEW_FIELDS = Set.of("id", "sport", "format", "title", "startsAt", "durationMinutes",
 			"venue", "capacity", "totalCost", "pricing", "currency", "visibility", "hostId", "notes", "participants", "status", "result",
-			"fixture", "createdAt", "cancelledAt", "cancelReason", "host", "players", "fixtureTeams", "share", "spotsLeft");
+			"fixture", "createdAt", "cancelledAt", "cancelReason", "host", "players", "fixtureTeams", "share", "spotsLeft", "invites");
 
 	private static final String NEW_GAME = """
 			{"sport":"football","format":"5-a-side","title":"Sunday 5s","startsAt":"2030-06-02T16:00:00.000Z","durationMinutes":60,
@@ -120,6 +120,36 @@ class GameApiTest {
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.participants[1].guest").doesNotExist())
 			.andExpect(jsonPath("$.participants[1].userId").isNotEmpty());
+	}
+
+	@Test
+	void invitesAndAnswersOverHttp() throws Exception {
+		var kwame = TestSignIn.as(mvc, "024 455 5123");
+		var esi = TestSignIn.as(mvc, "024 455 5127");
+		var id = json.readTree(mvc.perform(post("/games").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content(NEW_GAME))
+			.andReturn().getResponse().getContentAsString()).get("id").asString();
+		var team = json.readTree(mvc.perform(post("/teams").cookie(esi).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Labone United\"}"))
+			.andReturn().getResponse().getContentAsString()).get("id").asString();
+		mvc.perform(post("/games/" + id + "/team-invites").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("{\"teamId\":\"%s\"}".formatted(team)))
+			.andExpect(status().isConflict())
+			.andExpect(jsonPath("$.error.message").value("You can only invite a team you’re in."));
+
+		var esiId = json.readTree(mvc.perform(get("/me/teams").cookie(esi)).andReturn().getResponse().getContentAsString()).get(0).get("captainId").asString();
+		mvc.perform(post("/games/" + id + "/invites").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("{\"userIds\":[\"%s\"]}".formatted(esiId)))
+			.andExpect(jsonPath("$.invited").value(1));
+		mvc.perform(get("/me/invites").cookie(esi)).andExpect(jsonPath("$[0].id").value(id))
+			.andExpect(jsonPath("$[0].invites.length()").value(1))
+			.andExpect(jsonPath("$[0].invites[0].status").value("pending"))
+			.andExpect(jsonPath("$[0].invites[0].user.phone").exists());
+		mvc.perform(get("/games/" + id)).andExpect(jsonPath("$.invites").doesNotExist());
+
+		mvc.perform(post("/games/" + id + "/invite-answers").cookie(esi).contentType(MediaType.APPLICATION_JSON).content("{\"accept\":false}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.invites[0].status").value("declined"));
+		mvc.perform(get("/games/" + id).cookie(kwame))
+			.andExpect(jsonPath("$.invites[0].status").value("declined"))
+			.andExpect(jsonPath("$.invites[0].user.phone").doesNotExist());
+		mvc.perform(get("/me/invites").cookie(esi)).andExpect(jsonPath("$.length()").value(0));
 	}
 
 	@Test
