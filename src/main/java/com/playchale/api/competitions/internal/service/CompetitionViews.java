@@ -76,7 +76,7 @@ class CompetitionViews {
 		return new CompetitionResponse(c.getId(), c.getName(), c.getSport(), c.getFormat(), c.getOrganiserId(), venue, c.getStartsAt(),
 				c.getDurationMinutes(), c.getStatus(), new CompetitionResponse.Points(c.getPointsWin(), c.getPointsDraw(), c.getPointsLoss()),
 				c.getCreatedAt(), shown(people.get(c.getOrganiserId()), viewer), teamViews, table(c, squads, cards, summaries, viewer), views, rounds,
-				requestViews);
+				requestViews, c.getPlayerLists());
 	}
 
 	/**

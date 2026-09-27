@@ -148,7 +148,7 @@ class AccountDeletionTest {
 
 		var organiser = users.registerOrFind("+233244555120", "GH").id();
 		competitions.create(new CompetitionDetails("Office League", "football", "5-a-side", "unlisted", null, "Legon Park", null, null,
-				NOW.plus(Duration.ofDays(7)), 60), organiser);
+				NOW.plus(Duration.ofDays(7)), 60, null), organiser);
 		assertThatThrownBy(() -> profiles.deleteAccount(organiser)).hasMessageStartingWith("You organise a league that’s still going.");
 	}
 

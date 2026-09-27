@@ -28,6 +28,11 @@ public class Competition extends AuditableEntity {
 	public static final String FINISHED = "finished";
 
 	/** Crest colours, handed out to teams in turn. Same palette as the web app. */
+	public static final String PLAYERS_EXPECTED = "expected";
+
+	/** Schools or organisations: a team may play with no players listed, and its fixtures take a score only. */
+	public static final String PLAYERS_OPTIONAL = "optional";
+
 	public static final List<String> TEAM_TINTS = List.of("#7cf0c8", "#a9c4f2", "#f2d4a9", "#d9b8e8", "#b7d3c9", "#f5c9b3", "#c9a1d8",
 			"#e8e8e4");
 
@@ -59,6 +64,9 @@ public class Competition extends AuditableEntity {
 	private int durationMinutes;
 
 	private String status;
+
+	/** {@link #PLAYERS_EXPECTED} or {@link #PLAYERS_OPTIONAL}. */
+	private String playerLists = PLAYERS_EXPECTED;
 
 	private int pointsWin = 3;
 
@@ -92,6 +100,11 @@ public class Competition extends AuditableEntity {
 		this.startsAt = details.startsAt();
 		this.durationMinutes = details.durationMinutes();
 		this.status = DRAFT;
+		var lists = details.playerLists() == null ? PLAYERS_EXPECTED : details.playerLists();
+		if (!PLAYERS_EXPECTED.equals(lists) && !PLAYERS_OPTIONAL.equals(lists)) {
+			throw BusinessException.invalid("Say whether teams list their players.");
+		}
+		this.playerLists = lists;
 	}
 
 	/** Fixtures played at a partner venue. */
@@ -180,6 +193,10 @@ public class Competition extends AuditableEntity {
 
 	public int getDurationMinutes() {
 		return durationMinutes;
+	}
+
+	public String getPlayerLists() {
+		return playerLists;
 	}
 
 	public String getStatus() {

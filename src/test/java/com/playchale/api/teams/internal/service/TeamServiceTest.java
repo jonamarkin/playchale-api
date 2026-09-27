@@ -157,7 +157,7 @@ class TeamServiceTest {
 		var ballers = teams.create("Osu Ballers", null, List.of(ama), kojo);
 		var mine = teams.create("Sam's Six", null, List.of(esi), sam);
 		var league = competitions.create(new CompetitionDetails("Office League", "football", "5-a-side", "unlisted", null, "Legon Park",
-				"Legon", null, Instant.parse("2030-06-01T09:00:00Z"), 60), sam);
+				"Legon", null, Instant.parse("2030-06-01T09:00:00Z"), 60, null), sam);
 
 		var withMine = competitions.addTeam(league.id(), mine.id(), null, null, null, sam);
 		assertThat(team(withMine, "Sam's Six").status()).as("the organiser's own team goes straight in").isNull();
@@ -196,7 +196,7 @@ class TeamServiceTest {
 	void aCaptainCanTurnALeagueDownAndDeleteATeamNotInOne() {
 		var ballers = teams.create("Osu Ballers", null, List.of(), kojo);
 		var league = competitions.create(new CompetitionDetails("Office League", "football", "5-a-side", "unlisted", null, "Legon Park",
-				"Legon", null, Instant.parse("2030-06-01T09:00:00Z"), 60), sam);
+				"Legon", null, Instant.parse("2030-06-01T09:00:00Z"), 60, null), sam);
 		competitions.addTeam(league.id(), ballers.id(), null, null, null, sam);
 		assertThat(competitions.answerEntry(league.id(), ballers.id(), false, kojo).teams()).isEmpty();
 		assertThat(titlesFor(sam)).containsExactly("Osu Ballers won’t play in Office League");

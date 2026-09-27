@@ -29,7 +29,7 @@ class CompetitionApiTest {
 
 	/** The web app's CompetitionView. */
 	private static final Set<String> VIEW_FIELDS = Set.of("id", "name", "sport", "format", "organiserId", "venue", "startsAt",
-			"durationMinutes", "status", "points", "createdAt", "organiser", "teams", "table", "fixtures", "rounds", "requests");
+			"durationMinutes", "status", "points", "createdAt", "organiser", "teams", "table", "fixtures", "rounds", "requests", "playerLists");
 
 	@Autowired
 	MockMvc mvc;

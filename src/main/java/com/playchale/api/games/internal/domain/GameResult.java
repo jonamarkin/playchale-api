@@ -89,7 +89,9 @@ public class GameResult implements Persistable<UUID> {
 		var roster = game.getParticipants().stream().collect(Collectors.toMap(Participant::playerKey, Function.identity()));
 		var home = distinct(input.home());
 		var away = distinct(input.away());
-		if (home.isEmpty() || away.isEmpty()) {
+		// Between two teams the teams are the sides, so a score alone will do (a schools' league may list
+		// no players). Otherwise the sides are the players.
+		if (!game.isTeamGame() && (home.isEmpty() || away.isEmpty())) {
 			throw BusinessException.invalid("Put at least one player on each side.");
 		}
 		if (!roster.keySet().containsAll(home) || !roster.keySet().containsAll(away) || home.stream().anyMatch(away::contains)) {

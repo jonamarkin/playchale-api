@@ -106,7 +106,7 @@ class CompetitionServiceTest {
 
 	private CompetitionResponse league() {
 		return competitions.create(new CompetitionDetails("Office League", "football", "5-a-side", "unlisted", null, "Legon Park", "Legon",
-				"https://maps.app.goo.gl/LegonPark", FIRST_MATCHDAY, 60), organiser);
+				"https://maps.app.goo.gl/LegonPark", FIRST_MATCHDAY, 60, null), organiser);
 	}
 
 	/** Three teams captained by Kojo, Ama and Yaw. */
@@ -193,6 +193,31 @@ class CompetitionServiceTest {
 		competitions.removePlayer(league.id(), reds, esi, kojo);
 		assertThat(team(competitions.addPlayers(league.id(), team(answered, "Blues").id(), List.of(esi), ama), "Blues").playerIds())
 			.containsExactly(ama, esi);
+	}
+
+	@Test
+	void aSchoolsLeaguePlaysWithoutListingPlayers() {
+		assertThatThrownBy(() -> competitions.create(new CompetitionDetails("Schools Cup", "football", "5-a-side", "unlisted", null, "Legon Park",
+				"Legon", null, FIRST_MATCHDAY, 60, "sometimes"), organiser)).hasMessage("Say whether teams list their players.");
+		var league = competitions.create(new CompetitionDetails("Schools Cup", "football", "5-a-side", "unlisted", null, "Legon Park", "Legon",
+				null, FIRST_MATCHDAY, 60, "optional"), organiser);
+		assertThat(league.playerLists()).isEqualTo("optional");
+		for (var school : List.of("Accra Academy", "Achimota", "Presec")) {
+			competitions.addTeam(league.id(), null, school, null, null, organiser);
+		}
+
+		var first = competitions.generateFixtures(league.id(), organiser).fixtures().getFirst();
+		assertThat(first.players()).isEmpty();
+		assertThat(first.spotsLeft()).as("nobody joins a fixture on their own").isZero();
+		assertThatThrownBy(() -> games.join(first.id(), kojo))
+			.hasMessage("League fixtures are played by the teams’ squads. Ask a captain for a place in theirs.");
+
+		clock.set(first.startsAt().plus(Duration.ofHours(2)));
+		var played = results.record(first.id(), new ResultInput(2, 0, List.of(), List.of(), null, null, null), organiser);
+		assertThat(played.status()).as("a score alone: nobody to confirm it").isEqualTo("completed");
+		var top = competitions.get(league.id(), null).orElseThrow().table().getFirst();
+		assertThat(top.played()).isEqualTo(1);
+		assertThat(top.points()).isEqualTo(3);
 	}
 
 	@Test

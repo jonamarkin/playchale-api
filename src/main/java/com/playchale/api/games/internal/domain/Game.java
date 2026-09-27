@@ -321,6 +321,7 @@ public class Game extends AuditableEntity {
 		}
 		requireOn("This game was called off by the host.");
 		requireNotPlayed(now);
+		requireNotFixture();
 		if (isFull()) {
 			throw BusinessException.conflict("Sorry, this game just filled up.");
 		}
@@ -380,6 +381,7 @@ public class Game extends AuditableEntity {
 		}
 		requireNotPlayed(now);
 		requireOn("This game was called off.");
+		requireNotFixture();
 		if (isFull()) {
 			throw BusinessException.conflict("The game is full. There’s no spot to hold.");
 		}
@@ -525,12 +527,22 @@ public class Game extends AuditableEntity {
 		return CANCELLED.equals(status);
 	}
 
+	/** A league fixture always is: its squads play it, however many are listed. */
 	public boolean isFull() {
-		return participants.size() >= capacity;
+		return competitionId != null || participants.size() >= capacity;
 	}
 
+	/** None in a league fixture: its squads play it, and nobody joins one on their own. */
 	public int spotsLeft() {
-		return Math.max(0, capacity - participants.size());
+		return competitionId != null ? 0 : Math.max(0, capacity - participants.size());
+	}
+
+	/**
+	 * A game between two teams: a league fixture, or a friendly the other team accepted. Its sides are
+	 * the teams, so a result can be a score alone when no players are listed.
+	 */
+	public boolean isTeamGame() {
+		return competitionId != null || opponentIn();
 	}
 
 	public Instant endsAt() {
@@ -545,6 +557,12 @@ public class Game extends AuditableEntity {
 	private void requireOn(String cancelledMessage) {
 		if (CANCELLED.equals(status)) {
 			throw BusinessException.conflict(cancelledMessage);
+		}
+	}
+
+	private void requireNotFixture() {
+		if (competitionId != null) {
+			throw BusinessException.conflict("League fixtures are played by the teams’ squads. Ask a captain for a place in theirs.");
 		}
 	}
 
