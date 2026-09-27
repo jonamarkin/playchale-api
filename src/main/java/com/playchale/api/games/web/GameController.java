@@ -51,8 +51,9 @@ class GameController {
 	/** games.list */
 	@GetMapping("/games")
 	List<GameResponse> list(@RequestParam(required = false) String query, @RequestParam(required = false) String sport,
-			@RequestParam(required = false) String when, Optional<CurrentUser> me) {
-		return games.list(new GameFilters(query, sport, when), me.map(CurrentUser::id).orElse(null));
+			@RequestParam(required = false) String when, @RequestParam(required = false) String country,
+			@RequestParam(required = false) String zone, Optional<CurrentUser> me) {
+		return games.list(new GameFilters(query, sport, when, country, zone), me.map(CurrentUser::id).orElse(null));
 	}
 
 	/** games.mine */

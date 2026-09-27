@@ -23,8 +23,8 @@ public interface GameRepository extends JpaRepository<Game, UUID> {
 	Optional<Game> lockById(UUID id);
 
 	/**
-	 * Upcoming games still on, that the viewer may see, starting in [from, to). {@code sport} is
-	 * '' for any; {@code pattern} is a lower-case LIKE pattern over title, format and venue.
+	 * Upcoming games still on, that the viewer may see, starting in [from, to). {@code sport} and
+	 * {@code country} are '' for any; {@code pattern} is a lower-case LIKE pattern over title, format and venue.
 	 */
 	@Query("""
 			select g from Game g
@@ -32,10 +32,11 @@ public interface GameRepository extends JpaRepository<Game, UUID> {
 			  and (g.visibility = 'public' or g.hostId = :viewer
 			       or exists (select 1 from Participant p where p.game = g and p.userId = :viewer))
 			  and (:sport = '' or g.sport = :sport)
+			  and (:country = '' or g.country = :country)
 			  and lower(concat(g.title, ' ', g.format, ' ', g.venueName, ' ', coalesce(g.venueArea, ''))) like :pattern
 			order by g.startsAt
 			""")
-	List<Game> discover(Instant now, UUID viewer, String sport, Instant from, Instant to, String pattern, Limit limit);
+	List<Game> discover(Instant now, UUID viewer, String sport, String country, Instant from, Instant to, String pattern, Limit limit);
 
 	List<Game> findByCompetitionIdOrderByStartsAt(UUID competitionId);
 

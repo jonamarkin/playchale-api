@@ -44,8 +44,8 @@ class VenueController {
 
 	/** venues.search */
 	@GetMapping("/venues")
-	List<VenueResponse> search(@RequestParam(defaultValue = "") String query) {
-		return venues.search(query);
+	List<VenueResponse> search(@RequestParam(defaultValue = "") String query, @RequestParam(required = false) String country) {
+		return venues.search(query, country);
 	}
 
 	/** venues.get: 404 when it doesn't exist, which the web app reads as null. */

@@ -6,9 +6,11 @@ import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.Collection;
@@ -86,12 +88,13 @@ public class GameService {
 	@Transactional(readOnly = true)
 	public List<GameResponse> list(GameFilters filters, UUID viewer) {
 		var now = clock.instant();
-		var market = Market.get(Market.DEFAULT);
+		var zone = viewersZone(filters.zone());
+		var country = filters.country() == null || !Market.exists(filters.country()) ? "" : filters.country().strip().toUpperCase(Locale.ROOT);
 		var sport = filters.sport() == null || filters.sport().equals("all") ? "" : filters.sport();
 		var query = filters.query() == null ? "" : filters.query().strip().toLowerCase(Locale.ROOT);
 		Instant from = now;
 		Instant to = now.plus(Duration.ofDays(3650));
-		var today = now.atZone(market.zone()).truncatedTo(ChronoUnit.DAYS);
+		var today = now.atZone(zone).truncatedTo(ChronoUnit.DAYS);
 		switch (filters.when() == null ? "any" : filters.when()) {
 			case "today" -> to = today.plusDays(1).toInstant();
 			case "tomorrow" -> {
@@ -108,8 +111,18 @@ public class GameService {
 			default -> {
 			}
 		}
-		var found = games.discover(now, viewer, sport, from, to, "%" + query + "%", Limit.of(LIST_LIMIT));
+		var found = games.discover(now, viewer, sport, country, from, to, "%" + query + "%", Limit.of(LIST_LIMIT));
 		return views.of(found, viewer);
+	}
+
+	/** The viewer's clock, for what "today" means: the zone their app sent, else Ghana's. */
+	private static ZoneId viewersZone(String zone) {
+		try {
+			return zone == null || zone.isBlank() ? Market.get(Market.DEFAULT).zone() : ZoneId.of(zone.strip());
+		}
+		catch (DateTimeException e) {
+			return Market.get(Market.DEFAULT).zone();
+		}
 	}
 
 	/** games.mine: games the player hosts or has a spot in. */

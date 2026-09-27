@@ -8,7 +8,9 @@ import java.util.UUID;
 
 import com.playchale.api.competitions.internal.domain.CompetitionDetails;
 import com.playchale.api.competitions.internal.service.CompetitionService;
+import com.playchale.api.games.api.GameResponse;
 import com.playchale.api.games.internal.domain.GameDetails;
+import com.playchale.api.games.internal.service.GameFilters;
 import com.playchale.api.games.internal.service.GameService;
 import com.playchale.api.notifications.internal.service.NotificationResponse;
 import com.playchale.api.notifications.internal.service.NotificationService;
@@ -166,6 +168,28 @@ class CountriesTest {
 		// Three rounds, a week apart in London time: the last is 10 October at 6pm there.
 		assertThat(drawn.fixtures().stream().map(f -> f.startsAt()).sorted().toList().getLast())
 			.isEqualTo(LONDON_SIX_PM.plus(Duration.ofDays(14)));
+	}
+
+	@Test
+	void discoverShowsYourCountryOrEverywhere() {
+		var kofi = user("+233244555126", "GH", "Kofi Asare");
+		var london = games.create(hackney(0), "Europe/London", null, null, chidi);
+		var accra = games.create(new GameDetails("football", "5-a-side", "Legon 5s", NOW.plus(Duration.ofDays(1)), 60, "unlisted", null, null,
+				"Legon Park", "Legon", null, 10, 0, null, "public", null), "Africa/Accra", null, null, kofi);
+
+		assertThat(games.list(new GameFilters(null, null, null, "GB", "Europe/London"), chidi)).extracting(GameResponse::id).containsExactly(london.id());
+		assertThat(games.list(new GameFilters(null, null, null, "gh", null), chidi)).extracting(GameResponse::id).containsExactly(accra.id());
+		assertThat(games.list(new GameFilters(null, null, null, null, null), chidi)).as("everywhere").extracting(GameResponse::id)
+			.containsExactlyInAnyOrder(london.id(), accra.id());
+		assertThat(games.list(new GameFilters(null, null, "tomorrow", "GB", "Europe/London"), chidi)).as("tomorrow on a London clock")
+			.extracting(GameResponse::id).containsExactly(london.id());
+
+		var hours = Collections.nCopies(7, new DayHours("06:00", "23:00"));
+		var pitches = List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 2_000_000));
+		venues.create(chidi, new VenueDetails("Lekki Arena", "Lekki, Lagos", null, null, null, null, pitches, hours, List.of()), "NG", "Africa/Lagos");
+		assertThat(venues.search("", "NG")).extracting(v -> v.name()).containsExactly("Lekki Arena");
+		assertThat(venues.search("", "GB")).isEmpty();
+		assertThat(venues.search("lekki", null)).as("anywhere").hasSize(1);
 	}
 
 }

@@ -48,8 +48,15 @@ public class VenueService {
 	/** venues.search: listed venues whose name or area matches; every listed venue for a blank query. */
 	@Transactional(readOnly = true)
 	public List<VenueResponse> search(String query) {
+		return search(query, null);
+	}
+
+	/** As above, in one country (ISO 3166-1); anywhere when it's left out. */
+	@Transactional(readOnly = true)
+	public List<VenueResponse> search(String query, String country) {
 		var pattern = "%" + (query == null ? "" : query.strip().toLowerCase(Locale.ROOT)) + "%";
-		return venues.searchListed(pattern, Limit.of(SEARCH_LIMIT)).stream().map(v -> VenueResponse.of(v, null)).toList();
+		var where = Market.exists(country) ? country.strip().toUpperCase(Locale.ROOT) : "";
+		return venues.searchListed(pattern, where, Limit.of(SEARCH_LIMIT)).stream().map(v -> VenueResponse.of(v, null)).toList();
 	}
 
 	/** venues.get: the venue with its owner. */
