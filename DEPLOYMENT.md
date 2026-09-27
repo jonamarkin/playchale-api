@@ -288,6 +288,21 @@ docker compose down               # stop PlayChale (the data is in Supabase; Pay
 docker stats                      # memory per container: the API is capped at 1 GB, the web app at 512 MB
 ```
 
+## Phone notifications
+
+Optional, and can be done any time. Without it, notifications stay in the app's list.
+
+```bash
+# On your own computer (needs Node). Prints a public key and a private key.
+npx web-push generate-vapid-keys
+```
+
+Put them in `.env.api` on the server as `PLAYCHALE_PUSH_VAPID_PUBLIC_KEY` and
+`PLAYCHALE_PUSH_VAPID_PRIVATE_KEY`, then `docker compose up -d api`. The log says "Phone
+notifications are on". Generate the pair once and keep it: new keys mean everyone has to turn
+notifications on again. People turn them on from Notifications in the app (or the card on Home).
+On iPhone that works once PlayChale is added to the Home Screen.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
@@ -302,6 +317,8 @@ docker stats                      # memory per container: the API is capped at 1
 | Browser console: CORS error calling the API | `PLAYCHALE_CORS_ORIGINS` isn't exactly `https://playchale.com` |
 | Signed in, but every page acts signed out | The web app and API aren't on the same site: `NUXT_PUBLIC_API_BASE` must be `https://api.playchale.com` |
 | Caddy logs certificate errors for playchale.com | The records were proxied (orange) before the first certificates: switch to DNS only, wait a minute, reload Caddy |
+| API won't start: "The VAPID public and private keys aren’t a pair" | The two push keys came from different runs of `generate-vapid-keys`: generate a new pair and set both |
+| No "Turn on" for phone notifications in the app | The push keys are empty in `.env.api`, or the browser can't show notifications (on iPhone: add to Home Screen first) |
 | Everyone hits "Too many codes asked for from this connection" | The Caddyfile on the server predates the PlayChale block's `header_up X-Forwarded-For` line; copy it up again and reload |
 
 ## Later: in-app payments

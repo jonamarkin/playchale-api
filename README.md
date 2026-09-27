@@ -110,6 +110,7 @@ Every value in `application.yml` can be set by an environment variable: `playcha
 | `PLAYCHALE_PAYMENTS_WEB_APP_URL` | `http://localhost:3000` | the web app's address: Paystack sends payers back there |
 | `PLAYCHALE_RESEND_API_KEY` | empty: emails go to the log | a Resend key with sending access; turns on signing in by email |
 | `PLAYCHALE_RESEND_FROM` | | the sender, on a domain verified in Resend: `PlayChale <alert@playchale.com>` |
+| `PLAYCHALE_PUSH_VAPID_PUBLIC_KEY`, `PLAYCHALE_PUSH_VAPID_PRIVATE_KEY` | empty: phone notifications are logged instead of sent | optional: a pair from `npx web-push generate-vapid-keys` turns on phone notifications; empty, they're off |
 | `PLAYCHALE_SIGN_IN_PER_CONNECTION_PER_HOUR` | 100000 | 20 (default) |
 | `PLAYCHALE_SIGN_IN_PER_DAY` | 100000 | 3000 (default); raise it as the service grows |
 
