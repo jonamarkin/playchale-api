@@ -140,7 +140,7 @@ class GameApiTest {
 		mvc.perform(get("/me/invites").cookie(esi)).andExpect(jsonPath("$[0].id").value(id))
 			.andExpect(jsonPath("$[0].invites.length()").value(1))
 			.andExpect(jsonPath("$[0].invites[0].status").value("pending"))
-			.andExpect(jsonPath("$[0].invites[0].user.phone").exists());
+			.andExpect(jsonPath("$[0].invites[0].user.phone").value("+233244555127"));
 		mvc.perform(get("/games/" + id)).andExpect(jsonPath("$.invites").doesNotExist());
 
 		mvc.perform(post("/games/" + id + "/invite-answers").cookie(esi).contentType(MediaType.APPLICATION_JSON).content("{\"accept\":false}"))
@@ -148,7 +148,7 @@ class GameApiTest {
 			.andExpect(jsonPath("$.invites[0].status").value("declined"));
 		mvc.perform(get("/games/" + id).cookie(kwame))
 			.andExpect(jsonPath("$.invites[0].status").value("declined"))
-			.andExpect(jsonPath("$.invites[0].user.phone").doesNotExist());
+			.andExpect(jsonPath("$.invites[0].user.phone").value("")); // someone else's number is never shown
 		mvc.perform(get("/me/invites").cookie(esi)).andExpect(jsonPath("$.length()").value(0));
 	}
 
