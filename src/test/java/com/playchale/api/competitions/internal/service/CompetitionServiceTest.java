@@ -147,7 +147,7 @@ class CompetitionServiceTest {
 
 		assertThatThrownBy(() -> competitions.generateFixtures(league.id(), organiser)).hasMessage("The fixtures are already drawn.");
 		assertThatThrownBy(() -> competitions.addTeam(league.id(), null, "Golds", null, List.of(), organiser))
-			.hasMessage("The fixtures are drawn. Add teams before drawing them, or start a new league.");
+			.hasMessage("The draw is done. Add teams before drawing, or start a new league.");
 	}
 
 	@Test
@@ -210,7 +210,7 @@ class CompetitionServiceTest {
 		assertThat(first.players()).isEmpty();
 		assertThat(first.spotsLeft()).as("nobody joins a fixture on their own").isZero();
 		assertThatThrownBy(() -> games.join(first.id(), kojo))
-			.hasMessage("League fixtures are played by the teams’ squads. Ask a captain for a place in theirs.");
+			.hasMessage("Fixtures are played by the teams’ squads. Ask a captain for a place in theirs.");
 
 		clock.set(first.startsAt().plus(Duration.ofHours(2)));
 		var played = results.record(first.id(), new ResultInput(2, 0, List.of(), List.of(), null, null, null), organiser);

@@ -60,6 +60,18 @@ class AuthController {
 			.body(signedIn.user());
 	}
 
+	record GoogleSignInRequest(String credential, String country) {
+	}
+
+	/** auth.signInWithGoogle: the ID token from Google's button; the signed-in player, plus the session cookie. */
+	@PostMapping("/google")
+	ResponseEntity<UserSummary> signInWithGoogle(@RequestBody GoogleSignInRequest request) {
+		var signedIn = auth.signInWithGoogle(request.credential(), request.country());
+		return ResponseEntity.ok()
+			.header(HttpHeaders.SET_COOKIE, cookies.issue(signedIn.token(), signedIn.validFor()).toString())
+			.body(signedIn.user());
+	}
+
 	/**
 	 * auth.currentUser: the signed-in player, or null. Not being signed in is an answer, not an error.
 	 * Spring sends an empty body when a handler returns null, which a client can't parse as JSON, so

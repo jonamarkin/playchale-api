@@ -1,6 +1,7 @@
 package com.playchale.api.catalog.web;
 
 import com.playchale.api.TestcontainersConfiguration;
+import com.playchale.api.users.api.Terms;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -9,6 +10,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -38,6 +40,20 @@ class CatalogApiTest {
 			// Tennis has no positions, so the app doesn't ask.
 			.andExpect(jsonPath("$[3].id").value("tennis"))
 			.andExpect(jsonPath("$[3].roles").doesNotExist());
+	}
+
+	@Test
+	void everyResponseCarriesTheSecurityHeaders() throws Exception {
+		mvc.perform(get("/terms"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.version").value(Terms.CURRENT))
+			.andExpect(header().string("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'"))
+			.andExpect(header().string("X-Content-Type-Options", "nosniff"))
+			.andExpect(header().string("X-Frame-Options", "DENY"))
+			.andExpect(header().string("Referrer-Policy", "no-referrer"))
+			.andExpect(header().string("Strict-Transport-Security", "max-age=31536000; includeSubDomains"));
+		// Errors too.
+		mvc.perform(get("/games/not-a-game")).andExpect(header().string("X-Content-Type-Options", "nosniff"));
 	}
 
 }

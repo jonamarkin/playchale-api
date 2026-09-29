@@ -1,7 +1,10 @@
 package com.playchale.api.users.web;
 
+import java.sql.Timestamp;
+
 import com.playchale.api.TestSignIn;
 import com.playchale.api.TestcontainersConfiguration;
+import com.playchale.api.users.api.Terms;
 import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -49,8 +53,8 @@ class MeApiTest {
 		var kwame = TestSignIn.as(mvc, "024 455 5123");
 
 		mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("""
-				{"name":"Kwame Mensah","handle":"Kwame","sports":["football"],"roles":{"football":["forward"]},"area":"East Legon"}
-				"""))
+				{"name":"Kwame Mensah","handle":"Kwame","sports":["football"],"roles":{"football":["forward"]},"area":"East Legon","termsVersion":"%s"}
+				""".formatted(Terms.CURRENT)))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.onboarded").value(true))
 			.andExpect(jsonPath("$.roles.football[0]").value("forward"))
@@ -74,7 +78,7 @@ class MeApiTest {
 	void aShuffledFaceIsSavedAndPublic() throws Exception {
 		var kwame = TestSignIn.as(mvc, "024 455 5123");
 		mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON)
-			.content("{\"name\":\"Kwame\",\"handle\":\"kwame\",\"sports\":[\"football\"]}"))
+			.content("{\"name\":\"Kwame\",\"handle\":\"kwame\",\"sports\":[\"football\"],\"termsVersion\":\"%s\"}".formatted(Terms.CURRENT)))
 			.andExpect(jsonPath("$.avatarSeed").doesNotExist());
 		mvc.perform(patch("/me").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("{\"avatarSeed\":\"k3v9x1qz0b7m\"}"))
 			.andExpect(jsonPath("$.avatarSeed").value("k3v9x1qz0b7m"));
@@ -88,7 +92,7 @@ class MeApiTest {
 	void positionsArePerSportAndPublic() throws Exception {
 		var kwame = TestSignIn.as(mvc, "024 455 5123");
 		mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON)
-			.content("{\"name\":\"Kwame\",\"handle\":\"kwame\",\"sports\":[\"football\"]}"))
+			.content("{\"name\":\"Kwame\",\"handle\":\"kwame\",\"sports\":[\"football\"],\"termsVersion\":\"%s\"}".formatted(Terms.CURRENT)))
 			.andExpect(jsonPath("$.roles").isEmpty());
 
 		// Adding a sport and its position in one go: sports are applied first.
@@ -156,6 +160,32 @@ class MeApiTest {
 		mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("{\"sports\":[\"football\"]}"))
 			.andExpect(status().isUnprocessableContent())
 			.andExpect(jsonPath("$.error.message").value("Add your name and a username to finish."));
+	}
+
+	@Test
+	void theTermsAreAgreedToWhenJoiningAndAgainWhenTheyChange() throws Exception {
+		var kwame = TestSignIn.as(mvc, "024 455 5123");
+		mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Kwame\",\"handle\":\"kwame\"}"))
+			.andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.error.message").value("Agree to the Terms and Privacy Policy to continue."));
+		mvc.perform(get("/auth/session").cookie(kwame)).andExpect(jsonPath("$.onboarded").value(false));
+
+		mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON)
+			.content("{\"name\":\"Kwame\",\"handle\":\"kwame\",\"termsVersion\":\"%s\"}".formatted(Terms.CURRENT)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.termsVersion").value(Terms.CURRENT));
+		assertThat(jdbc.sql("SELECT terms_accepted_at FROM users WHERE handle = 'kwame'").query(Timestamp.class).single()).isNotNull();
+
+		// A tab still showing older Terms is asked to reload rather than agreeing to text it didn't show.
+		mvc.perform(post("/me/terms").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("{\"version\":\"2020-01-01\"}"))
+			.andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.error.message").value("The Terms have changed since this page loaded. Reload it and try again."));
+		mvc.perform(post("/me/terms").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("{\"version\":\"%s\"}".formatted(Terms.CURRENT)))
+			.andExpect(status().isOk());
+
+		// Private: nobody else sees what someone agreed to.
+		mvc.perform(get("/profiles/kwame")).andExpect(jsonPath("$.user.termsVersion").doesNotExist());
+		mvc.perform(get("/terms")).andExpect(jsonPath("$.version").value(Terms.CURRENT));
 	}
 
 }

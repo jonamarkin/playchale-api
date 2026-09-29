@@ -189,7 +189,7 @@ class TeamServiceTest {
 			.as("joining the team puts them in its league squad").contains(newcomer);
 
 		assertThatThrownBy(() -> teams.delete(ballers.id(), kojo))
-			.hasMessage("Osu Ballers is in Office League. A team can’t be deleted once its league has started.");
+			.hasMessage("Osu Ballers is in Office League. A team can’t be deleted once it has started.");
 	}
 
 	@Test

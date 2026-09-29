@@ -99,6 +99,14 @@ public class User extends AuditableEntity {
 	/** Where payment receipts go. Asked for the first time they pay. */
 	private String email;
 
+	/** Their Google account's ID, once they've signed in with Google. */
+	private String googleSub;
+
+	/** The Terms they agreed to ({@link com.playchale.api.users.api.Terms#CURRENT} at the time), and when. */
+	private String termsVersion;
+
+	private Instant termsAcceptedAt;
+
 	protected User() {
 	}
 
@@ -239,6 +247,41 @@ public class User extends AuditableEntity {
 		this.email = trimmed;
 	}
 
+	/** They now sign in with this number (E.164), in place of the one they had. It was checked with a code. */
+	public void signInByPhone(String e164) {
+		this.phone = e164;
+	}
+
+	/** They now sign in with this address (lower-case), in place of the one they had. It was checked with a code. */
+	public void signInByEmail(String address) {
+		this.signInEmail = address;
+	}
+
+	/** They sign in with this Google account too (its token's "sub"). Google checked it's theirs. */
+	public void signInByGoogle(String sub) {
+		this.googleSub = sub;
+	}
+
+	/** They stop signing in with their phone ("phone") or email ("email"), keeping another way in. */
+	public void stopSigningInBy(String method) {
+		var byPhone = "phone".equals(method);
+		if (googleSub == null && (byPhone ? signInEmail == null : phone == null)) {
+			throw BusinessException.invalid("Keep at least one way to sign in: add another before removing this one.");
+		}
+		if (byPhone) {
+			phone = null;
+		}
+		else {
+			signInEmail = null;
+		}
+	}
+
+	/** They agreed to the Terms and Privacy Policy dated {@code version}. */
+	public void acceptTerms(String version, Instant now) {
+		this.termsVersion = version;
+		this.termsAcceptedAt = now;
+	}
+
 	/** Onboarding is done once they have a name and a handle, which a public profile needs. */
 	public void finishOnboarding() {
 		if (name.isBlank() || handle.isBlank()) {
@@ -256,6 +299,7 @@ public class User extends AuditableEntity {
 		handle = "";
 		phone = null;
 		signInEmail = null;
+		googleSub = null;
 		email = null;
 		payoutPhone = null;
 		avatarUrl = null;
@@ -356,6 +400,14 @@ public class User extends AuditableEntity {
 
 	public boolean isOnboarded() {
 		return onboarded;
+	}
+
+	public String getTermsVersion() {
+		return termsVersion;
+	}
+
+	public boolean signsInWithGoogle() {
+		return googleSub != null;
 	}
 
 }

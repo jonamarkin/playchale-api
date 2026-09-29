@@ -2,6 +2,7 @@ package com.playchale.api.games.api;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -20,7 +21,15 @@ public interface Fixtures {
 	 */
 	record FixtureSpec(UUID competitionId, int round, UUID homeTeamId, UUID awayTeamId, String title, String sport, String format,
 			Instant startsAt, int durationMinutes, String venueKind, UUID venueId, String venueName, String venueArea, String venueMapUrl,
-			UUID organiserId, List<UUID> squad, String country, String timezone) {
+			UUID organiserId, List<UUID> squad, String country, String timezone, Integer slot, boolean decider) {
+
+		/** A league fixture: no place in a bracket, and it may end level. */
+		public FixtureSpec(UUID competitionId, int round, UUID homeTeamId, UUID awayTeamId, String title, String sport, String format,
+				Instant startsAt, int durationMinutes, String venueKind, UUID venueId, String venueName, String venueArea, String venueMapUrl,
+				UUID organiserId, List<UUID> squad, String country, String timezone) {
+			this(competitionId, round, homeTeamId, awayTeamId, title, sport, format, startsAt, durationMinutes, venueKind, venueId, venueName,
+					venueArea, venueMapUrl, organiserId, squad, country, timezone, null, false);
+		}
 	}
 
 	/**
@@ -29,12 +38,39 @@ public interface Fixtures {
 	 * @param homeScore null until it has a result
 	 */
 	record FixtureSummary(UUID gameId, int round, UUID homeTeamId, UUID awayTeamId, Instant startsAt, String status, Integer homeScore,
-			Integer awayScore) {
+			Integer awayScore, Integer slot, Integer homePenalties, Integer awayPenalties) {
 
 		public boolean played() {
 			return homeScore != null && !"cancelled".equals(status);
 		}
 
+		/**
+		 * Who goes through, in a tie that has to produce a winner: the higher score, or the shootout
+		 * when it ended level. Null while it's still level, or not played.
+		 */
+		public UUID winner() {
+			if (!played()) {
+				return null;
+			}
+			if (homeScore > awayScore) {
+				return homeTeamId;
+			}
+			if (awayScore > homeScore) {
+				return awayTeamId;
+			}
+			if (homePenalties == null || homePenalties.equals(awayPenalties)) {
+				return null;
+			}
+			return homePenalties > awayPenalties ? homeTeamId : awayTeamId;
+		}
+
+	}
+
+	/**
+	 * What one player has done across a league's fixtures. {@code teamId} is the squad they're in, or
+	 * null in a league that keeps no player lists.
+	 */
+	record Scorer(UUID userId, UUID teamId, int goals, int assists, int points, int games) {
 	}
 
 	void create(List<FixtureSpec> fixtures);
@@ -46,6 +82,12 @@ public interface Fixtures {
 	void syncSquad(UUID gameId, List<UUID> squad);
 
 	List<FixtureSummary> of(UUID competitionId);
+
+	/** The competition a game is a fixture of, if it is one. */
+	Optional<UUID> competitionOf(UUID gameId);
+
+	/** Everyone who scored in a league's fixtures, most first. Empty for a sport with no player stats. */
+	List<Scorer> scorers(UUID competitionId, String sport);
 
 	/** A league's fixtures in kick-off order, as the games they are. */
 	List<GameResponse> views(UUID competitionId, UUID viewer);

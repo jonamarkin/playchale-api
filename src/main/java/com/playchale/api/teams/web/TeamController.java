@@ -10,11 +10,19 @@ import com.playchale.api.teams.internal.service.TeamResponse;
 import com.playchale.api.teams.internal.service.TeamService;
 import com.playchale.api.teams.web.dto.TeamRequests;
 import org.springframework.http.HttpStatus;
+import java.time.Duration;
+
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -63,6 +71,34 @@ class TeamController {
 	}
 
 	/** teams.addMembers */
+	/** teams.setLogo: the crest, already resized by the browser. Captain only. */
+	@PutMapping(value = "/teams/{id}/logo", consumes = MediaType.ALL_VALUE)
+	TeamResponse setLogo(CurrentUser me, @PathVariable UUID id, @RequestBody byte[] image,
+			@RequestHeader(HttpHeaders.CONTENT_TYPE) String contentType) {
+		return teams.setLogo(id, image, contentType, me.id());
+	}
+
+	/** teams.removeLogo */
+	@DeleteMapping("/teams/{id}/logo")
+	TeamResponse removeLogo(CurrentUser me, @PathVariable UUID id) {
+		return teams.removeLogo(id, me.id());
+	}
+
+	/**
+	 * The crest image. Public, like the team's name: its URL carries the version, so it's cached for
+	 * good and a new crest is a new URL.
+	 */
+	@GetMapping("/teams/{id}/logo")
+	ResponseEntity<byte[]> logo(@PathVariable UUID id) {
+		return teams.logo(id)
+			.map(crest -> ResponseEntity.ok()
+				.contentType(MediaType.parseMediaType(crest.contentType()))
+				.cacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePublic().immutable())
+				.eTag(String.valueOf(crest.version().toEpochMilli()))
+				.body(crest.image()))
+			.orElseGet(() -> ResponseEntity.notFound().build());
+	}
+
 	@PostMapping("/teams/{id}/members")
 	TeamResponse addMembers(CurrentUser me, @PathVariable UUID id, @RequestBody TeamRequests.Members request) {
 		return teams.addMembers(id, request.userIds() == null ? List.of() : request.userIds(), me.id());

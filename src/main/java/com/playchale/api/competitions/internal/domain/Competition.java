@@ -3,7 +3,9 @@ package com.playchale.api.competitions.internal.domain;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import com.playchale.api.catalog.api.SportCatalog;
@@ -11,8 +13,11 @@ import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.shared.maps.MapLink;
 import com.playchale.api.shared.persistence.AuditableEntity;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
+import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -34,6 +39,17 @@ public class Competition extends AuditableEntity {
 	public static final String FINISHED = "finished";
 
 	/** Crest colours, handed out to teams in turn. Same palette as the web app. */
+	/** How many other people can run one competition alongside its owner. */
+	public static final int MAX_ORGANISERS = 5;
+
+	/** Everyone plays everyone; the table decides it. */
+	public static final String LEAGUE = "league";
+
+	/** Lose once and you're out; the bracket decides it. */
+	public static final String KNOCKOUT = "knockout";
+
+	private static final List<String> STRUCTURES = List.of(LEAGUE, KNOCKOUT);
+
 	public static final String PLAYERS_EXPECTED = "expected";
 
 	/** Schools or organisations: a team may play with no players listed, and its fixtures take a score only. */
@@ -53,6 +69,15 @@ public class Competition extends AuditableEntity {
 	private String format;
 
 	private UUID organiserId;
+
+	/** How it's run: a {@link #LEAGUE} or a {@link #KNOCKOUT}. */
+	private String structure = LEAGUE;
+
+	/** Other people who run it with them, besides the owner above. */
+	@ElementCollection
+	@CollectionTable(name = "competition_organisers", joinColumns = @JoinColumn(name = "competition_id"))
+	@Column(name = "user_id", nullable = false)
+	private Set<UUID> organisers = new HashSet<>();
 
 	private String venueKind;
 
@@ -99,7 +124,7 @@ public class Competition extends AuditableEntity {
 	public Competition(CompetitionDetails details, UUID organiserId, Instant now) {
 		var name = details.name() == null ? "" : details.name().strip();
 		if (name.length() < 3 || name.length() > 80) {
-			throw BusinessException.invalid("Give the league a name people will recognise.");
+			throw BusinessException.invalid("Give it a name people will recognise.");
 		}
 		var sport = SportCatalog.find(details.sport());
 		if (sport.isEmpty() || !sport.get().formats().contains(details.format())) {
@@ -123,6 +148,11 @@ public class Competition extends AuditableEntity {
 			throw BusinessException.invalid("Say whether teams list their players.");
 		}
 		this.playerLists = lists;
+		var how = details.structure() == null ? LEAGUE : details.structure();
+		if (!STRUCTURES.contains(how)) {
+			throw BusinessException.invalid("Say whether it's a league or a tournament.");
+		}
+		this.structure = how;
 	}
 
 	/** Fixtures played at a partner venue. */
@@ -167,13 +197,70 @@ public class Competition extends AuditableEntity {
 		return ZoneId.of(timezone);
 	}
 
-	/** The fixtures are out: the league is under way. */
+	/** The fixtures are out: the competition is under way. */
 	public void start() {
 		status = RUNNING;
 	}
 
+	/** It's been won: a knockout's final is played, or an organiser called time on a league. */
+	public void finish() {
+		status = FINISHED;
+	}
+
+	/** Everyone who runs this league: the owner, or someone they've handed the controls to. */
 	public boolean isOrganisedBy(UUID userId) {
+		return userId != null && (organiserId.equals(userId) || organisers.contains(userId));
+	}
+
+	/** Only the person who set it up adds and removes the others. */
+	public boolean isOwnedBy(UUID userId) {
 		return organiserId.equals(userId);
+	}
+
+	/** Hands someone else the controls. Adding them twice changes nothing. */
+	public void addOrganiser(UUID userId) {
+		if (organiserId.equals(userId)) {
+			throw BusinessException.invalid("They already run this %s.".formatted(noun()));
+		}
+		if (organisers.size() >= MAX_ORGANISERS) {
+			throw BusinessException.conflict("A %s can have up to %d other organisers.".formatted(noun(), MAX_ORGANISERS));
+		}
+		organisers.add(userId);
+	}
+
+	/** Takes the controls back. The owner can't be removed: it's theirs. */
+	public void removeOrganiser(UUID userId) {
+		if (organiserId.equals(userId)) {
+			throw BusinessException.invalid("The organiser who set the %s up can’t be removed.".formatted(noun()));
+		}
+		if (!organisers.remove(userId)) {
+			throw BusinessException.notFound("They don’t run this %s.".formatted(noun()));
+		}
+	}
+
+	public Set<UUID> getOrganisers() {
+		return Set.copyOf(organisers);
+	}
+
+	/**
+	 * What to call it to people. "Competition" is the umbrella the code and the URLs use; to an
+	 * organiser it's a league, or a tournament when it's played as a knockout.
+	 */
+	public String noun() {
+		return KNOCKOUT.equals(structure) ? "tournament" : "league";
+	}
+
+	public String getStructure() {
+		return structure;
+	}
+
+	public boolean isKnockout() {
+		return KNOCKOUT.equals(structure);
+	}
+
+	/** The fewest teams this can be run with: a knockout is a final, a league needs a table. */
+	public int fewestTeams() {
+		return isKnockout() ? 2 : 3;
 	}
 
 	/** Points for a result, by this league's rules. */

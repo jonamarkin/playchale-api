@@ -37,7 +37,16 @@ class MeController {
 	/** profiles.completeOnboarding */
 	@PostMapping("/me/onboarding")
 	UserSummary completeOnboarding(CurrentUser me, @Valid @RequestBody ProfileUpdateRequest request) {
-		return profiles.completeOnboarding(me.id(), request.toChanges());
+		return profiles.completeOnboarding(me.id(), request.toChanges(), request.termsVersion());
+	}
+
+	/** profiles.acceptTerms: {"version": "2026-09-27"}, when the Terms have changed since they last agreed. */
+	@PostMapping("/me/terms")
+	UserSummary acceptTerms(CurrentUser me, @RequestBody TermsAcceptance body) {
+		return profiles.acceptTerms(me.id(), body.version());
+	}
+
+	record TermsAcceptance(String version) {
 	}
 
 	/** profiles.deleteAccount → 204. The web app then signs out. */

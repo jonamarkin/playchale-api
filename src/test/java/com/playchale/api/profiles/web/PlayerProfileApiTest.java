@@ -2,6 +2,7 @@ package com.playchale.api.profiles.web;
 
 import java.util.Set;
 
+import com.playchale.api.users.api.Terms;
 import com.playchale.api.TestSignIn;
 import com.playchale.api.TestcontainersConfiguration;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,8 +50,8 @@ class PlayerProfileApiTest {
 	void aProfileIsPublicButPhoneNumbersAreOnlyForTheirOwner() throws Exception {
 		var kwame = TestSignIn.as(mvc, "024 455 5123");
 		var body = mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("""
-				{"name":"Kwame Mensah","handle":"kwame","sports":["football","tennis"],"payoutPhone":"0201234567"}
-				""")).andReturn().getResponse().getContentAsString();
+				{"name":"Kwame Mensah","handle":"kwame","sports":["football","tennis"],"payoutPhone":"0201234567","termsVersion":"%s"}
+				""".formatted(Terms.CURRENT))).andReturn().getResponse().getContentAsString();
 		var id = json.readTree(body).get("id").asString();
 
 		var signedOut = mvc.perform(get("/profiles/Kwame"))

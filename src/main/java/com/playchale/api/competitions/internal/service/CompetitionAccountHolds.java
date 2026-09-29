@@ -22,7 +22,7 @@ class CompetitionAccountHolds implements AccountHolds {
 	@Override
 	public Optional<String> reasonToWait(UUID userId) {
 		return competitions.existsByOrganiserIdAndStatusIn(userId, List.of(Competition.DRAFT, Competition.RUNNING))
-				? Optional.of("You organise a league that’s still going. Get in touch and we’ll sort it out with you before your account goes.")
+				? Optional.of("You organise a competition that’s still going. Get in touch and we’ll sort it out with you before your account goes.")
 				: Optional.empty();
 	}
 

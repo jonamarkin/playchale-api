@@ -132,6 +132,12 @@ public class Game extends AuditableEntity {
 
 	private UUID awayTeamId;
 
+	/** Which tie of its round a knockout fixture is; null for a league fixture. */
+	private Integer fixtureSlot;
+
+	/** A tie that has to produce a winner, so a level score is settled on penalties. */
+	private boolean fixtureDecider;
+
 	/**
 	 * A friendly's challenge: {@link #CHALLENGE_PENDING} until the other team's captain answers. Null
 	 * for any other game.
@@ -207,12 +213,13 @@ public class Game extends AuditableEntity {
 	}
 
 	/**
-	 * A league fixture. The organiser hosts it, the two squads fill it, and nobody pays through the
-	 * app for a league game.
+	 * A competition fixture. The organiser hosts it, the two squads fill it, and nobody pays through
+	 * the app for it. {@code slot} and {@code decider} place a knockout tie in its bracket and say it
+	 * has to produce a winner; a league fixture has neither.
 	 */
 	public static Game fixture(UUID competitionId, int round, UUID homeTeamId, UUID awayTeamId, String title, String sport,
 			String format, Instant startsAt, int durationMinutes, UUID organiserId, List<UUID> squad, Market market, String timezone,
-			Instant now) {
+			Instant now, Integer slot, boolean decider) {
 		var game = new Game();
 		game.sport = sport;
 		game.format = format;
@@ -227,6 +234,8 @@ public class Game extends AuditableEntity {
 		game.hostId = organiserId;
 		game.competitionId = competitionId;
 		game.fixtureRound = round;
+		game.fixtureSlot = slot;
+		game.fixtureDecider = decider;
 		game.homeTeamId = homeTeamId;
 		game.awayTeamId = awayTeamId;
 		game.capacity = Math.max(2, squad.size());
@@ -600,6 +609,15 @@ public class Game extends AuditableEntity {
 		return startsAt.plus(Duration.ofMinutes(durationMinutes));
 	}
 
+	public Integer getFixtureSlot() {
+		return fixtureSlot;
+	}
+
+	/** Whether this tie has to produce a winner, so a level score is settled on penalties. */
+	public boolean isDecider() {
+		return fixtureDecider;
+	}
+
 	/** Anyone can see a public game; a private one only its host and players (and anyone with the link). */
 	public boolean isPublic() {
 		return "public".equals(visibility);
@@ -613,7 +631,7 @@ public class Game extends AuditableEntity {
 
 	private void requireNotFixture() {
 		if (competitionId != null) {
-			throw BusinessException.conflict("League fixtures are played by the teams’ squads. Ask a captain for a place in theirs.");
+			throw BusinessException.conflict("Fixtures are played by the teams’ squads. Ask a captain for a place in theirs.");
 		}
 	}
 

@@ -17,13 +17,16 @@ import com.playchale.api.users.api.UserSummary;
  * @param requests  only for the captain
  * @param requested whether the viewer has a request waiting on this team
  * @param record    played, won, drawn, lost across league fixtures and friendlies
+ * @param logoVersion when its crest last changed, or null if it has none: the web app puts it in the
+ *                    crest's URL, so a new crest is never hidden by an old one in a cache
  * @param upcoming  its next games, soonest first
  * @param recent    its latest results, latest first
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record TeamResponse(UUID id, String name, String tint, UUID captainId, UserSummary captain, List<UUID> memberIds,
 		List<UserSummary> members, String joinToken, Instant createdAt, List<TeamLeague> leagues, List<RequestView> requests,
-		boolean requested, TeamGames.Record record, List<TeamGames.TeamGame> upcoming, List<TeamGames.TeamGame> recent) {
+		boolean requested, TeamGames.Record record, List<TeamGames.TeamGame> upcoming, List<TeamGames.TeamGame> recent,
+		Long logoVersion) {
 
 	/** A team as search results show it: enough to pick the right one, nothing private. */
 	public record Found(UUID id, String name, String tint, UUID captainId, UserSummary captain, int memberCount) {

@@ -8,6 +8,7 @@ import java.util.UUID;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.users.api.AccountDeleted;
 import com.playchale.api.users.api.AccountHolds;
+import com.playchale.api.users.api.Terms;
 import com.playchale.api.users.api.UserSummary;
 import com.playchale.api.users.internal.domain.User;
 import com.playchale.api.users.internal.repository.UserRepository;
@@ -64,13 +65,33 @@ public class UserProfileService {
 		return save(user);
 	}
 
-	/** profiles.completeOnboarding: the same changes, and then they're in. */
+	/** profiles.completeOnboarding: the same changes, agreeing to the Terms, and then they're in. */
 	@Transactional
-	public UserSummary completeOnboarding(UUID userId, ProfileChanges changes) {
+	public UserSummary completeOnboarding(UUID userId, ProfileChanges changes, String termsVersion) {
 		var user = load(userId);
 		apply(user, changes);
 		user.finishOnboarding();
+		user.acceptTerms(currentTerms(termsVersion), clock.instant());
 		return save(user);
+	}
+
+	/** profiles.acceptTerms: agreeing to the Terms again, after they changed. */
+	@Transactional
+	public UserSummary acceptTerms(UUID userId, String termsVersion) {
+		var user = load(userId);
+		user.acceptTerms(currentTerms(termsVersion), clock.instant());
+		return save(user);
+	}
+
+	/** Only the current Terms can be agreed to: an older page open in a tab is asked to reload. */
+	private static String currentTerms(String version) {
+		if (version == null || version.isBlank()) {
+			throw BusinessException.invalid("Agree to the Terms and Privacy Policy to continue.");
+		}
+		if (!Terms.CURRENT.equals(version)) {
+			throw BusinessException.invalid("The Terms have changed since this page loaded. Reload it and try again.");
+		}
+		return version;
 	}
 
 	/**

@@ -7,11 +7,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import com.playchale.api.competitions.internal.domain.Competition;
 import com.playchale.api.competitions.internal.domain.Entry;
 import com.playchale.api.competitions.internal.domain.EntryId;
+import com.playchale.api.competitions.internal.domain.Knockout;
 import com.playchale.api.competitions.internal.repository.EntryRepository;
 import com.playchale.api.games.api.FixtureTeams;
 import com.playchale.api.games.api.Fixtures;
@@ -54,8 +56,11 @@ class CompetitionViews {
 		var squads = entries.inCompetition(c.getId());
 		var cards = directory.findAll(squads.stream().map(Entry::getTeamId).toList());
 		var pending = directory.pendingRequests(cards.keySet());
+		// Scorers are looked up with everyone else: someone who has left a squad still scored their goals.
+		var scored = fixtures.scorers(c.getId(), c.getSport());
 		var people = users.findAll(Stream.of(Stream.of(c.getOrganiserId()), squads.stream().flatMap(e -> e.playerIds().stream()),
-				cards.values().stream().map(TeamCard::captainId), pending.stream().map(JoinRequestCard::userId)).flatMap(s -> s).distinct().toList());
+				cards.values().stream().map(TeamCard::captainId), pending.stream().map(JoinRequestCard::userId),
+				scored.stream().map(Fixtures.Scorer::userId), c.getOrganisers().stream()).flatMap(s -> s).distinct().toList());
 
 		var teamViews = squads.stream().filter(e -> cards.containsKey(e.getTeamId())).map(e -> {
 			var t = cards.get(e.getTeamId());
@@ -63,6 +68,16 @@ class CompetitionViews {
 					t.createdAt(), e.playerIds().stream().map(people::get).filter(u -> u != null).map(u -> u.as(viewer)).toList(),
 					shown(people.get(t.captainId()), viewer), e.isInvited() ? Entry.INVITED : null);
 		}).toList();
+
+		var scorers = scored.stream()
+			.map(s -> new CompetitionResponse.ScorerView(shown(people.get(s.userId()), viewer), s.teamId(),
+					s.teamId() == null ? null : cards.containsKey(s.teamId()) ? cards.get(s.teamId()).name() : null,
+					s.goals(), s.assists(), s.points(), s.games()))
+			.filter(s -> s.player() != null)
+			.toList();
+
+		var organisers = c.getOrganisers().stream().map(people::get).filter(u -> u != null).map(u -> u.as(viewer))
+			.sorted(Comparator.comparing(UserSummary::name)).toList();
 
 		var summaries = fixtures.of(c.getId());
 		var views = fixtures.views(c.getId(), viewer);
@@ -76,7 +91,8 @@ class CompetitionViews {
 		return new CompetitionResponse(c.getId(), c.getName(), c.getSport(), c.getFormat(), c.getOrganiserId(), venue, c.getStartsAt(),
 				c.getDurationMinutes(), c.getStatus(), new CompetitionResponse.Points(c.getPointsWin(), c.getPointsDraw(), c.getPointsLoss()),
 				c.getCreatedAt(), shown(people.get(c.getOrganiserId()), viewer), teamViews, table(c, squads, cards, summaries, viewer), views, rounds,
-				requestViews, c.getPlayerLists(), c.getCountry(), c.getCurrency(), c.getTimezone());
+				requestViews, c.getPlayerLists(), c.getCountry(), c.getCurrency(), c.getTimezone(), scorers, organisers, c.getStructure(),
+				bracket(c, squads, cards, summaries, viewer));
 	}
 
 	/**
@@ -153,6 +169,47 @@ class CompetitionViews {
 	}
 
 	/** A team in a league as the web app's Team type: its squad here. Its link only for the captain and the organiser. */
+	/**
+	 * The bracket as it stands: every round the cup will have, each with the ties drawn so far. A
+	 * round nobody has reached yet is still listed, with how many ties it will hold, so the shape of
+	 * the cup is there from the first whistle.
+	 */
+	private List<CompetitionResponse.BracketRound> bracket(Competition c, List<Entry> squads, Map<UUID, TeamCard> cards,
+			List<Fixtures.FixtureSummary> summaries, UUID viewer) {
+		if (!c.isKnockout()) {
+			return List.of();
+		}
+		var shape = Knockout.shape(squads.size());
+		var byes = Knockout.firstRound(squads.stream().map(Entry::getTeamId).toList()).byes();
+		var byRound = summaries.stream().collect(Collectors.groupingBy(Fixtures.FixtureSummary::round));
+		var rounds = new ArrayList<CompetitionResponse.BracketRound>();
+		for (int i = 0; i < shape.size(); i++) {
+			var round = i + 1;
+			var ties = new ArrayList<>(byRound.getOrDefault(round, List.of()).stream()
+				.map(f -> new CompetitionResponse.BracketTie(f.gameId(), f.slot() == null ? 0 : f.slot(),
+						card(cards.get(f.homeTeamId()), squads, c, viewer), card(cards.get(f.awayTeamId()), squads, c, viewer),
+						f.homeScore(), f.awayScore(), f.homePenalties(), f.awayPenalties(), f.winner(), f.startsAt(), f.status(), false))
+				.toList());
+			// A bye is shown where it sits: that team is through without playing.
+			if (round == 1) {
+				byes.forEach((slot, team) -> ties.add(new CompetitionResponse.BracketTie(null, slot,
+						card(cards.get(team), squads, c, viewer), null, null, null, null, null, team, null, null, true)));
+			}
+			ties.sort(Comparator.comparingInt(CompetitionResponse.BracketTie::slot));
+			rounds.add(new CompetitionResponse.BracketRound(round, Knockout.name(shape.get(i)), shape.get(i), List.copyOf(ties)));
+		}
+		return List.copyOf(rounds);
+	}
+
+	/** A team as the bracket shows it, or nothing where a tie is still waiting on a winner. */
+	private FixtureTeams.TeamCard card(TeamCard team, List<Entry> squads, Competition c, UUID viewer) {
+		if (team == null) {
+			return null;
+		}
+		var entry = squads.stream().filter(e -> e.getTeamId().equals(team.id())).findFirst().orElse(null);
+		return entry == null ? null : card(team, entry, c, viewer);
+	}
+
 	FixtureTeams.TeamCard card(TeamCard t, Entry e, Competition c, UUID viewer) {
 		return new FixtureTeams.TeamCard(t.id(), c.getId(), t.name(), t.captainId(), e.playerIds(), t.tint(), token(t, c, viewer), t.createdAt());
 	}

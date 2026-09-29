@@ -45,7 +45,7 @@ class CompetitionController {
 	@GetMapping("/competitions/{id}")
 	CompetitionResponse get(@PathVariable UUID id, Optional<CurrentUser> me) {
 		return competitions.get(id, me.map(CurrentUser::id).orElse(null))
-			.orElseThrow(() -> BusinessException.notFound("That league doesn’t exist any more."));
+			.orElseThrow(() -> BusinessException.notFound("That competition doesn’t exist any more."));
 	}
 
 	/** competitions.create */
@@ -56,6 +56,21 @@ class CompetitionController {
 	}
 
 	/** competitions.addTeam */
+	record OrganiserRequest(UUID userId) {
+	}
+
+	/** competitions.addOrganiser: someone else who can run the league with you. */
+	@PostMapping("/competitions/{id}/organisers")
+	CompetitionResponse addOrganiser(CurrentUser me, @PathVariable UUID id, @RequestBody OrganiserRequest request) {
+		return competitions.addOrganiser(id, request.userId(), me.id());
+	}
+
+	/** competitions.removeOrganiser */
+	@DeleteMapping("/competitions/{id}/organisers/{userId}")
+	CompetitionResponse removeOrganiser(CurrentUser me, @PathVariable UUID id, @PathVariable UUID userId) {
+		return competitions.removeOrganiser(id, userId, me.id());
+	}
+
 	@PostMapping("/competitions/{id}/teams")
 	CompetitionResponse addTeam(CurrentUser me, @PathVariable UUID id, @RequestBody CompetitionRequests.NewTeam request) {
 		return competitions.addTeam(id, request.teamId(), request.name(), request.captainId(), request.playerIds(), me.id());

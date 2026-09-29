@@ -1,5 +1,7 @@
 package com.playchale.api.teams.web;
 
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Set;
 
 import com.playchale.api.TestSignIn;
@@ -19,7 +21,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -31,7 +36,7 @@ class TeamApiTest {
 
 	/** The web app's TeamProfile. */
 	private static final Set<String> VIEW_FIELDS = Set.of("id", "name", "tint", "captainId", "captain", "memberIds", "members", "joinToken",
-			"createdAt", "leagues", "requests", "requested", "record", "upcoming", "recent");
+			"createdAt", "leagues", "requests", "requested", "record", "upcoming", "recent", "logoVersion");
 
 	@Autowired
 	MockMvc mvc;
@@ -91,6 +96,49 @@ class TeamApiTest {
 		mvc.perform(delete("/teams/" + id + "/members/" + esiId).cookie(esi)).andExpect(jsonPath("$.memberIds.length()").value(1));
 		mvc.perform(delete("/teams/" + id).cookie(kojo)).andExpect(status().isNoContent());
 		mvc.perform(get("/teams/" + id)).andExpect(status().isNotFound());
+	}
+
+	/** The crest a team plays under: the captain's to set, anyone's to see, and checked before it's kept. */
+	@Test
+	void aTeamWearsACrest() throws Exception {
+		var kwame = TestSignIn.as(mvc, "024 455 5130");
+		var yaw = TestSignIn.as(mvc, "024 455 5131");
+		var id = json.readTree(mvc.perform(post("/teams").cookie(kwame).contentType(MediaType.APPLICATION_JSON)
+			.content("{\"name\":\"Osu Ballers\"}")).andReturn().getResponse().getContentAsString()).get("id").asString();
+
+		// A one-pixel PNG, as the browser would send after shrinking a logo.
+		var png = Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+
+		// Only the captain, and only something that really is the image it claims to be.
+		mvc.perform(put("/teams/" + id + "/logo").cookie(yaw).contentType(MediaType.IMAGE_PNG).content(png))
+			.andExpect(status().isConflict());
+		mvc.perform(put("/teams/" + id + "/logo").cookie(kwame).contentType(MediaType.IMAGE_PNG).content("not an image".getBytes(StandardCharsets.UTF_8)))
+			.andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.error.message").value("That file isn’t the image it claims to be."));
+		mvc.perform(put("/teams/" + id + "/logo").cookie(kwame).contentType(MediaType.APPLICATION_PDF).content(png))
+			.andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.error.message").value("A crest has to be a PNG, JPEG or WebP image."));
+		mvc.perform(put("/teams/" + id + "/logo").cookie(kwame).contentType(MediaType.IMAGE_PNG).content(new byte[200 * 1024]))
+			.andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.error.message").value("That image is too big. Pick one under 128 KB."));
+
+		var saved = json.readTree(mvc.perform(put("/teams/" + id + "/logo").cookie(kwame).contentType(MediaType.IMAGE_PNG).content(png))
+			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+		assertThat(VIEW_FIELDS).containsAll(saved.propertyNames());
+		assertThat(saved.get("logoVersion").asLong()).isPositive();
+
+		// Anyone can see it, and it's cached under a URL that changes with the crest.
+		mvc.perform(get("/teams/" + id + "/logo"))
+			.andExpect(status().isOk())
+			.andExpect(header().string("Content-Type", MediaType.IMAGE_PNG_VALUE))
+			.andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("max-age=31536000")))
+			.andExpect(content().bytes(png));
+
+		// And the captain can take it off again.
+		mvc.perform(delete("/teams/" + id + "/logo").cookie(kwame))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.logoVersion").doesNotExist());
+		mvc.perform(get("/teams/" + id + "/logo")).andExpect(status().isNotFound());
 	}
 
 }

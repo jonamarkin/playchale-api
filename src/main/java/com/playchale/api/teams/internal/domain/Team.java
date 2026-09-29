@@ -3,8 +3,11 @@ package com.playchale.api.teams.internal.domain;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 import com.playchale.api.shared.error.BusinessException;
@@ -44,6 +47,14 @@ public class Team {
 	/** Goes in the join link. Only the captain ever sees it (and a league organiser running its squad). */
 	private String joinToken;
 
+	/** The team's crest, as uploaded: small, and only an image type the browser can show (a bytea column). */
+	private byte[] logo;
+
+	private String logoType;
+
+	/** When the crest last changed, which the web app puts in its URL so a new one isn't cached over. */
+	private Instant logoVersion;
+
 	private Instant createdAt;
 
 	@ElementCollection
@@ -52,6 +63,58 @@ public class Team {
 	private List<TeamMember> members = new ArrayList<>();
 
 	protected Team() {
+	}
+
+	/** Image types a crest may be, and what each one's first bytes look like. */
+	private static final Map<String, byte[]> LOGO_TYPES = Map.of(
+			"image/webp", new byte[] { 'R', 'I', 'F', 'F' },
+			"image/png", new byte[] { (byte) 0x89, 'P', 'N', 'G' },
+			"image/jpeg", new byte[] { (byte) 0xff, (byte) 0xd8, (byte) 0xff });
+
+	/** A crest is resized in the browser first, so anything this big is a mistake or an attack. */
+	public static final int MAX_LOGO_BYTES = 128 * 1024;
+
+	/**
+	 * Puts a crest on the team. The bytes have to be an image of the type they claim, so a file
+	 * renamed to .png can't be served back to someone's browser as one.
+	 */
+	public void wearCrest(byte[] image, String contentType, Instant now) {
+		var type = contentType == null ? "" : contentType.split(";")[0].strip().toLowerCase(Locale.ROOT);
+		var magic = LOGO_TYPES.get(type);
+		if (magic == null) {
+			throw BusinessException.invalid("A crest has to be a PNG, JPEG or WebP image.");
+		}
+		if (image == null || image.length == 0) {
+			throw BusinessException.invalid("That file is empty.");
+		}
+		if (image.length > MAX_LOGO_BYTES) {
+			throw BusinessException.invalid("That image is too big. Pick one under %d KB.".formatted(MAX_LOGO_BYTES / 1024));
+		}
+		if (image.length < magic.length || !Arrays.equals(Arrays.copyOf(image, magic.length), magic)) {
+			throw BusinessException.invalid("That file isn’t the image it claims to be.");
+		}
+		this.logo = image.clone();
+		this.logoType = type;
+		this.logoVersion = now;
+	}
+
+	/** Back to the plain coloured crest. */
+	public void dropCrest() {
+		this.logo = null;
+		this.logoType = null;
+		this.logoVersion = null;
+	}
+
+	public byte[] getLogo() {
+		return logo == null ? null : logo.clone();
+	}
+
+	public String getLogoType() {
+		return logoType;
+	}
+
+	public Instant getLogoVersion() {
+		return logoVersion;
 	}
 
 	/**

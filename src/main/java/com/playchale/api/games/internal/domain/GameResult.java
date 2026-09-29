@@ -45,6 +45,11 @@ public class GameResult implements Persistable<UUID> {
 
 	private int awayScore;
 
+	/** The shootout, when a tie that must produce a winner ended level. Null otherwise. */
+	private Integer homePenalties;
+
+	private Integer awayPenalties;
+
 	private UUID recordedBy;
 
 	private Instant recordedAt;
@@ -138,6 +143,8 @@ public class GameResult implements Persistable<UUID> {
 			this.homeScore = input.homeScore();
 			this.awayScore = input.awayScore();
 		}
+
+		settle(game, input);
 
 		var absent = distinct(input.absent()).stream()
 			.filter(k -> roster.containsKey(k) && !home.contains(k) && !away.contains(k))
@@ -239,6 +246,47 @@ public class GameResult implements Persistable<UUID> {
 
 	public UUID getGameId() {
 		return gameId;
+	}
+
+	/**
+	 * A knockout tie can't be left level: the organiser records the shootout, which decides who goes
+	 * through without touching the score itself, so what happened on the pitch is what's kept.
+	 */
+	private void settle(Game game, ResultInput input) {
+		this.homePenalties = null;
+		this.awayPenalties = null;
+		var level = homeScore == awayScore;
+		if (!game.isDecider()) {
+			if (input.homePenalties() != null || input.awayPenalties() != null) {
+				throw BusinessException.invalid("Only a knockout tie is settled on penalties.");
+			}
+			return;
+		}
+		if (!level) {
+			if (input.homePenalties() != null || input.awayPenalties() != null) {
+				throw BusinessException.invalid("There were no penalties: the tie was already won.");
+			}
+			return;
+		}
+		if (input.homePenalties() == null || input.awayPenalties() == null) {
+			throw BusinessException.invalid("This tie ended level. Add the penalty shootout to say who went through.");
+		}
+		if (input.homePenalties() < 0 || input.awayPenalties() < 0 || input.homePenalties() > 99 || input.awayPenalties() > 99) {
+			throw BusinessException.invalid("Penalty scores go from 0 to 99.");
+		}
+		if (input.homePenalties().equals(input.awayPenalties())) {
+			throw BusinessException.invalid("A shootout can’t end level either. Check the penalties.");
+		}
+		this.homePenalties = input.homePenalties();
+		this.awayPenalties = input.awayPenalties();
+	}
+
+	public Integer getHomePenalties() {
+		return homePenalties;
+	}
+
+	public Integer getAwayPenalties() {
+		return awayPenalties;
 	}
 
 	public int getHomeScore() {

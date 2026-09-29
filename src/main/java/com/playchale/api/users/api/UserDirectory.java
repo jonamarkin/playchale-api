@@ -25,4 +25,22 @@ public interface UserDirectory {
 	/** The player who signs in with this email (lower-case), registered on their first sign-in. */
 	UserSummary registerOrFindByEmail(String email, String country);
 
+	/**
+	 * The player a Google account belongs to: the one already signing in with it, else the one who
+	 * signs in with its (Google-verified) email, which it's then connected to, else a new player.
+	 */
+	UserSummary registerOrFindByGoogle(String googleSub, String email, String country);
+
+	/** Who signs in with this phone (E.164, method "phone") or email (lower-case, method "email"), if anyone. */
+	Optional<UUID> signsInWith(String method, String address);
+
+	/**
+	 * Lets a player sign in with this phone or email too, in place of the one they had. The caller has
+	 * checked they hold it (a code) and that nobody else signs in with it.
+	 */
+	UserSummary addSignInMethod(UUID userId, String method, String address);
+
+	/** Stops a player signing in with their phone or email. They must have the other. */
+	UserSummary removeSignInMethod(UUID userId, String method);
+
 }

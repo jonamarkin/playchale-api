@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.playchale.api.market.Market;
+import com.playchale.api.users.api.Terms;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -155,12 +156,13 @@ class DemoSeed {
 		var created = at(-30, 9);
 		for (var p : PEOPLE) {
 			jdbc.sql("""
-					INSERT INTO users (id, phone, country, name, handle, tint, avatar_url, area, sports, email, onboarded, created_at, updated_at)
-					VALUES (:id, :phone, 'GH', :name, :handle, :tint, :avatar, :area, :sports, :email, true, :created, :created)
+					INSERT INTO users (id, phone, country, name, handle, tint, avatar_url, area, sports, email, onboarded, terms_version,
+					                   terms_accepted_at, created_at, updated_at)
+					VALUES (:id, :phone, 'GH', :name, :handle, :tint, :avatar, :area, :sports, :email, true, :terms, :created, :created, :created)
 					""")
 				.param("id", id(p.id())).param("phone", demoPhone(p.phone())).param("name", p.name()).param("handle", p.handle())
 				.param("tint", p.tint()).param("avatar", p.avatar()).param("area", p.area()).param("sports", p.sports().toArray(String[]::new))
-				.param("email", p.handle() + "@example.com").param("created", utc(created))
+				.param("email", p.handle() + "@example.com").param("terms", Terms.CURRENT).param("created", utc(created))
 				.update();
 			p.roles().forEach((sport, roles) -> {
 				for (int rank = 0; rank < roles.size(); rank++) {

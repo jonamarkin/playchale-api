@@ -143,7 +143,8 @@ class GameViews {
 		GameResponse.FixtureRef fixture = null;
 		GameResponse.FixtureTeamsResponse fixtureTeams = null;
 		if (g.getCompetitionId() != null) {
-			fixture = new GameResponse.FixtureRef(g.getCompetitionId(), g.getFixtureRound(), g.getHomeTeamId(), g.getAwayTeamId());
+			fixture = new GameResponse.FixtureRef(g.getCompetitionId(), g.getFixtureRound(), g.getHomeTeamId(), g.getAwayTeamId(),
+					g.getFixtureSlot(), g.isDecider());
 			var home = teams.get(g.getHomeTeamId());
 			var away = teams.get(g.getAwayTeamId());
 			fixtureTeams = home == null || away == null ? null : new GameResponse.FixtureTeamsResponse(home, away);
@@ -170,7 +171,8 @@ class GameViews {
 				new GameResponse.Sides(keysOn.apply(ResultLine.HOME), keysOn.apply(ResultLine.AWAY)), scorers, sets.isEmpty() ? null : sets,
 				absent.isEmpty() ? null : absent, r.getRecordedBy(), r.getRecordedAt(),
 				r.getConfirmations().stream().map(c -> c.userId()).toList(),
-				r.getDisputes().stream().map(d -> new GameResponse.Dispute(d.userId(), d.reason(), d.disputedAt())).toList());
+				r.getDisputes().stream().map(d -> new GameResponse.Dispute(d.userId(), d.reason(), d.disputedAt())).toList(),
+				r.getHomePenalties(), r.getAwayPenalties());
 	}
 
 	private static Integer positive(int value) {

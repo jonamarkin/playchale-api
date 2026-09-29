@@ -13,6 +13,8 @@ public interface UserRepository extends JpaRepository<User, UUID> {
 	/** Stored lower-case, so an exact match is enough. */
 	Optional<User> findBySignInEmail(String email);
 
+	Optional<User> findByGoogleSub(String googleSub);
+
 	/** Handles are unique ignoring case (see the users_handle_unique index). */
 	Optional<User> findByHandleIgnoreCase(String handle);
 

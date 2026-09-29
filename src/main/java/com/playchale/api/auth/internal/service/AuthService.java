@@ -5,6 +5,7 @@ import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -53,8 +54,11 @@ public class AuthService {
 	public record SignedIn(UserSummary user, String token, Duration validFor) {
 	}
 
-	/** Which ways of signing in this copy of the API can offer: each needs its provider configured. */
-	public record Options(boolean phone, boolean email) {
+	/**
+	 * Which ways of signing in this copy of the API can offer: each needs its provider configured.
+	 * {@code googleClientId} is set when Google sign-in is (the web app needs it to show the button).
+	 */
+	public record Options(boolean phone, boolean email, String googleClientId) {
 	}
 
 	/**
@@ -99,8 +103,13 @@ public class AuthService {
 	/** The web app's address, for the logo and links in emails. */
 	private final String webApp;
 
+	private final GoogleSignInProperties google;
+
+	private final GoogleIdTokens googleTokens;
+
 	AuthService(SignInCodeRepository codes, SessionRepository sessions, UserDirectory users, ObjectProvider<SmsSender> sms,
-			ObjectProvider<EmailSender> email, RateLimiter limiter, SignInLimits limits, Clock clock, PlaychaleProperties properties) {
+			ObjectProvider<EmailSender> email, RateLimiter limiter, SignInLimits limits, Clock clock, PlaychaleProperties properties,
+			GoogleSignInProperties google, GoogleIdTokens googleTokens) {
 		this.codes = codes;
 		this.sessions = sessions;
 		this.users = users;
@@ -112,11 +121,13 @@ public class AuthService {
 		this.codeKey = new SecretKeySpec(properties.secret().getBytes(StandardCharsets.UTF_8), "HmacSHA256");
 		this.demoCode = properties.demoSignInCode();
 		this.webApp = properties.webApp();
+		this.google = google;
+		this.googleTokens = googleTokens;
 	}
 
 	/** auth.options: which ways of signing in to offer. */
 	public Options options() {
-		return new Options(sms.getIfAvailable() != null, email.getIfAvailable() != null);
+		return new Options(sms.getIfAvailable() != null, email.getIfAvailable() != null, google.enabled() ? google.clientId() : null);
 	}
 
 	/**
@@ -127,7 +138,54 @@ public class AuthService {
 	 */
 	@Transactional
 	public Optional<String> requestCode(String typedPhone, String typedEmail, String connection) {
+		return send(recipient(typedPhone, typedEmail), connection, false);
+	}
+
+	/**
+	 * Sends a code to a phone or an email address a signed-in player wants to sign in with too. Refused
+	 * when it's already theirs, or someone else's: two accounts can't share a way in.
+	 */
+	@Transactional
+	public Optional<String> requestCodeToAdd(UUID userId, String typedPhone, String typedEmail, String connection) {
 		var to = recipient(typedPhone, typedEmail);
+		requireFree(userId, to);
+		return send(to, connection, true);
+	}
+
+	/**
+	 * Checks the code sent to a phone or email and makes it a way for the player to sign in, in place
+	 * of the one of that kind they had (so it also changes a number). Wrong guesses count as they do
+	 * when signing in.
+	 */
+	@Transactional(noRollbackFor = BusinessException.class)
+	public UserSummary addSignInMethod(UUID userId, String typedPhone, String typedEmail, String code) {
+		var from = recipient(typedPhone, typedEmail);
+		check(from, code, clock.instant());
+		requireFree(userId, from);
+		return users.addSignInMethod(userId, from.bySms() ? "phone" : "email", from.address());
+	}
+
+	/** Stops the player signing in with their phone ("phone") or email ("email"), keeping the other. */
+	@Transactional
+	public UserSummary removeSignInMethod(UUID userId, String method) {
+		if (!"phone".equals(method) && !"email".equals(method)) {
+			throw BusinessException.notFound("No such way of signing in.");
+		}
+		return users.removeSignInMethod(userId, method);
+	}
+
+	private void requireFree(UUID userId, Recipient to) {
+		users.signsInWith(to.bySms() ? "phone" : "email", to.address()).ifPresent(owner -> {
+			if (owner.equals(userId)) {
+				throw BusinessException.invalid(to.bySms() ? "That number is already on your account." : "That address is already on your account.");
+			}
+			throw BusinessException.conflict((to.bySms() ? "That number is on another PlayChale account." : "That address is on another PlayChale account.")
+					+ " To bring the two together, write to support@playchale.com.");
+		});
+	}
+
+	/** A new code to a phone or email, within the limits; {@code adding} words it for adding it to an account. */
+	private Optional<String> send(Recipient to, String connection, boolean adding) {
 		var now = clock.instant();
 		if (codes.countByRecipientAndCreatedAtAfter(to.address(), now.minus(Duration.ofHours(1))) >= SignInCode.MAX_PER_HOUR) {
 			throw BusinessException.conflict(to.bySms() ? "Too many codes sent to this number. Try again in an hour."
@@ -150,15 +208,16 @@ public class AuthService {
 			sms.getObject().send(to.address(), message);
 		}
 		else {
-			email.getObject().send(signInEmail(to.address(), code, message));
+			email.getObject().send(signInEmail(to.address(), code, message, adding));
 		}
 		return demoCode.isEmpty() ? Optional.empty() : Optional.of(demoCode);
 	}
 
 	/** The sign-in code email, in PlayChale's look, with a plain-text copy. */
-	private Email signInEmail(String address, String code, String message) {
+	private Email signInEmail(String address, String code, String message, boolean adding) {
 		var subject = "Your PlayChale sign-in code: %s".formatted(code);
-		var why = "You got this email because someone asked to sign in to PlayChale with this address.";
+		var why = adding ? "You got this email because someone asked to add this address to their PlayChale account."
+				: "You got this email because someone asked to sign in to PlayChale with this address.";
 		var html = EmailLayout.render(webApp, "sign-in-code", subject, message, why, Map.of("code", code));
 		var text = message + "\n\nIf you didn’t try to sign in to PlayChale, you can ignore this email. Nobody can sign in without the code.\n\n"
 				+ why;
@@ -188,24 +247,47 @@ public class AuthService {
 	public SignedIn signIn(String typedPhone, String typedEmail, String code, String country) {
 		var from = recipient(typedPhone, typedEmail);
 		var now = clock.instant();
-
-		var live = codes.lockLatestLive(from.address(), now)
-			.orElseThrow(() -> BusinessException.invalid("That code has expired. Ask for a new one."));
-		// A loaded entity is saved when the transaction commits, so the guess count sticks.
-		switch (live.attempt(hash(from.address(), code), now)) {
-			case LOCKED -> throw BusinessException.invalid("Too many wrong tries. Ask for a new code.");
-			case WRONG -> throw BusinessException.invalid(from.bySms() ? "That code isn’t right. Check the SMS and try again."
-					: "That code isn’t right. Check the email and try again.");
-			case ACCEPTED -> {
-				// Signed in: carry on.
-			}
-		}
+		check(from, code, now);
 
 		// The code row stays locked until commit, so two sign-ins at once can't both register them.
 		var user = from.bySms() ? users.registerOrFind(from.address(), from.country())
 				: users.registerOrFindByEmail(from.address(), Market.get(country).country());
 		var token = SessionToken.generate();
 		sessions.save(new Session(token, user.id(), now));
+		return new SignedIn(user, token.value(), Session.LIFETIME);
+	}
+
+	/**
+	 * The code sent to a phone or email, checked. A loaded entity is saved when the transaction commits,
+	 * so a wrong guess counts even though the caller is refused (see noRollbackFor on the callers).
+	 */
+	private void check(Recipient from, String code, Instant now) {
+		var live = codes.lockLatestLive(from.address(), now)
+			.orElseThrow(() -> BusinessException.invalid("That code has expired. Ask for a new one."));
+		switch (live.attempt(hash(from.address(), code), now)) {
+			case LOCKED -> throw BusinessException.invalid("Too many wrong tries. Ask for a new code.");
+			case WRONG -> throw BusinessException.invalid(from.bySms() ? "That code isn’t right. Check the SMS and try again."
+					: "That code isn’t right. Check the email and try again.");
+			case ACCEPTED -> {
+				// The code was right: carry on.
+			}
+		}
+	}
+
+	/**
+	 * Signs someone in with the ID token Google gave the web app. Their Google account finds (or
+	 * makes) their PlayChale account: see {@link UserDirectory#registerOrFindByGoogle}. {@code country}
+	 * is the web app's guess, for a new account.
+	 */
+	@Transactional
+	public SignedIn signInWithGoogle(String credential, String country) {
+		if (!google.enabled()) {
+			throw BusinessException.conflict("Signing in with Google isn’t available yet. Use a code instead.");
+		}
+		var who = googleTokens.verify(credential);
+		var user = users.registerOrFindByGoogle(who.sub(), who.email(), Market.get(country).country());
+		var token = SessionToken.generate();
+		sessions.save(new Session(token, user.id(), clock.instant()));
 		return new SignedIn(user, token.value(), Session.LIFETIME);
 	}
 

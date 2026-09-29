@@ -5,6 +5,7 @@ import java.util.List;
 import com.playchale.api.catalog.api.Sport;
 import com.playchale.api.catalog.api.SportCatalog;
 import com.playchale.api.market.Market;
+import com.playchale.api.users.api.Terms;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -25,6 +26,15 @@ class CatalogController {
 	@GetMapping("/countries")
 	List<Country> countries() {
 		return Market.all().stream().map(m -> new Country(m.country(), m.countryName(), m.currency(), m.minorUnits(), m.dialCode())).toList();
+	}
+
+	record TermsVersion(String version) {
+	}
+
+	/** The date of the current Terms and Privacy Policy, which the web app's own must match. */
+	@GetMapping("/terms")
+	TermsVersion terms() {
+		return new TermsVersion(Terms.CURRENT);
 	}
 
 }

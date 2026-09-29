@@ -45,7 +45,8 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 	}
 
 	/** What makes a game a league fixture: which league, which round, who's playing. */
-	public record FixtureRef(UUID competitionId, int round, UUID homeTeamId, UUID awayTeamId) {
+	/** {@code slot} and {@code decider} place a knockout tie in its bracket and say it must be won. */
+	public record FixtureRef(UUID competitionId, int round, UUID homeTeamId, UUID awayTeamId, Integer slot, boolean decider) {
 	}
 
 	/** The two teams in a fixture. */
@@ -55,7 +56,8 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 	/** The web app's GameResult. Players are named by the roster's keys: a player's ID, or "guest:<token>". */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record ResultResponse(int homeScore, int awayScore, Sides sides, List<Scorer> scorers, List<SetScore> sets,
-			List<String> absent, UUID verifiedBy, Instant recordedAt, List<UUID> confirmedBy, List<Dispute> disputes) {
+			List<String> absent, UUID verifiedBy, Instant recordedAt, List<UUID> confirmedBy, List<Dispute> disputes,
+			Integer homePenalties, Integer awayPenalties) {
 	}
 
 	public record Sides(List<String> home, List<String> away) {

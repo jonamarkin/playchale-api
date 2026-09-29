@@ -10,7 +10,13 @@ import java.util.List;
  * @param absent players who joined but didn't turn up
  */
 public record ResultInput(int homeScore, int awayScore, List<String> home, List<String> away, List<Scorer> scorers,
-		List<SetScore> sets, List<String> absent) {
+		List<SetScore> sets, List<String> absent, Integer homePenalties, Integer awayPenalties) {
+
+	/** A result with nothing to settle: a league fixture or an ordinary game. */
+	public ResultInput(int homeScore, int awayScore, List<String> home, List<String> away, List<Scorer> scorers,
+			List<SetScore> sets, List<String> absent) {
+		this(homeScore, awayScore, home, away, scorers, sets, absent, null, null);
+	}
 
 	/** One player's numbers in the game. Only the sport's own stats are kept. */
 	public record Scorer(String userId, Integer goals, Integer assists, Integer points) {

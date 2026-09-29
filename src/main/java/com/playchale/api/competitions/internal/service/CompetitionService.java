@@ -6,16 +6,21 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.SortedMap;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.playchale.api.competitions.api.CompetitionEvents;
-import com.playchale.api.competitions.api.CompetitionEvents.LeagueInfo;
+import com.playchale.api.competitions.api.CompetitionEvents.CompetitionInfo;
 import com.playchale.api.competitions.internal.domain.Competition;
 import com.playchale.api.competitions.internal.domain.CompetitionDetails;
 import com.playchale.api.competitions.internal.domain.Entry;
 import com.playchale.api.competitions.internal.domain.EntryId;
+import com.playchale.api.competitions.internal.domain.Knockout;
 import com.playchale.api.competitions.internal.domain.RoundRobin;
 import com.playchale.api.competitions.internal.repository.CompetitionRepository;
 import com.playchale.api.competitions.internal.repository.EntryRepository;
@@ -45,7 +50,7 @@ public class CompetitionService {
 
 	private static final int LIST_LIMIT = 50;
 
-	private static final String NOT_FOUND = "That league doesn’t exist any more.";
+	private static final String NOT_FOUND = "That competition doesn’t exist any more.";
 
 	private final CompetitionRepository competitions;
 
@@ -124,12 +129,12 @@ public class CompetitionService {
 		var competition = organised(id, me);
 		var existing = entries.inCompetition(id);
 		var names = directory.findAll(existing.stream().map(Entry::getTeamId).toList());
-		requireNotDrawn(id, "The fixtures are drawn. Add teams before drawing them, or start a new league.");
+		requireNotDrawn(id, "The draw is done. Add teams before drawing, or start a new %s.".formatted(competition.noun()));
 		var now = clock.instant();
 		if (teamId != null) {
 			var team = directory.find(teamId).orElseThrow(() -> BusinessException.notFound("That team doesn’t exist any more."));
 			if (names.containsKey(teamId) || names.values().stream().anyMatch(t -> t.name().equalsIgnoreCase(team.name()))) {
-				throw BusinessException.conflict("%s is already in this league.".formatted(team.name()));
+				throw BusinessException.conflict("%s is already in this %s.".formatted(team.name(), competition.noun()));
 			}
 			var entry = new Entry(id, teamId, !team.captainId().equals(me), now);
 			if (entry.isInvited()) {
@@ -143,7 +148,7 @@ public class CompetitionService {
 		}
 		var trimmed = name == null ? "" : name.strip();
 		if (names.values().stream().anyMatch(t -> t.name().equalsIgnoreCase(trimmed))) {
-			throw BusinessException.conflict("%s is already in this league.".formatted(trimmed));
+			throw BusinessException.conflict("%s is already in this %s.".formatted(trimmed, competition.noun()));
 		}
 		var captain = captainId == null ? me : captainId;
 		if (captainId != null) {
@@ -151,7 +156,7 @@ public class CompetitionService {
 				throw BusinessException.invalid("Pick a captain from your players.");
 			}
 			if (entries.isPlaying(id, captainId)) {
-				throw BusinessException.conflict("%s is already in another team in this league.".formatted(firstName(captainId)));
+				throw BusinessException.conflict("%s is already in another team in this %s.".formatted(firstName(captainId), competition.noun()));
 			}
 		}
 		var tint = Competition.TEAM_TINTS.get(existing.size() % Competition.TEAM_TINTS.size());
@@ -172,7 +177,7 @@ public class CompetitionService {
 			throw BusinessException.conflict("Only %s can answer for %s.".formatted(firstName(team.captainId()), team.name()));
 		}
 		if (accept) {
-			requireNotDrawn(id, "The fixtures are already drawn, so the league is full.");
+			requireNotDrawn(id, "The draw is done, so the %s is full.".formatted(competition.noun()));
 			entry.accept(clock.instant());
 			enter(entry, team, clock.instant());
 		}
@@ -192,7 +197,11 @@ public class CompetitionService {
 		return views.of(competition, me);
 	}
 
-	/** competitions.generateFixtures: organiser only. Everyone plays everyone once, a round a week, fixtures back to back on the day. */
+	/**
+	 * competitions.generateFixtures: organiser only. A league draws every round at once, everyone
+	 * playing everyone, a round a week. A knockout draws its first round only — the rest follow as
+	 * results come in, because who's in them depends on who wins.
+	 */
 	@Transactional
 	public CompetitionResponse generateFixtures(UUID id, UUID me) {
 		var competition = organised(id, me);
@@ -202,9 +211,19 @@ public class CompetitionService {
 		squads.stream().filter(Entry::isInvited).findFirst().ifPresent(waiting -> {
 			throw BusinessException.conflict("%s hasn’t accepted yet. Wait for their captain, or drop them.".formatted(cards.get(waiting.getTeamId()).name()));
 		});
-		if (squads.size() < 3) {
-			throw BusinessException.invalid("A league needs at least three teams.");
+		if (squads.size() < competition.fewestTeams()) {
+			throw BusinessException.invalid(competition.isKnockout() ? "A tournament needs at least two teams."
+					: "A league needs at least three teams.");
 		}
+		var rounds = competition.isKnockout() ? drawKnockout(competition, squads) : drawLeague(competition, squads, cards);
+		competition.start();
+		var players = squads.stream().flatMap(e -> e.playerIds().stream()).distinct().filter(p -> !p.equals(me)).toList();
+		events.publishEvent(new CompetitionEvents.FixturesDrawn(info(competition), me, players, rounds, competition.getStartsAt()));
+		return views.of(competition, me);
+	}
+
+	/** Every team plays every other once, a round a week, the day's fixtures back to back. */
+	private int drawLeague(Competition competition, List<Entry> squads, Map<UUID, TeamCard> cards) {
 		var byId = squads.stream().collect(Collectors.toMap(Entry::getTeamId, e -> e));
 		var rounds = RoundRobin.rounds(squads.stream().map(Entry::getTeamId).toList());
 		// Matchdays a week apart in local time, so a clock change doesn't move kick-off.
@@ -216,18 +235,95 @@ public class CompetitionService {
 				var home = byId.get(pairs.get(i).home());
 				var away = byId.get(pairs.get(i).away());
 				var startsAt = firstDay.plusWeeks(round).plusMinutes((long) i * competition.getDurationMinutes()).toInstant();
-				specs.add(new Fixtures.FixtureSpec(id, round + 1, home.getTeamId(), away.getTeamId(),
-						"%s vs %s".formatted(cards.get(home.getTeamId()).name(), cards.get(away.getTeamId()).name()),
-						competition.getSport(), competition.getFormat(), startsAt, competition.getDurationMinutes(), competition.getVenueKind(),
-						competition.getVenueId(), competition.getVenueName(), competition.getVenueArea(), competition.getMapUrl(),
-						competition.getOrganiserId(), squadOf(home, away), competition.getCountry(), competition.getTimezone()));
+				specs.add(spec(competition, cards, round + 1, home, away, startsAt, null, false));
 			}
 		}
 		fixtures.create(specs);
-		competition.start();
-		var players = squads.stream().flatMap(e -> e.playerIds().stream()).distinct().filter(p -> !p.equals(me)).toList();
-		events.publishEvent(new CompetitionEvents.FixturesDrawn(info(competition), me, players, rounds.size(), competition.getStartsAt()));
-		return views.of(competition, me);
+		return rounds.size();
+	}
+
+	/**
+	 * The first round of the bracket. Teams that drew a bye have nothing to play, so they wait for
+	 * the round after, which is drawn once this one is done.
+	 */
+	private int drawKnockout(Competition competition, List<Entry> squads) {
+		var draw = Knockout.firstRound(squads.stream().map(Entry::getTeamId).toList());
+		playRound(competition, draw.ties(), 1);
+		return Knockout.rounds(squads.size());
+	}
+
+	/**
+	 * Creates the fixtures for one round of a bracket, back to back from the round's kick-off: a
+	 * round a week, as a league's matchdays are.
+	 */
+	private void playRound(Competition competition, List<Knockout.Tie> ties, int round) {
+		if (ties.isEmpty()) {
+			return;
+		}
+		var cards = directory.findAll(ties.stream().flatMap(t -> Stream.of(t.home(), t.away())).toList());
+		var squads = entries.inCompetition(competition.getId()).stream().collect(Collectors.toMap(Entry::getTeamId, e -> e));
+		var day = competition.getStartsAt().atZone(competition.zone()).plusWeeks(round - 1L);
+		var specs = new ArrayList<Fixtures.FixtureSpec>();
+		for (int i = 0; i < ties.size(); i++) {
+			var tie = ties.get(i);
+			var startsAt = day.plusMinutes((long) i * competition.getDurationMinutes()).toInstant();
+			specs.add(spec(competition, cards, round, squads.get(tie.home()), squads.get(tie.away()), startsAt, tie.slot(), true));
+		}
+		fixtures.create(specs);
+	}
+
+	/** One fixture to create, with the two squads in it. */
+	private Fixtures.FixtureSpec spec(Competition competition, Map<UUID, TeamCard> cards, int round, Entry home, Entry away,
+			Instant startsAt, Integer slot, boolean decider) {
+		return new Fixtures.FixtureSpec(competition.getId(), round, home.getTeamId(), away.getTeamId(),
+				"%s vs %s".formatted(cards.get(home.getTeamId()).name(), cards.get(away.getTeamId()).name()),
+				competition.getSport(), competition.getFormat(), startsAt, competition.getDurationMinutes(), competition.getVenueKind(),
+				competition.getVenueId(), competition.getVenueName(), competition.getVenueArea(), competition.getMapUrl(),
+				competition.getOrganiserId(), squadOf(home, away), competition.getCountry(), competition.getTimezone(), slot, decider);
+	}
+
+	/**
+	 * A knockout moves on: once every tie in the latest round has a winner, the next round is drawn
+	 * from those winners and anyone whose bye left them waiting. When the final is won, it's over.
+	 * Called after a result goes in, so the bracket fills itself without the organiser doing anything.
+	 */
+	@Transactional
+	public void advance(UUID competitionId) {
+		var competition = competitions.findById(competitionId).filter(Competition::isKnockout).orElse(null);
+		if (competition == null || !Competition.RUNNING.equals(competition.getStatus())) {
+			return;
+		}
+		var played = fixtures.of(competitionId);
+		if (played.isEmpty()) {
+			return;
+		}
+		var round = played.stream().mapToInt(Fixtures.FixtureSummary::round).max().orElse(0);
+		var latest = played.stream().filter(f -> f.round() == round).toList();
+		if (latest.stream().anyMatch(f -> f.winner() == null)) {
+			return;
+		}
+		// Whoever came through this round, at the slot they came from, plus byes still waiting.
+		var through = new TreeMap<Integer, UUID>();
+		latest.forEach(f -> through.put(f.slot() == null ? 0 : f.slot(), f.winner()));
+		waiting(competition, played, round).forEach(through::putIfAbsent);
+		if (through.size() < 2) {
+			competition.finish();
+			return;
+		}
+		playRound(competition, Knockout.nextRound(round + 1, through), round + 1);
+	}
+
+	/**
+	 * Teams whose bye means they haven't played yet: everyone entered, less everyone who has been in
+	 * a tie so far. Each waits at the slot their bye gave them in the first round.
+	 */
+	private SortedMap<Integer, UUID> waiting(Competition competition, List<Fixtures.FixtureSummary> played, int round) {
+		if (round > 1) {
+			return new TreeMap<>();
+		}
+		var entered = entries.inCompetition(competition.getId()).stream().map(Entry::getTeamId).toList();
+		var draw = Knockout.firstRound(entered);
+		return new TreeMap<>(draw.byes());
 	}
 
 	/** competitions.addPlayers: captain or organiser. They join the team too, and upcoming fixtures pick them up. */
@@ -238,7 +334,7 @@ public class CompetitionService {
 		var real = users.findAll(userIds).keySet();
 		var adding = userIds.stream().distinct().filter(real::contains).filter(p -> !entries.isPlaying(id, p)).toList();
 		if (adding.isEmpty()) {
-			throw BusinessException.conflict("Those players are already in a team in this league.");
+			throw BusinessException.conflict("Those players are already in a team in this %s.".formatted(competition.noun()));
 		}
 		var now = clock.instant();
 		adding.forEach(p -> entry.add(p, now));
@@ -269,7 +365,7 @@ public class CompetitionService {
 		var competition = locked(id);
 		entry(id, teamId);
 		if (entries.isPlaying(id, me)) {
-			throw BusinessException.conflict("You’re already playing in this league.");
+			throw BusinessException.conflict("You’re already playing in this %s.".formatted(competition.noun()));
 		}
 		directory.requestJoin(teamId, me, false);
 		events.publishEvent(new CompetitionEvents.SquadRequested(info(competition), teamName(teamId), captainOf(teamId), me));
@@ -308,7 +404,7 @@ public class CompetitionService {
 			throw BusinessException.conflict("You’re already in %s.".formatted(team.name()));
 		}
 		if (entries.isPlaying(id, me)) {
-			throw BusinessException.conflict("You’re already playing for another team in this league.");
+			throw BusinessException.conflict("You’re already playing for another team in this %s.".formatted(competition.noun()));
 		}
 		entry.add(me, clock.instant());
 		saveSquad(entry);
@@ -363,7 +459,7 @@ public class CompetitionService {
 			entries.saveAndFlush(entry);
 		}
 		catch (DataIntegrityViolationException e) {
-			throw BusinessException.conflict("Someone in that squad is already in another team in this league.");
+			throw BusinessException.conflict("Someone in that squad is already in another team here.");
 		}
 	}
 
@@ -379,10 +475,40 @@ public class CompetitionService {
 		}
 	}
 
+	/**
+	 * competitions.addOrganiser: hands someone else the league's controls, so a sports committee can
+	 * run it together. Only the organiser who set it up can, and only to someone already on PlayChale.
+	 */
+	@Transactional
+	public CompetitionResponse addOrganiser(UUID id, UUID userId, UUID me) {
+		var competition = owned(id, me);
+		if (users.find(userId).isEmpty()) {
+			throw BusinessException.notFound("That player could not be found.");
+		}
+		competition.addOrganiser(userId);
+		return views.of(competition, me);
+	}
+
+	/** competitions.removeOrganiser: takes the controls back. */
+	@Transactional
+	public CompetitionResponse removeOrganiser(UUID id, UUID userId, UUID me) {
+		var competition = owned(id, me);
+		competition.removeOrganiser(userId);
+		return views.of(competition, me);
+	}
+
+	private Competition owned(UUID id, UUID me) {
+		var competition = locked(id);
+		if (!competition.isOwnedBy(me)) {
+			throw BusinessException.conflict("Only the organiser who set this %s up can change who runs it.".formatted(competition.noun()));
+		}
+		return competition;
+	}
+
 	private Competition organised(UUID id, UUID me) {
 		var competition = locked(id);
 		if (!competition.isOrganisedBy(me)) {
-			throw BusinessException.conflict("Only the organiser can change this league.");
+			throw BusinessException.conflict("Only the organiser can change this %s.".formatted(competition.noun()));
 		}
 		return competition;
 	}
@@ -399,7 +525,7 @@ public class CompetitionService {
 
 	private Entry entry(UUID competitionId, UUID teamId) {
 		return entries.findById(new EntryId(competitionId, teamId))
-			.orElseThrow(() -> BusinessException.notFound("That team isn’t in this league."));
+			.orElseThrow(() -> BusinessException.notFound("That team isn’t taking part."));
 	}
 
 	private UUID captainOf(UUID teamId) {
@@ -418,8 +544,8 @@ public class CompetitionService {
 		return users.find(userId).map(u -> u.name().split(" ")[0]).filter(n -> !n.isBlank()).orElse("the captain");
 	}
 
-	private static LeagueInfo info(Competition c) {
-		return new LeagueInfo(c.getId(), c.getName(), c.getCountry(), c.getTimezone());
+	private static CompetitionInfo info(Competition c) {
+		return new CompetitionInfo(c.getId(), c.getName(), c.noun(), c.getCountry(), c.getTimezone());
 	}
 
 }

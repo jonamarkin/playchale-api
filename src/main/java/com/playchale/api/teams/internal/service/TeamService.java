@@ -1,6 +1,7 @@
 package com.playchale.api.teams.internal.service;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -111,6 +112,33 @@ public class TeamService implements TeamDirectory, TeamMemberships {
 		return view(team, me);
 	}
 
+	/** teams.setLogo: captain only. The crest the team plays under, checked before it's kept. */
+	@Transactional
+	public TeamResponse setLogo(UUID id, byte[] image, String contentType, UUID me) {
+		var team = captained(id, me);
+		team.wearCrest(image, contentType, clock.instant());
+		return view(team, me);
+	}
+
+	/** teams.removeLogo: captain only. Back to the plain coloured crest. */
+	@Transactional
+	public TeamResponse removeLogo(UUID id, UUID me) {
+		var team = captained(id, me);
+		team.dropCrest();
+		return view(team, me);
+	}
+
+	/** The crest itself, for showing: anyone can see it, as the team's name and colour are public. */
+	@Transactional(readOnly = true)
+	public Optional<Crest> logo(UUID id) {
+		return teams.findById(id).filter(t -> t.getLogo() != null)
+			.map(t -> new Crest(t.getLogo(), t.getLogoType(), t.getLogoVersion()));
+	}
+
+	/** A team's crest as it's served: the bytes, what they are, and when they last changed. */
+	public record Crest(byte[] image, String contentType, Instant version) {
+	}
+
 	/** teams.addMembers: captain only. They're told they're in. */
 	@Transactional
 	public TeamResponse addMembers(UUID id, Collection<UUID> userIds, UUID me) {
@@ -167,7 +195,7 @@ public class TeamService implements TeamDirectory, TeamMemberships {
 	public void delete(UUID id, UUID me) {
 		var team = captained(id, me);
 		leaguesOf(id).stream().filter(TeamLeagues.TeamLeague::started).findFirst().ifPresent(league -> {
-			throw BusinessException.conflict("%s is in %s. A team can’t be deleted once its league has started.".formatted(team.getName(), league.name()));
+			throw BusinessException.conflict("%s is in %s. A team can’t be deleted once it has started.".formatted(team.getName(), league.name()));
 		});
 		if (!gamesOf(id).upcoming().isEmpty()) {
 			throw BusinessException.conflict("%s has a game coming up. Call it off, or turn the challenge down, first.".formatted(team.getName()));
@@ -289,7 +317,8 @@ public class TeamService implements TeamDirectory, TeamMemberships {
 				captain ? team.getJoinToken() : "", team.getCreatedAt(), leaguesOf(team.getId()),
 				captain ? pending.stream().map(r -> new TeamResponse.RequestView(r.getId(), r.getTeamId(), r.getUserId(), r.getStatus(),
 						r.getCreatedAt(), shown(people.get(r.getUserId()), viewer))).toList() : null,
-				requested, played.record(), played.upcoming(), played.recent());
+				requested, played.record(), played.upcoming(), played.recent(),
+				team.getLogoVersion() == null ? null : team.getLogoVersion().toEpochMilli());
 	}
 
 	private TeamGames.Summary gamesOf(UUID teamId) {
@@ -322,7 +351,8 @@ public class TeamService implements TeamDirectory, TeamMemberships {
 	}
 
 	static TeamCard card(Team t) {
-		return new TeamCard(t.getId(), t.getName(), t.getCaptainId(), t.memberIds(), t.getTint(), t.getCreatedAt());
+		return new TeamCard(t.getId(), t.getName(), t.getCaptainId(), t.memberIds(), t.getTint(), t.getCreatedAt(),
+				t.getLogoVersion() == null ? null : t.getLogoVersion().toEpochMilli());
 	}
 
 	private JoinRequestCard card(JoinRequest r) {

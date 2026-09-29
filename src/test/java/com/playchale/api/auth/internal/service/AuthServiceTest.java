@@ -221,7 +221,7 @@ class AuthServiceTest {
 		assertRefused(() -> auth.requestCode("024 455 5123", "kwame@example.com", CONNECTION), ErrorCode.INVALID,
 				"Enter your mobile number or your email address.");
 		assertRefused(() -> auth.requestCode(null, null, CONNECTION), ErrorCode.INVALID, "Enter your mobile number or your email address.");
-		assertThat(auth.options()).isEqualTo(new AuthService.Options(true, true));
+		assertThat(auth.options()).isEqualTo(new AuthService.Options(true, true, null));
 	}
 
 }

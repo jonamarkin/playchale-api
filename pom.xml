@@ -66,6 +66,12 @@
 			<artifactId>libphonenumber</artifactId>
 			<version>9.0.40</version>
 		</dependency>
+		<!-- Checks Google's sign-in tokens against Google's published keys. -->
+		<dependency>
+			<groupId>com.nimbusds</groupId>
+			<artifactId>nimbus-jose-jwt</artifactId>
+			<version>10.4</version>
+		</dependency>
 
 		<!-- Development only: starts compose.yaml's Postgres when the app runs, and points the app at it. -->
 		<dependency>
