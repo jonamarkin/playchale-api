@@ -21,6 +21,9 @@ public interface PitchBookings {
 	 * Holds a pitch for a game, within opening hours and clash-free. Refuses with a message for the
 	 * host when it can't.
 	 */
+	/** Checks the same venue, opening-hours and clash rules without creating a booking. */
+	Optional<String> problemForGame(UUID venueId, UUID pitchId, Instant startsAt, Instant endsAt, UUID gameId);
+
 	PitchBooking bookForGame(UUID venueId, UUID pitchId, Instant startsAt, Instant endsAt, UUID gameId, UUID host);
 
 	/** Releases whatever a game holds, e.g. when it's called off. */

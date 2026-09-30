@@ -70,6 +70,12 @@ public class Competition extends AuditableEntity {
 
 	private UUID organiserId;
 
+	/** Set only for organisation-run corporate competitions. Personal competitions keep this null. */
+	private UUID organisationId;
+
+	/** Personal competitions publish as soon as drawn; corporate competitions move none → draft → published. */
+	private String scheduleStatus = "published";
+
 	/** How it's run: a {@link #LEAGUE} or a {@link #KNOCKOUT}. */
 	private String structure = LEAGUE;
 
@@ -202,6 +208,11 @@ public class Competition extends AuditableEntity {
 		status = RUNNING;
 	}
 
+	public void runFor(UUID organisationId) {
+		this.organisationId = organisationId;
+		this.scheduleStatus = "none";
+	}
+
 	/**
 	 * Back to being set up, because the teams changed after the draw. The old fixtures are thrown
 	 * away with it, so the organiser draws again with everyone in.
@@ -298,6 +309,18 @@ public class Competition extends AuditableEntity {
 
 	public UUID getOrganiserId() {
 		return organiserId;
+	}
+
+	public UUID getOrganisationId() {
+		return organisationId;
+	}
+
+	public String getScheduleStatus() {
+		return scheduleStatus;
+	}
+
+	public boolean isCorporate() {
+		return organisationId != null;
 	}
 
 	public String getVenueKind() {

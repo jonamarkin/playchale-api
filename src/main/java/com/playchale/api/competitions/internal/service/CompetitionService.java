@@ -26,6 +26,7 @@ import com.playchale.api.competitions.internal.repository.CompetitionRepository;
 import com.playchale.api.competitions.internal.repository.EntryRepository;
 import com.playchale.api.games.api.Fixtures;
 import com.playchale.api.market.Market;
+import com.playchale.api.organisations.api.OrganisationAccess;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.teams.api.TeamCard;
 import com.playchale.api.teams.api.TeamDirectory;
@@ -73,8 +74,12 @@ public class CompetitionService {
 
 	private final Clock clock;
 
+	private final OrganisationAccess organisations;
+
+	private final CorporateOperationsService corporateOperations;
+
 	CompetitionService(CompetitionRepository competitions, EntryRepository entries, TeamDirectory directory, CompetitionViews views,
-			Fixtures fixtures, UserDirectory users, PitchBookings venues, ApplicationEventPublisher events, Clock clock) {
+			Fixtures fixtures, UserDirectory users, PitchBookings venues, ApplicationEventPublisher events, Clock clock, OrganisationAccess organisations, CorporateOperationsService corporateOperations) {
 		this.competitions = competitions;
 		this.entries = entries;
 		this.directory = directory;
@@ -84,6 +89,8 @@ public class CompetitionService {
 		this.venues = venues;
 		this.events = events;
 		this.clock = clock;
+		this.organisations = organisations;
+		this.corporateOperations = corporateOperations;
 	}
 
 	/** competitions.list: leagues anyone can look at (drawn, not drafts), newest first. */
@@ -107,7 +114,21 @@ public class CompetitionService {
 	/** competitions.create: a draft until the fixtures are drawn. */
 	@Transactional
 	public CompetitionResponse create(CompetitionDetails details, UUID me) {
+		return create(details, null, me);
+	}
+
+	@Transactional
+	public CompetitionResponse create(CompetitionDetails details, UUID organisationId, UUID me) {
+		if (organisationId != null) {
+			organisations.requireAdmin(organisationId, me);
+			if (!organisations.corporateEnabled(organisationId)) {
+				throw BusinessException.conflict("Corporate operations are not enabled for this organisation yet.");
+			}
+		}
 		var competition = new Competition(details, me, clock.instant());
+		if (organisationId != null) {
+			competition.runFor(organisationId);
+		}
 		if ("listed".equals(details.venueKind())) {
 			var venue = venues.findVenue(details.venueId() == null ? new UUID(0, 0) : details.venueId())
 				.orElseThrow(() -> BusinessException.invalid("That venue could not be found."));
@@ -556,7 +577,7 @@ public class CompetitionService {
 
 	private Competition organised(UUID id, UUID me) {
 		var competition = locked(id);
-		if (!competition.isOrganisedBy(me)) {
+		if (!competition.isOrganisedBy(me) && !(competition.isCorporate() && (organisations.isAdmin(competition.getOrganisationId(), me) || corporateOperations.canManage(competition.getId(), me)))) {
 			throw BusinessException.conflict("Only the organiser can change this %s.".formatted(competition.noun()));
 		}
 		return competition;
@@ -566,7 +587,7 @@ public class CompetitionService {
 	private Entry runBy(Competition competition, UUID teamId, UUID me) {
 		var entry = entry(competition.getId(), teamId);
 		var captain = captainOf(teamId);
-		if (!captain.equals(me) && !competition.isOrganisedBy(me)) {
+		if (!captain.equals(me) && !competition.isOrganisedBy(me) && !(competition.isCorporate() && (organisations.isAdmin(competition.getOrganisationId(), me) || corporateOperations.canManage(competition.getId(), me)))) {
 			throw BusinessException.conflict("Only %s or the organiser can change this squad.".formatted(firstName(captain)));
 		}
 		return entry;

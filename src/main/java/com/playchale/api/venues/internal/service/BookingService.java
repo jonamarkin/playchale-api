@@ -74,6 +74,19 @@ public class BookingService implements PitchBookings {
 	}
 
 	@Override
+	@Transactional(readOnly = true)
+	public Optional<String> problemForGame(UUID venueId, UUID pitchId, Instant startsAt, Instant endsAt, UUID gameId) {
+		var venue = venues.findById(venueId).orElse(null);
+		if (venue == null) return Optional.of("That partner venue is no longer available.");
+		if (venue.activePitch(pitchId).isEmpty()) return Optional.of("That pitch is no longer available at this venue.");
+		if (!venue.isOpen(startsAt, endsAt)) return Optional.of("%s is closed at that time.".formatted(venue.getName()));
+		var own = bookings.findByGameIdAndStatus(gameId, Booking.CONFIRMED).stream().findFirst();
+		var clash = own.isPresent() ? bookings.findClashExcept(pitchId, startsAt, endsAt, own.get().getId())
+			: bookings.findClash(pitchId, startsAt, endsAt);
+		return clash.map(BookingService::clashMessage);
+	}
+
+	@Override
 	@Transactional
 	public PitchBooking bookForGame(UUID venueId, UUID pitchId, Instant startsAt, Instant endsAt, UUID gameId, UUID host) {
 		var venue = venues.findById(venueId).orElseThrow(VenueService::notFound);

@@ -18,6 +18,7 @@ import com.playchale.api.competitions.internal.repository.EntryRepository;
 import com.playchale.api.games.api.FixtureTeams;
 import com.playchale.api.games.api.Fixtures;
 import com.playchale.api.games.api.GameResponse;
+import com.playchale.api.organisations.api.OrganisationAccess;
 import com.playchale.api.teams.api.JoinRequestCard;
 import com.playchale.api.teams.api.TeamCard;
 import com.playchale.api.teams.api.TeamDirectory;
@@ -40,12 +41,15 @@ class CompetitionViews {
 
 	private final PitchBookings venues;
 
-	CompetitionViews(EntryRepository entries, TeamDirectory directory, Fixtures fixtures, UserDirectory users, PitchBookings venues) {
+	private final OrganisationAccess organisations;
+
+	CompetitionViews(EntryRepository entries, TeamDirectory directory, Fixtures fixtures, UserDirectory users, PitchBookings venues, OrganisationAccess organisations) {
 		this.entries = entries;
 		this.directory = directory;
 		this.fixtures = fixtures;
 		this.users = users;
 		this.venues = venues;
+		this.organisations = organisations;
 	}
 
 	List<CompetitionResponse> of(Collection<Competition> competitions, UUID viewer) {
@@ -92,7 +96,16 @@ class CompetitionViews {
 				c.getDurationMinutes(), c.getStatus(), new CompetitionResponse.Points(c.getPointsWin(), c.getPointsDraw(), c.getPointsLoss()),
 				c.getCreatedAt(), shown(people.get(c.getOrganiserId()), viewer), teamViews, table(c, squads, cards, summaries, viewer), views, rounds,
 				requestViews, c.getPlayerLists(), c.getCountry(), c.getCurrency(), c.getTimezone(), scorers, organisers, c.getStructure(),
-				bracket(c, squads, cards, summaries, viewer));
+				bracket(c, squads, cards, summaries, viewer), c.getOrganisationId(), c.isCorporate() ? c.getScheduleStatus() : null,
+				c.isCorporate() ? ((c.isOrganisedBy(viewer) || organisations.isAdmin(c.getOrganisationId(), viewer))
+					? List.of("manage", "schedule", "eligibility", "finance", "reports") : List.of()) : null,
+				brand(c));
+	}
+
+	private CompetitionResponse.Brand brand(Competition competition) {
+		if (competition.getOrganisationId() == null) return null;
+		var brand = organisations.brand(competition.getOrganisationId());
+		return brand == null ? null : new CompetitionResponse.Brand(brand.id(), brand.name(), brand.primaryColour(), brand.logoUrl());
 	}
 
 	/**

@@ -3,9 +3,11 @@ package com.playchale.api.games.internal.service;
 import com.playchale.api.games.api.GameResponse;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import com.playchale.api.games.api.GameEvents;
+import com.playchale.api.games.api.OfficialResults;
 import com.playchale.api.games.internal.domain.Game;
 import com.playchale.api.games.internal.domain.GameResult;
 import com.playchale.api.games.internal.domain.ResultInput;
@@ -22,7 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
  * the game, and everyone who played gets their outcome.
  */
 @Service
-public class ResultService {
+public class ResultService implements OfficialResults {
 
 	private final GameRepository games;
 
@@ -80,6 +82,29 @@ public class ResultService {
 		events.publishEvent(new GameEvents.ResultRecorded(GameService.info(game), existing.isPresent(), !result.getSets().isEmpty(),
 				result.getHomeScore(), result.getAwayScore(), outcomes));
 		return views.of(game, me);
+	}
+
+	@Override
+	@Transactional
+	public void record(UUID gameId, int homeScore, int awayScore, List<OfficialResults.Player> players, UUID actorId) {
+		var game = games.lockById(gameId).orElseThrow(GameService::notFound);
+		var now = clock.instant();
+		game.reinstate();
+		game.complete(now);
+		var home = players.stream().filter(p -> "home".equals(p.side())).map(p -> p.userId().toString()).toList();
+		var away = players.stream().filter(p -> "away".equals(p.side())).map(p -> p.userId().toString()).toList();
+		var absent = players.stream().filter(p -> "absent".equals(p.side())).map(p -> p.userId().toString()).toList();
+		var scorers = players.stream().filter(p -> p.goals() > 0 || p.assists() > 0)
+			.map(p -> new ResultInput.Scorer(p.userId().toString(), p.goals(), p.assists(), 0)).toList();
+		var input = new ResultInput(homeScore, awayScore, home, away, scorers, List.of(), absent);
+		var existing = results.findById(gameId);
+		var result = existing.orElseGet(() -> new GameResult(game, input, actorId, now));
+		if (existing.isPresent()) {
+			result.record(game, input, actorId, now);
+		}
+		results.save(result);
+		events.publishEvent(new GameEvents.ResultRecorded(GameService.info(game), existing.isPresent(), false,
+			result.getHomeScore(), result.getAwayScore(), List.of()));
 	}
 
 	/** games.confirmResult */

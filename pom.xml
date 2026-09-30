@@ -62,6 +62,12 @@
 		</dependency>
 		<!-- Phone numbers for every country: validation, E.164 and local formats (Google's own library). -->
 		<dependency>
+			<groupId>org.apache.pdfbox</groupId>
+			<artifactId>pdfbox</artifactId>
+			<version>3.0.5</version>
+		</dependency>
+
+		<dependency>
 			<groupId>com.googlecode.libphonenumber</groupId>
 			<artifactId>libphonenumber</artifactId>
 			<version>9.0.40</version>

@@ -52,7 +52,7 @@ class CompetitionController {
 	@PostMapping("/competitions")
 	@ResponseStatus(HttpStatus.CREATED)
 	CompetitionResponse create(CurrentUser me, @Valid @RequestBody CompetitionRequests.NewCompetition request) {
-		return competitions.create(request.toDetails(), me.id());
+		return competitions.create(request.toDetails(), request.organisationId(), me.id());
 	}
 
 	/** competitions.addTeam */

@@ -19,7 +19,9 @@ public record CompetitionResponse(UUID id, String name, String sport, String for
 		Instant startsAt, int durationMinutes, String status, Points points, Instant createdAt, UserSummary organiser,
 		List<TeamView> teams, List<TableRow> table, List<GameResponse> fixtures, int rounds, List<RequestView> requests, String playerLists,
 		String country, String currency, String timezone, List<ScorerView> scorers, List<UserSummary> organisers, String structure,
-		List<BracketRound> bracket) {
+		List<BracketRound> bracket, UUID organisationId, String scheduleStatus, List<String> permissions, Brand brand) {
+
+	public record Brand(UUID organisationId, String name, String primaryColour, String logoUrl) { }
 
 	public record Points(int win, int draw, int loss) {
 	}

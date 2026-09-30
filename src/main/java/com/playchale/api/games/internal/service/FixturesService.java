@@ -60,6 +60,8 @@ class FixturesService implements Fixtures {
 			}
 			games.save(game);
 		}
+		// Corporate scheduling edits the newly-created draft rows through JDBC in the same transaction.
+		games.flush();
 	}
 
 	@Override
