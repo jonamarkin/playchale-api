@@ -43,13 +43,17 @@ class CompetitionViews {
 
 	private final OrganisationAccess organisations;
 
-	CompetitionViews(EntryRepository entries, TeamDirectory directory, Fixtures fixtures, UserDirectory users, PitchBookings venues, OrganisationAccess organisations) {
+	private final PublicRosters rosters;
+
+	CompetitionViews(EntryRepository entries, TeamDirectory directory, Fixtures fixtures, UserDirectory users, PitchBookings venues,
+			OrganisationAccess organisations, PublicRosters rosters) {
 		this.entries = entries;
 		this.directory = directory;
 		this.fixtures = fixtures;
 		this.users = users;
 		this.venues = venues;
 		this.organisations = organisations;
+		this.rosters = rosters;
 	}
 
 	List<CompetitionResponse> of(Collection<Competition> competitions, UUID viewer) {
@@ -66,11 +70,16 @@ class CompetitionViews {
 				cards.values().stream().map(TeamCard::captainId), pending.stream().map(JoinRequestCard::userId),
 				scored.stream().map(Fixtures.Scorer::userId), c.getOrganisers().stream()).flatMap(s -> s).distinct().toList());
 
+		// A company enters as itself, so who plays for it is its approved roster rather than a squad.
+		var rostersByTeam = c.getOrganisationId() == null ? Map.<UUID, List<PublicRosters.PublicPlayer>>of() : rosters.of(c.getId());
 		var teamViews = squads.stream().filter(e -> cards.containsKey(e.getTeamId())).map(e -> {
 			var t = cards.get(e.getTeamId());
+			var roster = rostersByTeam.getOrDefault(t.id(), List.of()).stream()
+				.map(p -> new CompetitionResponse.RosterName(p.displayName(), p.userId()))
+				.toList();
 			return new CompetitionResponse.TeamView(t.id(), c.getId(), t.name(), t.captainId(), e.playerIds(), t.tint(), token(t, c, viewer),
 					t.createdAt(), e.playerIds().stream().map(people::get).filter(u -> u != null).map(u -> u.as(viewer)).toList(),
-					shown(people.get(t.captainId()), viewer), e.isInvited() ? Entry.INVITED : null);
+					shown(people.get(t.captainId()), viewer), e.isInvited() ? Entry.INVITED : null, roster);
 		}).toList();
 
 		var scorers = scored.stream()

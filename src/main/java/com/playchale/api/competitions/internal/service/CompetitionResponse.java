@@ -32,7 +32,17 @@ public record CompetitionResponse(UUID id, String name, String sport, String for
 	 * accepted (left out once it's in).
 	 */
 	public record TeamView(UUID id, UUID competitionId, String name, UUID captainId, List<UUID> playerIds, String tint, String joinToken,
-			Instant createdAt, List<UserSummary> players, UserSummary captain, String status) {
+			Instant createdAt, List<UserSummary> players, UserSummary captain, String status, List<RosterName> roster) {
+	}
+
+	/**
+	 * An approved player on a company's roster, for a competition whose entrants are organisations
+	 * rather than squads of PlayChale players. Names only: the employee reference and the eligibility
+	 * decisions never leave the operations screens.
+	 *
+	 * @param userId set once they've joined PlayChale and claimed the place, so it can link to them
+	 */
+	public record RosterName(String displayName, UUID userId) {
 	}
 
 	/** @param scored goals, points or sets, depending on the sport */

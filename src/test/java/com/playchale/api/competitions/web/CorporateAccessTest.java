@@ -187,6 +187,16 @@ class CorporateAccessTest {
 			.content("{\"amountDue\":50000,\"status\":\"paid\",\"method\":\"momo\",\"reference\":\"MM-1\",\"privateNote\":\"Paid at the office\"}"))
 			.andExpect(status().isOk());
 
+		// A second player, attested but not yet reviewed, and so not yet anyone's business.
+		var waiting = body(mvc.perform(post("/competitions/" + competitionId + "/operations/teams/" + teamId + "/roster").cookie(operator)
+			.contentType(MediaType.APPLICATION_JSON).content("{\"displayName\":\"Yaw Darko\"}")).andExpect(status().isCreated()));
+		mvc.perform(post("/competitions/" + competitionId + "/operations/teams/" + teamId + "/roster/submit").cookie(operator)
+			.contentType(MediaType.APPLICATION_JSON).content("{\"attest\":true}")).andExpect(status().isOk());
+		mvc.perform(post("/competitions/" + competitionId + "/operations/teams/" + teamId + "/roster/review").cookie(operator)
+			.contentType(MediaType.APPLICATION_JSON)
+			.content("{\"memberIds\":[\"%s\"],\"decision\":\"rejected\",\"note\":\"Not on the payroll\"}".formatted(waiting.get("id").asString())))
+			.andExpect(status().isOk());
+
 		// Signed out, with the link: the brand and the fixtures, and nothing a company would mind.
 		var page = mvc.perform(get("/competitions/" + competitionId)).andExpect(status().isOk())
 			.andExpect(jsonPath("$.brand.name").value("Accra Corporate Games"))
@@ -195,9 +205,13 @@ class CorporateAccessTest {
 			.andExpect(jsonPath("$.rosters").doesNotExist())
 			.andReturn().getResponse().getContentAsString();
 		org.assertj.core.api.Assertions.assertThat(page)
+			.as("the reference, the note and the payment are the operator's business alone")
 			.doesNotContain("APX-001")
 			.doesNotContain("Paid at the office")
-			.doesNotContain("MM-1");
+			.doesNotContain("MM-1")
+			.as("a named person turned down never appears, nor the reason")
+			.doesNotContain("Yaw Darko")
+			.doesNotContain("Not on the payroll");
 	}
 
 	private JsonNode body(org.springframework.test.web.servlet.ResultActions actions) throws Exception {
