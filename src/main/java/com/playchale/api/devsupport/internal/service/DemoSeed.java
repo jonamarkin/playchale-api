@@ -711,8 +711,8 @@ class DemoSeed {
 	private void corporateAudit() {
 		audit("ae-schedule-generated", "schedule.generated", "competition", id(CORPORATE_LEAGUE), "15 draft fixtures", at(-29, 9));
 		audit("ae-roster-submitted", "roster.submitted", "team", id("t-apex"), "5 players attested", at(-26, 11));
-		audit("ae-roster-approved", "roster.approved", "team", id("t-apex"), "5 players", at(-25, 9));
-		audit("ae-roster-rejected", "roster.rejected", "team", id("t-enyo"), "1 player", at(-25, 10));
+		audit("ae-roster-approved", "eligibility.approved", "team", id("t-apex"), "5 players", at(-25, 9));
+		audit("ae-roster-rejected", "eligibility.rejected", "team", id("t-enyo"), "1 player", at(-25, 10));
 		audit("ae-schedule-published", "schedule.published", "competition", id(CORPORATE_LEAGUE), "15 fixtures", at(-28, 12));
 		audit("ae-finance-updated", "finance.updated", "team", id("t-apex"), "paid 150000", at(-24, 12));
 	}

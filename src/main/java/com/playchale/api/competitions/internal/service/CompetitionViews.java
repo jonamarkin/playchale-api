@@ -82,11 +82,17 @@ class CompetitionViews {
 					shown(people.get(t.captainId()), viewer), e.isInvited() ? Entry.INVITED : null, roster);
 		}).toList();
 
+		// Two players level on goals, assists and games are separated by name, so the chart reads the
+		// same every time rather than in whatever order the rows came back.
 		var scorers = scored.stream()
 			.map(s -> new CompetitionResponse.ScorerView(shown(people.get(s.userId()), viewer), s.teamId(),
 					s.teamId() == null ? null : cards.containsKey(s.teamId()) ? cards.get(s.teamId()).name() : null,
 					s.goals(), s.assists(), s.points(), s.games()))
 			.filter(s -> s.player() != null)
+			.sorted(Comparator.comparingInt((CompetitionResponse.ScorerView v) -> v.goals() + v.points()).reversed()
+				.thenComparing(Comparator.comparingInt(CompetitionResponse.ScorerView::assists).reversed())
+				.thenComparing(CompetitionResponse.ScorerView::games)
+				.thenComparing(v -> v.player().name(), String.CASE_INSENSITIVE_ORDER))
 			.toList();
 
 		var organisers = c.getOrganisers().stream().map(people::get).filter(u -> u != null).map(u -> u.as(viewer))
