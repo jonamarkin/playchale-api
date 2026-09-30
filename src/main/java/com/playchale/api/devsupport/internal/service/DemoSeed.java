@@ -7,6 +7,7 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
+import java.util.Locale;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -64,6 +65,7 @@ class DemoSeed {
 		venues();
 		games();
 		league();
+		corporateLeague();
 		notifications();
 		mapPins();
 		// A contribution to play rather than a cost to split, as in the web app's seed: GH₵ 20 each (280 across 14 spots).
@@ -542,6 +544,192 @@ class DemoSeed {
 		var squad = List.copyOf(both);
 		insertGame(new Game(id, "football", "5-a-side", h.name() + " vs " + a.name(), startsAt, 60, "v-osu", null, null, squad.size(), 0, "u-kojo",
 				null, squad, Set.of(), result == null ? "full" : "completed", result, new Fixture(league, round, home, away), false));
+	}
+
+	/* ------------------------------------------------------------------ corporate league */
+
+	/** The six companies, with the players their managers put forward. */
+	private static final List<Team> COMPANIES = List.of(
+			new Team("t-apex", "Apex Ltd", "u-kwame", List.of(), "#7cf0c8"),
+			new Team("t-birim", "Birim Bank", "u-kojo", List.of(), "#a9c4f2"),
+			new Team("t-coast", "Coast Telecom", "u-kojo", List.of(), "#f2d4a9"),
+			new Team("t-densu", "Densu Energy", "u-kojo", List.of(), "#d9b8e8"),
+			new Team("t-enyo", "Enyo Foods", "u-kojo", List.of(), "#b7d3c9"),
+			new Team("t-frontier", "Frontier Insurance", "u-kojo", List.of(), "#f5c9b3"));
+
+	private static final Map<String, List<String>> SQUADS = Map.of(
+			"t-apex", List.of("Kofi Asare", "Yaw Darko", "Nana Owusu", "Kwesi Boateng", "Michael Tetteh"),
+			"t-birim", List.of("Samuel Adjei", "Isaac Mensah", "Daniel Ofori", "Emmanuel Quaye", "Joseph Larbi"),
+			"t-coast", List.of("Prince Amoah", "Richard Danso", "Felix Nyarko", "Bright Agyeman", "Eric Baidoo"),
+			"t-densu", List.of("Stephen Kusi", "Jonathan Appiah", "Patrick Okine", "Godfred Annan", "Ebenezer Sowah"),
+			"t-enyo", List.of("Abena Frimpong", "Akosua Boakye", "Adwoa Sarpong", "Efua Gyamfi", "Ama Nartey"),
+			"t-frontier", List.of("Nii Armah", "Kojo Antwi", "Solomon Tagoe", "Gideon Mireku", "Alfred Doe"));
+
+	/** Rounds already played; the last is still to come, so an operator has something to run. */
+	private static final int PLAYED_ROUNDS = 4;
+
+	private static final String WORKSPACE = "org-accra-games";
+
+	private static final String CORPORATE_LEAGUE = "c-inter-company";
+
+	private static final String OPERATOR = "u-kojo";
+
+	/** Apex is run by a demo account, so its roster screens have someone to sign in as. */
+	private static final String APEX_MANAGER = "u-kwame";
+
+	/**
+	 * A company league mid-season, matching the web app's demo data so the same story can be shown
+	 * against either. Six company sides, rosters their managers attested to and the organiser
+	 * reviewed, a published schedule with results in, entry fees part collected, and an audit trail.
+	 */
+	private void corporateLeague() {
+		var created = at(-40, 9);
+		jdbc.sql("""
+				INSERT INTO organisations (id, name, slug, country, primary_colour, corporate_enabled, created_by, created_at, updated_at)
+				VALUES (:id, 'Accra Corporate Games', 'accra-corporate-games', 'GH', '#0c3a3a', true, :owner, :created, :created)
+				""").param("id", id(WORKSPACE)).param("owner", id(OPERATOR)).param("created", utc(created)).update();
+		member(OPERATOR, "owner", created);
+		member("u-abena", "admin", at(-38, 9));
+
+		jdbc.sql("""
+				INSERT INTO competitions (id, name, sport, format, organiser_id, organisation_id, schedule_status, player_lists, venue_kind,
+				                          venue_name, venue_area, starts_at, duration_minutes, status, created_at, updated_at)
+				VALUES (:id, 'Inter-Company League 2026', 'football', '5-a-side', :organiser, :organisation, 'published', 'optional',
+				        'unlisted', 'Accra Sports Park', 'Airport Residential, Accra', :starts, 60, 'running', :created, :created)
+				""")
+			.param("id", id(CORPORATE_LEAGUE)).param("organiser", id(OPERATOR)).param("organisation", id(WORKSPACE))
+			.param("starts", utc(at(-28, 18))).param("created", utc(at(-35, 9)))
+			.update();
+
+		jdbc.sql("""
+				INSERT INTO competition_locations (id, competition_id, name, area, created_at)
+				VALUES (:id, :competition, 'Accra Sports Park', 'Airport Residential, Accra', :created)
+				""").param("id", id("loc-accra-sports-park")).param("competition", id(CORPORATE_LEAGUE)).param("created", utc(at(-30, 9)))
+			.update();
+
+		for (var company : COMPANIES) {
+			enterCompany(company);
+		}
+		corporateFixtures();
+		corporateAudit();
+	}
+
+	private void member(String user, String role, Instant joined) {
+		jdbc.sql("""
+				INSERT INTO organisation_memberships (organisation_id, user_id, role, created_at, created_by)
+				VALUES (:organisation, :user, :role, :joined, :owner)
+				""").param("organisation", id(WORKSPACE)).param("user", id(user)).param("role", role)
+			.param("joined", utc(joined)).param("owner", id(OPERATOR)).update();
+	}
+
+	/** A company enters as itself: no squad of PlayChale players, a manager, and a roster of names. */
+	private void enterCompany(Team company) {
+		var entered = at(-30, 9);
+		standingTeam(company, entered);
+		jdbc.sql("INSERT INTO competition_entries (competition_id, team_id, status, entered_at) VALUES (:league, :team, 'entered', :at)")
+			.param("league", id(CORPORATE_LEAGUE)).param("team", id(company.id())).param("at", utc(entered)).update();
+
+		var manager = company.id().equals("t-apex") ? APEX_MANAGER : OPERATOR;
+		jdbc.sql("""
+				INSERT INTO competition_entry_managers (competition_id, team_id, user_id, added_by, added_at)
+				VALUES (:league, :team, :user, :by, :at)
+				""").param("league", id(CORPORATE_LEAGUE)).param("team", id(company.id())).param("user", id(manager))
+			.param("by", id(OPERATOR)).param("at", utc(entered)).update();
+
+		var players = SQUADS.get(company.id());
+		for (int i = 0; i < players.size(); i++) {
+			// Frontier is still waiting on review, and one of Enyo's was turned down: the queue has
+			// something in it, and a review decision has a reason attached.
+			var awaiting = company.id().equals("t-frontier");
+			var turnedDown = company.id().equals("t-enyo") && i == 4;
+			var state = awaiting ? "submitted" : turnedDown ? "rejected" : "approved";
+			jdbc.sql("""
+					INSERT INTO roster_members (id, competition_id, team_id, display_name, employee_reference, user_id, eligibility_state,
+					                            attested_by, attested_at, reviewed_by, reviewed_at, review_note, created_by, created_at, updated_at)
+					VALUES (:id, :league, :team, :name, :reference, :user, :state, :attestedBy, :attestedAt, :reviewedBy, :reviewedAt,
+					        :note, :by, :created, :created)
+					""")
+				.param("id", id("rm-" + company.id() + "-" + (i + 1))).param("league", id(CORPORATE_LEAGUE)).param("team", id(company.id()))
+				.param("name", players.get(i))
+				.param("reference", company.name().substring(0, 3).toUpperCase(Locale.ROOT) + "-%03d".formatted(i + 1))
+				// One player has joined PlayChale and picked up their place; the rest are names on a list.
+				.param("user", company.id().equals("t-apex") && i == 0 ? id(APEX_MANAGER) : null)
+				.param("state", state).param("attestedBy", id(manager)).param("attestedAt", utc(at(-26, 11)))
+				.param("reviewedBy", awaiting ? null : id(OPERATOR)).param("reviewedAt", awaiting ? null : utc(at(-25, 9)))
+				.param("note", turnedDown ? "Not on the payroll for this quarter." : null)
+				.param("by", id(manager)).param("created", utc(at(-27, 10)))
+				.update();
+		}
+
+		var index = COMPANIES.indexOf(company);
+		jdbc.sql("""
+				INSERT INTO competition_entry_finance (competition_id, team_id, amount_due, status, method, reference, paid_at, private_note,
+				                                       updated_by, updated_at)
+				VALUES (:league, :team, 150000, :status, :method, :reference, :paidAt, :note, :by, :at)
+				""")
+			.param("league", id(CORPORATE_LEAGUE)).param("team", id(company.id()))
+			.param("status", index < 4 ? "paid" : index == 4 ? "waived" : "unpaid")
+			.param("method", index < 4 ? (index % 2 == 1 ? "momo" : "bank-transfer") : null)
+			.param("reference", index < 4 ? "INV-2026-%03d".formatted(index + 1) : null)
+			.param("paidAt", index < 4 ? utc(at(-24 + index, 12)) : null)
+			.param("note", index == 4 ? "Sponsor in kind — pitch hire for round three." : null)
+			.param("by", id(OPERATOR)).param("at", utc(at(-24 + index, 12)))
+			.update();
+	}
+
+	/** Round-robin by the circle method, the same pairings the draw makes. */
+	private void corporateFixtures() {
+		var order = new ArrayList<>(COMPANIES.stream().map(Team::id).toList());
+		var half = order.size() / 2;
+		for (int round = 0; round < order.size() - 1; round++) {
+			for (int slot = 0; slot < half; slot++) {
+				var first = order.get(slot);
+				var second = order.get(order.size() - 1 - slot);
+				var home = round % 2 == 1 ? second : first;
+				var away = round % 2 == 1 ? first : second;
+				var played = round < PLAYED_ROUNDS;
+				// The same scores as the web app's demo, so the two tables agree.
+				var homeScore = (round * 3 + slot * 2) % 5;
+				var awayScore = (round + slot * 3) % 4;
+				var gameId = "g-ic-" + (round + 1) + "-" + (slot + 1);
+				var result = played ? new Result(homeScore, awayScore, List.of(), List.of(), Map.of(), List.of(), OPERATOR,
+						at(-28 + round * 7, 20), List.of()) : null;
+				insertGame(new Game(gameId, "football", "5-a-side", team(COMPANIES, home).name() + " vs " + team(COMPANIES, away).name(),
+						at(-28 + round * 7, 18 + slot), 60, null, "Accra Sports Park", "Airport Residential, Accra", 2, 0, OPERATOR,
+						null, List.of(), Set.of(), played ? "completed" : "full", result, new Fixture(CORPORATE_LEAGUE, round + 1, home, away),
+						false));
+				jdbc.sql("""
+						INSERT INTO fixture_officials (game_id, user_id, assigned_by, assigned_at)
+						VALUES (:game, :user, :by, :at)
+						""").param("game", id(gameId)).param("user", id("u-yaw")).param("by", id(OPERATOR))
+					.param("at", utc(at(-27, 9))).update();
+			}
+			order.add(1, order.remove(order.size() - 1));
+		}
+	}
+
+	private void corporateAudit() {
+		audit("ae-schedule-generated", "schedule.generated", "competition", id(CORPORATE_LEAGUE), "15 draft fixtures", at(-29, 9));
+		audit("ae-roster-submitted", "roster.submitted", "team", id("t-apex"), "5 players attested", at(-26, 11));
+		audit("ae-roster-approved", "roster.approved", "team", id("t-apex"), "5 players", at(-25, 9));
+		audit("ae-roster-rejected", "roster.rejected", "team", id("t-enyo"), "1 player", at(-25, 10));
+		audit("ae-schedule-published", "schedule.published", "competition", id(CORPORATE_LEAGUE), "15 fixtures", at(-28, 12));
+		audit("ae-finance-updated", "finance.updated", "team", id("t-apex"), "paid 150000", at(-24, 12));
+	}
+
+	private void audit(String eventId, String type, String subjectType, UUID subject, String details, Instant at) {
+		jdbc.sql("""
+				INSERT INTO audit_events (id, organisation_id, competition_id, actor_id, event_type, subject_type, subject_id, details, occurred_at)
+				VALUES (:id, :organisation, :competition, :actor, :type, :subjectType, :subject, CAST(:details AS jsonb), :at)
+				""")
+			.param("id", id(eventId)).param("organisation", id(WORKSPACE)).param("competition", id(CORPORATE_LEAGUE))
+			.param("actor", id(OPERATOR)).param("type", type).param("subjectType", subjectType).param("subject", subject)
+			.param("details", "{\"note\":\"%s\"}".formatted(details)).param("at", utc(at))
+			.update();
+	}
+
+	private static Team team(List<Team> teams, String id) {
+		return teams.stream().filter(t -> t.id().equals(id)).findFirst().orElseThrow();
 	}
 
 	/* ------------------------------------------------------------------ notifications */
