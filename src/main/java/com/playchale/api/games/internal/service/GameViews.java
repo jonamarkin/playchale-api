@@ -105,7 +105,7 @@ class GameViews {
 		return games.stream().map(g -> view(g, viewer, people, resultsByGame.get(g.getId()),
 				g.getCompetitionId() == null ? Map.of() : teamsByLeague.getOrDefault(g.getCompetitionId(), Map.of()), mapLinks,
 				invites(invitesByGame.get(g.getId()), people, teamNames, viewer), friendly(g, standingTeams),
-				organised.contains(g.getCompetitionId()))).toList();
+				g.getCompetitionId() != null && organised.contains(g.getCompetitionId()))).toList();
 	}
 
 	/** Invites as the viewer sees them, or null (left out) when there are none to show. */
