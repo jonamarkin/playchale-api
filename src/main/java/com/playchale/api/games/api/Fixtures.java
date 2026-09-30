@@ -83,6 +83,12 @@ public interface Fixtures {
 
 	List<FixtureSummary> of(UUID competitionId);
 
+	/**
+	 * Throws a competition's fixtures away so they can be drawn again. Refuses once any of them has
+	 * been played: a draw stands as soon as it means something. Returns how many went.
+	 */
+	int discard(UUID competitionId);
+
 	/** The competition a game is a fixture of, if it is one. */
 	Optional<UUID> competitionOf(UUID gameId);
 

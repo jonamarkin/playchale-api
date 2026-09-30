@@ -44,9 +44,14 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 			Instant answeredAt, UserSummary user) {
 	}
 
-	/** What makes a game a league fixture: which league, which round, who's playing. */
-	/** {@code slot} and {@code decider} place a knockout tie in its bracket and say it must be won. */
-	public record FixtureRef(UUID competitionId, int round, UUID homeTeamId, UUID awayTeamId, Integer slot, boolean decider) {
+	/**
+	 * What makes a game a competition fixture: which competition, which round, who's playing.
+	 * {@code slot} and {@code decider} place a knockout tie in its bracket and say it must be won.
+	 * {@code organiser} is whether the viewer runs that competition, and so may record its result or
+	 * call it off even though someone else made the draw and hosts it.
+	 */
+	public record FixtureRef(UUID competitionId, int round, UUID homeTeamId, UUID awayTeamId, Integer slot, boolean decider,
+			boolean organiser) {
 	}
 
 	/** The two teams in a fixture. */

@@ -202,6 +202,14 @@ public class Competition extends AuditableEntity {
 		status = RUNNING;
 	}
 
+	/**
+	 * Back to being set up, because the teams changed after the draw. The old fixtures are thrown
+	 * away with it, so the organiser draws again with everyone in.
+	 */
+	public void backToDraft() {
+		status = DRAFT;
+	}
+
 	/** It's been won: a knockout's final is played, or an organiser called time on a league. */
 	public void finish() {
 		status = FINISHED;

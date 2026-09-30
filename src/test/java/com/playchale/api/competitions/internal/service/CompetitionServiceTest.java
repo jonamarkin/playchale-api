@@ -145,9 +145,90 @@ class CompetitionServiceTest {
 			.containsExactly(FIRST_MATCHDAY, FIRST_MATCHDAY.plus(Duration.ofDays(7)), FIRST_MATCHDAY.plus(Duration.ofDays(14)));
 		assertThat(titlesFor(kojo)).containsExactly("Office League: fixtures are out");
 
-		assertThatThrownBy(() -> competitions.generateFixtures(league.id(), organiser)).hasMessage("The fixtures are already drawn.");
+		// Drawing again re-draws: a mistake before anyone plays isn't permanent.
+		var again = competitions.generateFixtures(league.id(), organiser);
+		assertThat(again.fixtures()).hasSize(3)
+			.extracting(GameResponse::id)
+			.doesNotContainAnyElementsOf(drawn.fixtures().stream().map(GameResponse::id).toList());
+
+		// A team arriving late takes it back to a draft, to be drawn again with them in.
+		var late = competitions.addTeam(league.id(), null, "Golds", null, List.of(), organiser);
+		assertThat(late.status()).isEqualTo("draft");
+		assertThat(late.fixtures()).isEmpty();
+		assertThat(competitions.generateFixtures(league.id(), organiser).fixtures())
+			.as("four teams: three rounds of two").hasSize(6);
+	}
+
+	@Test
+	void onceAFixtureIsPlayedTheDrawStands() {
+		var league = withTeams();
+		var first = competitions.generateFixtures(league.id(), organiser).fixtures().getFirst();
+		clock.set(first.startsAt().plus(Duration.ofHours(2)));
+		results.record(first.id(), new ResultInput(2, 0, List.of(), List.of(), null, null, null), organiser);
+
+		assertThatThrownBy(() -> competitions.generateFixtures(league.id(), organiser))
+			.hasMessage("A fixture has been played, so the draw stands.");
 		assertThatThrownBy(() -> competitions.addTeam(league.id(), null, "Golds", null, List.of(), organiser))
-			.hasMessage("The draw is done. Add teams before drawing, or start a new league.");
+			.hasMessage("A fixture has been played, so no more teams can come in. Start a new league for them.");
+	}
+
+	@Test
+	void aLeagueIsFinishedOnceEveryFixtureHasBeenPlayed() {
+		var league = withTeams();
+		var fixtures = competitions.generateFixtures(league.id(), organiser).fixtures();
+		for (var fixture : fixtures) {
+			clock.set(fixture.startsAt().plus(Duration.ofHours(2)));
+			results.record(fixture.id(), new ResultInput(1, 0, List.of(), List.of(), null, null, null), organiser);
+		}
+		assertThat(competitions.get(league.id(), null).orElseThrow().status())
+			.as("no final to win, so a league ends when the fixtures run out").isEqualTo("finished");
+	}
+
+	@Test
+	void aCoOrganiserRunsTheFixturesToo() {
+		var league = withTeams();
+		competitions.addOrganiser(league.id(), esi, organiser);
+		var fixtures = competitions.generateFixtures(league.id(), organiser).fixtures();
+		var first = fixtures.getFirst();
+		assertThat(first.hostId()).as("whoever made the draw hosts every fixture").isEqualTo(organiser);
+
+		// Esi never touched the draw, but she runs the league, so the fixtures are hers to run.
+		assertThat(games.get(first.id(), esi).fixture().organiser()).isTrue();
+		assertThat(games.get(first.id(), kojo).fixture().organiser()).as("a player in it doesn't run it").isFalse();
+
+		clock.set(first.startsAt().plus(Duration.ofHours(2)));
+		assertThat(results.record(first.id(), new ResultInput(2, 0, List.of(), List.of(), null, null, null), esi).status())
+			.isEqualTo("completed");
+		assertThatThrownBy(() -> results.record(fixtures.get(1).id(), new ResultInput(1, 0, List.of(), List.of(), null, null, null), kojo))
+			.hasMessage("Only the people running this competition can record the result.");
+
+		// And calling one off, which the one who drew it would otherwise have to do alone.
+		games.cancel(fixtures.get(1).id(), "Pitch flooded", esi);
+		assertThat(games.get(fixtures.get(1).id(), esi).status()).isEqualTo("cancelled");
+	}
+
+	@Test
+	void aCalledOffTieCanStillBeSettled() {
+		var league = withTeams();
+		var fixtures = competitions.generateFixtures(league.id(), organiser).fixtures();
+		var off = fixtures.getFirst();
+		games.cancel(off.id(), "Nobody showed", organiser);
+
+		// Otherwise a knockout that loses a tie could never reach its final.
+		clock.set(off.startsAt().plus(Duration.ofHours(2)));
+		var settled = results.record(off.id(), new ResultInput(3, 0, List.of(), List.of(), null, null, null), organiser);
+		assertThat(settled.status()).isEqualTo("completed");
+		assertThat(settled.cancelReason()).isNull();
+	}
+
+	@Test
+	void anOrganiserCanCallTimeEarlyAndChangeTheirMind() {
+		var league = withTeams();
+		competitions.generateFixtures(league.id(), organiser);
+
+		assertThat(competitions.finish(league.id(), organiser).status()).isEqualTo("finished");
+		assertThat(competitions.reopen(league.id(), organiser).status()).isEqualTo("running");
+		assertThatThrownBy(() -> competitions.reopen(league.id(), organiser)).hasMessage("That’s still going.");
 	}
 
 	@Test

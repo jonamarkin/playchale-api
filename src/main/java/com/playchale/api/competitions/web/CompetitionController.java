@@ -94,6 +94,18 @@ class CompetitionController {
 		return competitions.generateFixtures(id, me.id());
 	}
 
+	/** competitions.finish */
+	@PostMapping("/competitions/{id}/finish")
+	CompetitionResponse finish(CurrentUser me, @PathVariable UUID id) {
+		return competitions.finish(id, me.id());
+	}
+
+	/** competitions.reopen */
+	@DeleteMapping("/competitions/{id}/finish")
+	CompetitionResponse reopen(CurrentUser me, @PathVariable UUID id) {
+		return competitions.reopen(id, me.id());
+	}
+
 	/** competitions.addPlayers */
 	@PostMapping("/competitions/{id}/teams/{teamId}/players")
 	CompetitionResponse addPlayers(CurrentUser me, @PathVariable UUID id, @PathVariable UUID teamId,

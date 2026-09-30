@@ -547,6 +547,24 @@ public class Game extends AuditableEntity {
 	 * The host has recorded a result: the game is played. Only once it's kicked off, and never for a
 	 * game that was called off.
 	 */
+	/**
+	 * Puts a called-off fixture back on, so its result can still be recorded. A knockout tie has to
+	 * produce a winner or the bracket stops there for good, so when one is rained off or a team
+	 * doesn't show, an organiser settles it — a walkover, or the day it was finally played.
+	 */
+	public void reinstate() {
+		if (!CANCELLED.equals(status)) {
+			return;
+		}
+		if (competitionId == null) {
+			throw BusinessException.conflict("Only a competition fixture can be put back on.");
+		}
+		status = OPEN;
+		cancelledAt = null;
+		cancelReason = null;
+		syncStatus();
+	}
+
 	public void complete(Instant now) {
 		if (CANCELLED.equals(status)) {
 			throw BusinessException.conflict("This game was called off, so it has no result.");

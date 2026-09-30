@@ -52,6 +52,9 @@ public class CompetitionService {
 
 	private static final String NOT_FOUND = "That competition doesn’t exist any more.";
 
+	/** A fixture nobody played: it counts as done when deciding whether a league is over. */
+	private static final String CANCELLED = "cancelled";
+
 	private final CompetitionRepository competitions;
 
 	private final EntryRepository entries;
@@ -129,7 +132,8 @@ public class CompetitionService {
 		var competition = organised(id, me);
 		var existing = entries.inCompetition(id);
 		var names = directory.findAll(existing.stream().map(Entry::getTeamId).toList());
-		requireNotDrawn(id, "The draw is done. Add teams before drawing, or start a new %s.".formatted(competition.noun()));
+		undraw(competition, "A fixture has been played, so no more teams can come in. Start a new %s for them."
+			.formatted(competition.noun()));
 		var now = clock.instant();
 		if (teamId != null) {
 			var team = directory.find(teamId).orElseThrow(() -> BusinessException.notFound("That team doesn’t exist any more."));
@@ -177,7 +181,7 @@ public class CompetitionService {
 			throw BusinessException.conflict("Only %s can answer for %s.".formatted(firstName(team.captainId()), team.name()));
 		}
 		if (accept) {
-			requireNotDrawn(id, "The draw is done, so the %s is full.".formatted(competition.noun()));
+			undraw(competition, "A fixture has been played, so the %s is full.".formatted(competition.noun()));
 			entry.accept(clock.instant());
 			enter(entry, team, clock.instant());
 		}
@@ -192,7 +196,7 @@ public class CompetitionService {
 	@Transactional
 	public CompetitionResponse removeTeam(UUID id, UUID teamId, UUID me) {
 		var competition = organised(id, me);
-		requireNotDrawn(id, "The fixtures are drawn, so teams can’t be dropped.");
+		undraw(competition, "A fixture has been played, so teams can’t be dropped now.");
 		entries.delete(entry(id, teamId));
 		return views.of(competition, me);
 	}
@@ -205,7 +209,8 @@ public class CompetitionService {
 	@Transactional
 	public CompetitionResponse generateFixtures(UUID id, UUID me) {
 		var competition = organised(id, me);
-		requireNotDrawn(id, "The fixtures are already drawn.");
+		// Drawing again is how a late entry is taken in: the old fixtures go, nobody having played them.
+		undraw(competition, "A fixture has been played, so the draw stands.");
 		var squads = entries.inCompetition(id);
 		var cards = directory.findAll(squads.stream().map(Entry::getTeamId).toList());
 		squads.stream().filter(Entry::isInvited).findFirst().ifPresent(waiting -> {
@@ -289,12 +294,19 @@ public class CompetitionService {
 	 */
 	@Transactional
 	public void advance(UUID competitionId) {
-		var competition = competitions.findById(competitionId).filter(Competition::isKnockout).orElse(null);
+		var competition = competitions.findById(competitionId).orElse(null);
 		if (competition == null || !Competition.RUNNING.equals(competition.getStatus())) {
 			return;
 		}
 		var played = fixtures.of(competitionId);
 		if (played.isEmpty()) {
+			return;
+		}
+		// A league has no final to win: it's over once every fixture has been played or called off.
+		if (!competition.isKnockout()) {
+			if (played.stream().allMatch(f -> f.played() || CANCELLED.equals(f.status()))) {
+				competition.finish();
+			}
 			return;
 		}
 		var round = played.stream().mapToInt(Fixtures.FixtureSummary::round).max().orElse(0);
@@ -311,6 +323,31 @@ public class CompetitionService {
 			return;
 		}
 		playRound(competition, Knockout.nextRound(round + 1, through), round + 1);
+	}
+
+	/**
+	 * competitions.finish: an organiser calls time. Useful when the last round was never played, or a
+	 * knockout was abandoned — a league that plays every fixture finishes on its own.
+	 */
+	@Transactional
+	public CompetitionResponse finish(UUID id, UUID me) {
+		var competition = organised(id, me);
+		if (Competition.DRAFT.equals(competition.getStatus())) {
+			throw BusinessException.conflict("The draw hasn’t been made yet, so there’s nothing to finish.");
+		}
+		competition.finish();
+		return views.of(competition, me);
+	}
+
+	/** competitions.reopen: called time too early. Puts it back to running so results can go in. */
+	@Transactional
+	public CompetitionResponse reopen(UUID id, UUID me) {
+		var competition = organised(id, me);
+		if (!Competition.FINISHED.equals(competition.getStatus())) {
+			throw BusinessException.conflict("That’s still going.");
+		}
+		competition.start();
+		return views.of(competition, me);
 	}
 
 	/**
@@ -469,10 +506,22 @@ public class CompetitionService {
 		return List.copyOf(squad);
 	}
 
-	private void requireNotDrawn(UUID id, String message) {
-		if (!fixtures.of(id).isEmpty()) {
+	/**
+	 * Makes room to change who's taking part. Before the draw there's nothing to do. After it, the
+	 * fixtures are thrown away and the competition goes back to being set up, so the organiser draws
+	 * again with everyone in — a late entry shouldn't mean starting the whole thing over. Once a
+	 * fixture has been played the draw stands, and this refuses.
+	 */
+	private void undraw(Competition competition, String message) {
+		var drawn = fixtures.of(competition.getId());
+		if (drawn.isEmpty()) {
+			return;
+		}
+		if (drawn.stream().anyMatch(Fixtures.FixtureSummary::played)) {
 			throw BusinessException.conflict(message);
 		}
+		fixtures.discard(competition.getId());
+		competition.backToDraft();
 	}
 
 	/**

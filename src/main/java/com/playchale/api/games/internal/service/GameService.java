@@ -72,8 +72,10 @@ public class GameService {
 
 	private final Clock clock;
 
+	private final FixtureRunners runners;
+
 	GameService(GameRepository games, GameInviteRepository invites, GameViews views, UserDirectory users, PitchBookings pitches,
-			TeamDirectory teams, ApplicationEventPublisher events, Clock clock) {
+			TeamDirectory teams, ApplicationEventPublisher events, Clock clock, FixtureRunners runners) {
 		this.games = games;
 		this.invites = invites;
 		this.views = views;
@@ -82,6 +84,7 @@ public class GameService {
 		this.teams = teams;
 		this.events = events;
 		this.clock = clock;
+		this.runners = runners;
 	}
 
 	/** games.list: upcoming games still on that the viewer may see, soonest first. */
@@ -255,10 +258,16 @@ public class GameService {
 		return views.of(game, host);
 	}
 
-	/** games.cancel: host only. Frees the pitch and tells everyone. */
+	/**
+	 * games.cancel: whoever runs it — the host, or any organiser of the competition it's a fixture
+	 * of. Frees the pitch and tells everyone.
+	 */
 	@Transactional
 	public GameResponse cancel(UUID gameId, String reason, UUID host) {
-		var game = hosted(gameId, host);
+		var game = locked(gameId);
+		if (!runners.runs(game, host)) {
+			throw BusinessException.conflict(FixtureRunners.refusal(game, "Only the host can do that.", "call this off"));
+		}
 		var paidNames = game.paidByOthers().stream()
 			.map(p -> p.isGuest() ? p.getGuestName() : firstName(p.getUserId()))
 			.toList();

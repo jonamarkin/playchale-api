@@ -1,5 +1,6 @@
 package com.playchale.api.games.internal.service;
 
+import com.playchale.api.games.api.FixtureOrganisers;
 import com.playchale.api.games.api.FixtureTeams;
 import com.playchale.api.games.api.GameResponse;
 import java.util.Collection;
@@ -7,6 +8,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -43,17 +45,20 @@ class GameViews {
 
 	private final ObjectProvider<FixtureTeams> fixtureTeams;
 
+	private final ObjectProvider<FixtureOrganisers> fixtureOrganisers;
+
 	private final PitchBookings venues;
 
 	private final GameInviteRepository invites;
 
 	private final TeamDirectory teams;
 
-	GameViews(UserDirectory users, GameResultRepository results, ObjectProvider<FixtureTeams> fixtureTeams, PitchBookings venues,
-			GameInviteRepository invites, TeamDirectory teams) {
+	GameViews(UserDirectory users, GameResultRepository results, ObjectProvider<FixtureTeams> fixtureTeams,
+			ObjectProvider<FixtureOrganisers> fixtureOrganisers, PitchBookings venues, GameInviteRepository invites, TeamDirectory teams) {
 		this.users = users;
 		this.results = results;
 		this.fixtureTeams = fixtureTeams;
+		this.fixtureOrganisers = fixtureOrganisers;
 		this.venues = venues;
 		this.invites = invites;
 		this.teams = teams;
@@ -90,11 +95,17 @@ class GameViews {
 				Collectors.flatMapping(g -> Stream.of(g.getHomeTeamId(), g.getAwayTeamId()), Collectors.toSet())));
 		var teamsByLeague = new HashMap<UUID, Map<UUID, FixtureTeams.TeamCard>>();
 		fixtureTeams.stream().findFirst().ifPresent(f -> teamIdsByLeague.forEach((league, teamIds) -> teamsByLeague.put(league, f.teams(league, teamIds))));
+		// Competitions the viewer runs, asked once each however many of their fixtures are on the page.
+		var organised = viewer == null ? Set.<UUID>of()
+				: fixtureOrganisers.stream().findFirst()
+					.map(o -> teamIdsByLeague.keySet().stream().filter(league -> o.organisedBy(league, viewer)).collect(Collectors.toSet()))
+					.orElse(Set.of());
 		// Partner venues' own map links, in one query: a pin the owner adds later reaches every game there.
 		var mapLinks = venues.mapLinks(games.stream().map(Game::getVenueId).filter(Objects::nonNull).distinct().toList());
 		return games.stream().map(g -> view(g, viewer, people, resultsByGame.get(g.getId()),
 				g.getCompetitionId() == null ? Map.of() : teamsByLeague.getOrDefault(g.getCompetitionId(), Map.of()), mapLinks,
-				invites(invitesByGame.get(g.getId()), people, teamNames, viewer), friendly(g, standingTeams))).toList();
+				invites(invitesByGame.get(g.getId()), people, teamNames, viewer), friendly(g, standingTeams),
+				organised.contains(g.getCompetitionId()))).toList();
 	}
 
 	/** Invites as the viewer sees them, or null (left out) when there are none to show. */
@@ -126,7 +137,7 @@ class GameViews {
 
 	private GameResponse view(Game g, UUID viewer, Map<UUID, UserSummary> people, GameResult result,
 			Map<UUID, FixtureTeams.TeamCard> teams, Map<UUID, String> mapLinks, List<GameResponse.InviteResponse> invites,
-			GameResponse.FriendlyResponse friendly) {
+			GameResponse.FriendlyResponse friendly, boolean organiser) {
 		var hostView = g.isHost(viewer);
 		var mapUrl = g.getVenueId() != null ? mapLinks.get(g.getVenueId()) : g.getMapUrl();
 		var venue = new GameResponse.VenueRef(g.getVenueKind(), g.getVenueId(), g.getVenueName(), g.getVenueArea(), g.getPitchId(),
@@ -144,7 +155,7 @@ class GameViews {
 		GameResponse.FixtureTeamsResponse fixtureTeams = null;
 		if (g.getCompetitionId() != null) {
 			fixture = new GameResponse.FixtureRef(g.getCompetitionId(), g.getFixtureRound(), g.getHomeTeamId(), g.getAwayTeamId(),
-					g.getFixtureSlot(), g.isDecider());
+					g.getFixtureSlot(), g.isDecider(), organiser);
 			var home = teams.get(g.getHomeTeamId());
 			var away = teams.get(g.getAwayTeamId());
 			fixtureTeams = home == null || away == null ? null : new GameResponse.FixtureTeamsResponse(home, away);

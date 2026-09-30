@@ -10,17 +10,19 @@ import com.playchale.api.competitions.internal.domain.Competition;
 import com.playchale.api.competitions.internal.domain.Entry;
 import com.playchale.api.competitions.internal.repository.CompetitionRepository;
 import com.playchale.api.competitions.internal.repository.EntryRepository;
+import com.playchale.api.games.api.FixtureOrganisers;
 import com.playchale.api.games.api.FixtureTeams;
 import com.playchale.api.teams.api.TeamLeagues;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Tells other modules about teams in leagues: games shows fixtures' teams with their squads, and a
- * team's page lists the leagues it's in (which also keeps a team from being deleted mid-league).
+ * Tells other modules what they need to know about competitions: games shows fixtures' teams with
+ * their squads and asks who may run a fixture, and a team's page lists what it's entered in (which
+ * also keeps a team from being deleted mid-competition).
  */
 @Component
-class LeagueTeams implements FixtureTeams, TeamLeagues {
+class LeagueTeams implements FixtureTeams, FixtureOrganisers, TeamLeagues {
 
 	private final EntryRepository entries;
 
@@ -38,6 +40,12 @@ class LeagueTeams implements FixtureTeams, TeamLeagues {
 	@Transactional(readOnly = true)
 	public Map<UUID, TeamCard> teams(UUID competitionId, Collection<UUID> teamIds) {
 		return views.cards(competitionId, teamIds);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public boolean organisedBy(UUID competitionId, UUID userId) {
+		return competitions.findById(competitionId).filter(c -> c.isOrganisedBy(userId)).isPresent();
 	}
 
 	@Override

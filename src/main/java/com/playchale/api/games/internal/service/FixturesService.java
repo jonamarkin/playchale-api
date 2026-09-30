@@ -15,6 +15,7 @@ import com.playchale.api.games.internal.domain.Game;
 import com.playchale.api.games.internal.repository.GameRepository;
 import com.playchale.api.games.internal.repository.GameResultRepository;
 import com.playchale.api.market.Market;
+import com.playchale.api.shared.error.BusinessException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -79,6 +80,17 @@ class FixturesService implements Fixtures {
 					r == null ? null : r.getHomeScore(), r == null ? null : r.getAwayScore(), g.getFixtureSlot(),
 					r == null ? null : r.getHomePenalties(), r == null ? null : r.getAwayPenalties());
 		}).toList();
+	}
+
+	@Override
+	@Transactional
+	public int discard(UUID competitionId) {
+		var fixtures = games.findByCompetitionIdOrderByStartsAt(competitionId);
+		if (fixtures.stream().anyMatch(g -> Game.COMPLETED.equals(g.getStatus()))) {
+			throw BusinessException.conflict("A fixture has been played, so the draw stands.");
+		}
+		games.deleteAll(fixtures);
+		return fixtures.size();
 	}
 
 	@Override

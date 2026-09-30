@@ -18,8 +18,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Results: the host records the score, and the players check it. Recording completes the game, and
- * everyone who played gets their outcome.
+ * Results: whoever runs the game records the score, and the players check it. Recording completes
+ * the game, and everyone who played gets their outcome.
  */
 @Service
 public class ResultService {
@@ -34,23 +34,31 @@ public class ResultService {
 
 	private final Clock clock;
 
+	private final FixtureRunners runners;
+
 	ResultService(GameRepository games, GameResultRepository results, GameViews views, ApplicationEventPublisher events,
-			Clock clock) {
+			Clock clock, FixtureRunners runners) {
 		this.games = games;
 		this.results = results;
 		this.views = views;
 		this.events = events;
 		this.clock = clock;
+		this.runners = runners;
 	}
 
-	/** games.recordResult: host only, once the game has kicked off. Recording again corrects it. */
+	/**
+	 * games.recordResult: whoever runs it — the host, or any organiser of the competition it's a
+	 * fixture of — once the game has kicked off. Recording again corrects it.
+	 */
 	@Transactional
 	public GameResponse record(UUID gameId, ResultInput input, UUID me) {
 		var game = games.lockById(gameId).orElseThrow(GameService::notFound);
-		if (!game.isHost(me)) {
-			throw BusinessException.conflict("Only the host can record the result.");
+		if (!runners.runs(game, me)) {
+			throw BusinessException.conflict(FixtureRunners.refusal(game, "Only the host can record the result.", "record the result"));
 		}
 		var now = clock.instant();
+		// A called-off fixture can still be settled, so a knockout that lost a tie can reach its final.
+		game.reinstate();
 		game.complete(now);
 		var existing = results.findById(gameId);
 		var result = existing.orElseGet(() -> new GameResult(game, input, me, now));
