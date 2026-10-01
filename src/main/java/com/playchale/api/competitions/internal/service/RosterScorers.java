@@ -1,5 +1,6 @@
 package com.playchale.api.competitions.internal.service;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -29,14 +30,15 @@ class RosterScorers {
 	 * @param userId set once the player has claimed their place, so the row can be theirs
 	 * @param games  match sheets they were checked in on
 	 */
-	record RosterScorer(UUID rosterMemberId, String displayName, UUID userId, UUID teamId, int goals, int assists, int games) {
+	record RosterScorer(UUID rosterMemberId, String displayName, UUID userId, UUID teamId, int goals, int assists, int games,
+			Instant addedAt) {
 	}
 
 	/** Everyone who scored or assisted, best first. Only submitted sheets count. */
 	@Transactional(readOnly = true)
 	List<RosterScorer> of(UUID competitionId) {
 		return jdbc.sql("""
-				SELECT r.id, r.display_name, r.user_id, r.team_id,
+				SELECT r.id, r.display_name, r.user_id, r.team_id, min(r.created_at) AS added_at,
 				       coalesce(sum(p.goals), 0) AS goals,
 				       coalesce(sum(p.assists), 0) AS assists,
 				       count(*) FILTER (WHERE p.checked_in) AS games
@@ -51,7 +53,8 @@ class RosterScorers {
 				""")
 			.param("competition", competitionId)
 			.query((rs, n) -> new RosterScorer((UUID) rs.getObject("id"), rs.getString("display_name"), (UUID) rs.getObject("user_id"),
-					(UUID) rs.getObject("team_id"), rs.getInt("goals"), rs.getInt("assists"), rs.getInt("games")))
+					(UUID) rs.getObject("team_id"), rs.getInt("goals"), rs.getInt("assists"), rs.getInt("games"),
+					rs.getTimestamp("added_at").toInstant()))
 			.list();
 	}
 

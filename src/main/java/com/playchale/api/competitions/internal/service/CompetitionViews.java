@@ -73,8 +73,10 @@ class CompetitionViews {
 		if (claimed != null) {
 			return claimed.as(viewer);
 		}
+		// Their roster record stands in for an account: an id to key the row on, the name their company
+		// gave, and the date that name was added. No handle, because there is no profile to open.
 		return new UserSummary(scorer.rosterMemberId(), null, scorer.displayName(), null, null, null, null, null,
-				List.of(), Map.of(), null, true, null, null, null, null, null, null);
+				List.of(), Map.of(), scorer.addedAt(), true, null, null, null, null, null, null);
 	}
 
 	CompetitionResponse of(Competition c, UUID viewer) {
@@ -106,7 +108,8 @@ class CompetitionViews {
 		// same every time rather than in whatever order the rows came back.
 		var scorers = c.getOrganisationId() != null
 			? fromSheets.stream()
-				.map(r -> new CompetitionResponse.ScorerView(namedPlayer(r, people.get(r.userId()), viewer), r.teamId(),
+				// Most of them have no account, and the map this comes from refuses a null key.
+				.map(r -> new CompetitionResponse.ScorerView(namedPlayer(r, r.userId() == null ? null : people.get(r.userId()), viewer), r.teamId(),
 						cards.containsKey(r.teamId()) ? cards.get(r.teamId()).name() : null, r.goals(), r.assists(), 0, r.games()))
 				.toList()
 			: scored.stream()

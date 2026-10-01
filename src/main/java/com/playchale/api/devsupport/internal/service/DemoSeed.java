@@ -762,7 +762,7 @@ class DemoSeed {
 						""").param("game", id(gameId)).param("user", id(slot % LOCATIONS.size() == 0 ? "u-yaw" : "u-nii"))
 					.param("by", id(OPERATOR)).param("at", utc(at(-27, 9))).update();
 				if (played) {
-					matchSheet(gameId, home, away, homeScore, awayScore, round, at(-28 + round * 7, 20));
+					matchSheet(gameId, home, away, homeScore, awayScore, at(-28 + round * 7, 20));
 				}
 			}
 			order.add(1, order.remove(order.size() - 1));
@@ -774,14 +774,14 @@ class DemoSeed {
 	 * has nothing to show: a company's players are a staff list, so the result tables — which only
 	 * know PlayChale accounts — know none of them. The goals add up to the score that was recorded.
 	 */
-	private void matchSheet(String gameId, String home, String away, int homeScore, int awayScore, int round, Instant when) {
+	private void matchSheet(String gameId, String home, String away, int homeScore, int awayScore, Instant when) {
 		jdbc.sql("""
 				INSERT INTO fixture_match_sheets (game_id, home_score, away_score, status, saved_by, saved_at, submitted_by, submitted_at, version)
 				VALUES (:game, :home, :away, 'submitted', :by, :at, :by, :at, 1)
 				""").param("game", id(gameId)).param("home", homeScore).param("away", awayScore).param("by", id(OPERATOR))
 			.param("at", utc(when)).update();
-		sheetSide(gameId, home, homeScore, round);
-		sheetSide(gameId, away, awayScore, round + 1);
+		sheetSide(gameId, home, homeScore);
+		sheetSide(gameId, away, awayScore);
 	}
 
 	/**
@@ -789,7 +789,7 @@ class DemoSeed {
 	 * lead the chart across the season, as they would in a real company league. A company still
 	 * awaiting review, and the one player turned down, are not eligible and so are not on it.
 	 */
-	private void sheetSide(String gameId, String teamId, int goals, int offset) {
+	private void sheetSide(String gameId, String teamId, int goals) {
 		if (teamId.equals("t-frontier")) {
 			return;
 		}
@@ -804,7 +804,7 @@ class DemoSeed {
 					""")
 				.param("game", id(gameId)).param("member", id("rm-" + teamId + "-" + (i + 1))).param("team", id(teamId))
 				.param("participation", i < 5 ? "starter" : "substitute").param("checkedIn", i < 8)
-				.param("goals", i < goals ? 1 : 0).param("assists", goals > 1 && i == (offset % 3) + goals ? 1 : 0)
+				.param("goals", i < goals ? 1 : 0).param("assists", goals > 0 && i == goals ? 1 : 0)
 				.update();
 		}
 	}
