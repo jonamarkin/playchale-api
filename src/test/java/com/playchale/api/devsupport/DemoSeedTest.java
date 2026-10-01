@@ -41,10 +41,15 @@ class DemoSeedTest {
 		testData.reset();
 		var kwame = SeedIds.of("u-kwame");
 
-		assertThat(testData.demoAccounts()).hasSize(5).first().satisfies(a -> {
-			assertThat(a.user().name()).isEqualTo("Kwame Asante");
-			assertThat(a.user().phone()).isEqualTo("+233240000001");
+		// Whoever is offered on the sign-in page is a real seeded account, and between them they cover
+		// the roles worth showing: someone running a league, a company's manager, and an official.
+		var accounts = testData.demoAccounts();
+		assertThat(accounts).isNotEmpty().allSatisfy(a -> {
+			assertThat(a.user().phone()).startsWith("+233");
+			assertThat(a.note()).isNotBlank();
 		});
+		assertThat(accounts).extracting(a -> a.user().handle()).contains("kojo", "kwame", "yaw");
+		assertThat(accounts).extracting(a -> a.note()).anySatisfy(note -> assertThat(note).contains("Inter-Company League"));
 
 		var saturday = games.get(SeedIds.of("g-osu-sat"), kwame);
 		assertThat(saturday.venue().pitchName()).isEqualTo("Pitch A");

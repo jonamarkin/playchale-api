@@ -53,8 +53,9 @@ class DemoSeed {
 	}
 
 	static final List<DemoAccount> DEMO_ACCOUNTS = List.of(
-			new DemoAccount("u-kwame", "Football and basketball · has results to add"),
-			new DemoAccount("u-kojo", "Hosts Saturday 5-a-side · collecting payments"),
+			new DemoAccount("u-kojo", "Runs the Inter-Company League · workspace owner"),
+			new DemoAccount("u-kwame", "Apex Ltd\u2019s manager · a roster to submit"),
+			new DemoAccount("u-yaw", "Match official · fixtures to referee"),
 			new DemoAccount("u-abena", "Three sports · owes a share"),
 			new DemoAccount("u-adwoa", "Venue owner · Osu Astro Turf"),
 			new DemoAccount("u-sam", "Venue owner · East Legon Courts"));
