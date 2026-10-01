@@ -761,8 +761,51 @@ class DemoSeed {
 						VALUES (:game, :user, :by, :at)
 						""").param("game", id(gameId)).param("user", id(slot % LOCATIONS.size() == 0 ? "u-yaw" : "u-nii"))
 					.param("by", id(OPERATOR)).param("at", utc(at(-27, 9))).update();
+				if (played) {
+					matchSheet(gameId, home, away, homeScore, awayScore, round, at(-28 + round * 7, 20));
+				}
 			}
 			order.add(1, order.remove(order.size() - 1));
+		}
+	}
+
+	/**
+	 * The official sheet behind a result that is already in. Without these the league's scorers chart
+	 * has nothing to show: a company's players are a staff list, so the result tables — which only
+	 * know PlayChale accounts — know none of them. The goals add up to the score that was recorded.
+	 */
+	private void matchSheet(String gameId, String home, String away, int homeScore, int awayScore, int round, Instant when) {
+		jdbc.sql("""
+				INSERT INTO fixture_match_sheets (game_id, home_score, away_score, status, saved_by, saved_at, submitted_by, submitted_at, version)
+				VALUES (:game, :home, :away, 'submitted', :by, :at, :by, :at, 1)
+				""").param("game", id(gameId)).param("home", homeScore).param("away", awayScore).param("by", id(OPERATOR))
+			.param("at", utc(when)).update();
+		sheetSide(gameId, home, homeScore, round);
+		sheetSide(gameId, away, awayScore, round + 1);
+	}
+
+	/**
+	 * One goal each to the first few on the sheet, so they add up to the score and the same handful
+	 * lead the chart across the season, as they would in a real company league. A company still
+	 * awaiting review, and the one player turned down, are not eligible and so are not on it.
+	 */
+	private void sheetSide(String gameId, String teamId, int goals, int offset) {
+		if (teamId.equals("t-frontier")) {
+			return;
+		}
+		var squad = squadFor(COMPANIES.indexOf(team(COMPANIES, teamId)));
+		for (int i = 0; i < squad.size(); i++) {
+			if (teamId.equals("t-enyo") && i == 4) {
+				continue;
+			}
+			jdbc.sql("""
+					INSERT INTO match_sheet_players (game_id, roster_member_id, team_id, participation, checked_in, goals, assists)
+					VALUES (:game, :member, :team, :participation, :checkedIn, :goals, :assists)
+					""")
+				.param("game", id(gameId)).param("member", id("rm-" + teamId + "-" + (i + 1))).param("team", id(teamId))
+				.param("participation", i < 5 ? "starter" : "substitute").param("checkedIn", i < 8)
+				.param("goals", i < goals ? 1 : 0).param("assists", goals > 1 && i == (offset % 3) + goals ? 1 : 0)
+				.update();
 		}
 	}
 
