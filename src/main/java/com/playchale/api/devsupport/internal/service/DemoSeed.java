@@ -548,22 +548,49 @@ class DemoSeed {
 
 	/* ------------------------------------------------------------------ corporate league */
 
-	/** The six companies, with the players their managers put forward. */
+	/** The eight companies, with the players their managers put forward. */
 	private static final List<Team> COMPANIES = List.of(
 			new Team("t-apex", "Apex Ltd", "u-kwame", List.of(), "#7cf0c8"),
 			new Team("t-birim", "Birim Bank", "u-kojo", List.of(), "#a9c4f2"),
 			new Team("t-coast", "Coast Telecom", "u-kojo", List.of(), "#f2d4a9"),
 			new Team("t-densu", "Densu Energy", "u-kojo", List.of(), "#d9b8e8"),
 			new Team("t-enyo", "Enyo Foods", "u-kojo", List.of(), "#b7d3c9"),
-			new Team("t-frontier", "Frontier Insurance", "u-kojo", List.of(), "#f5c9b3"));
+			new Team("t-frontier", "Frontier Insurance", "u-kojo", List.of(), "#f5c9b3"),
+			new Team("t-gold", "Goldfields Mining", "u-kojo", List.of(), "#c9a1d8"),
+			new Team("t-harbour", "Harbour Logistics", "u-kojo", List.of(), "#e8e8e4"));
 
-	private static final Map<String, List<String>> SQUADS = Map.of(
-			"t-apex", List.of("Kofi Asare", "Yaw Darko", "Nana Owusu", "Kwesi Boateng", "Michael Tetteh"),
-			"t-birim", List.of("Samuel Adjei", "Isaac Mensah", "Daniel Ofori", "Emmanuel Quaye", "Joseph Larbi"),
-			"t-coast", List.of("Prince Amoah", "Richard Danso", "Felix Nyarko", "Bright Agyeman", "Eric Baidoo"),
-			"t-densu", List.of("Stephen Kusi", "Jonathan Appiah", "Patrick Okine", "Godfred Annan", "Ebenezer Sowah"),
-			"t-enyo", List.of("Abena Frimpong", "Akosua Boakye", "Adwoa Sarpong", "Efua Gyamfi", "Ama Nartey"),
-			"t-frontier", List.of("Nii Armah", "Kojo Antwi", "Solomon Tagoe", "Gideon Mireku", "Alfred Doe"));
+	/**
+	 * Fifteen to a squad, which is what a five-a-side company side actually registers. Composed from
+	 * two name pools by the same rule the web app's demo uses, so both show the same hundred and
+	 * twenty people without either having to write them out.
+	 */
+	private static final List<String> FIRST_NAMES = List.of("Kofi", "Yaw", "Nana", "Kwesi", "Michael", "Samuel", "Isaac", "Daniel",
+			"Emmanuel", "Joseph", "Prince", "Richard", "Felix", "Bright", "Eric", "Stephen", "Jonathan", "Patrick", "Godfred",
+			"Ebenezer", "Abena", "Akosua", "Adwoa", "Efua", "Ama", "Nii", "Solomon", "Gideon", "Alfred", "Kwabena");
+
+	private static final List<String> LAST_NAMES = List.of("Asare", "Darko", "Owusu", "Boateng", "Tetteh", "Adjei", "Mensah", "Ofori",
+			"Quaye", "Larbi", "Amoah", "Danso", "Nyarko", "Agyeman", "Baidoo", "Kusi", "Appiah", "Okine", "Annan", "Sowah",
+			"Frimpong", "Boakye", "Sarpong", "Gyamfi", "Nartey", "Armah", "Antwi", "Tagoe", "Mireku", "Doe");
+
+	private static final int SQUAD_SIZE = 15;
+
+	/** Two pitches, so a round is played in two places at once and a clash is a real possibility. */
+	private record Place(String id, String name, String area) {
+	}
+
+	private static final List<Place> LOCATIONS = List.of(
+			new Place("loc-accra-sports-park", "Accra Sports Park", "Airport Residential, Accra"),
+			new Place("loc-aviation-centre", "Aviation Social Centre", "Airport, Accra"));
+
+	private static List<String> squadFor(int companyIndex) {
+		var squad = new ArrayList<String>();
+		for (int i = 0; i < SQUAD_SIZE; i++) {
+			var seed = companyIndex * SQUAD_SIZE + i;
+			squad.add(FIRST_NAMES.get(Math.floorMod(seed * 7 + companyIndex, FIRST_NAMES.size())) + " "
+					+ LAST_NAMES.get(Math.floorMod(seed * 11 + companyIndex * 3, LAST_NAMES.size())));
+		}
+		return List.copyOf(squad);
+	}
 
 	/** Rounds already played; the last is still to come, so an operator has something to run. */
 	private static final int PLAYED_ROUNDS = 4;
@@ -601,11 +628,14 @@ class DemoSeed {
 			.param("starts", utc(at(-28, 18))).param("created", utc(at(-35, 9)))
 			.update();
 
-		jdbc.sql("""
-				INSERT INTO competition_locations (id, competition_id, name, area, created_at)
-				VALUES (:id, :competition, 'Accra Sports Park', 'Airport Residential, Accra', :created)
-				""").param("id", id("loc-accra-sports-park")).param("competition", id(CORPORATE_LEAGUE)).param("created", utc(at(-30, 9)))
-			.update();
+		for (var place : LOCATIONS) {
+			jdbc.sql("""
+					INSERT INTO competition_locations (id, competition_id, name, area, created_at)
+					VALUES (:id, :competition, :name, :area, :created)
+					""").param("id", id(place.id())).param("competition", id(CORPORATE_LEAGUE)).param("name", place.name())
+				.param("area", place.area()).param("created", utc(at(-30, 9)))
+				.update();
+		}
 
 		for (var company : COMPANIES) {
 			enterCompany(company);
@@ -636,7 +666,7 @@ class DemoSeed {
 				""").param("league", id(CORPORATE_LEAGUE)).param("team", id(company.id())).param("user", id(manager))
 			.param("by", id(OPERATOR)).param("at", utc(entered)).update();
 
-		var players = SQUADS.get(company.id());
+		var players = squadFor(COMPANIES.indexOf(company));
 		for (int i = 0; i < players.size(); i++) {
 			// Frontier is still waiting on review, and one of Enyo's was turned down: the queue has
 			// something in it, and a review decision has a reason attached.
@@ -694,15 +724,17 @@ class DemoSeed {
 				var gameId = "g-ic-" + (round + 1) + "-" + (slot + 1);
 				var result = played ? new Result(homeScore, awayScore, List.of(), List.of(), Map.of(), List.of(), OPERATOR,
 						at(-28 + round * 7, 20), List.of()) : null;
+				var place = LOCATIONS.get(slot % LOCATIONS.size());
 				insertGame(new Game(gameId, "football", "5-a-side", team(COMPANIES, home).name() + " vs " + team(COMPANIES, away).name(),
-						at(-28 + round * 7, 18 + slot), 60, null, "Accra Sports Park", "Airport Residential, Accra", 2, 0, OPERATOR,
+						at(-28 + round * 7, 18 + slot / LOCATIONS.size()), 60, null, place.name(), place.area(), 2, 0, OPERATOR,
 						null, List.of(), Set.of(), played ? "completed" : "full", result, new Fixture(CORPORATE_LEAGUE, round + 1, home, away),
 						false));
+				// One official per pitch: the same person can't referee two fixtures at once.
 				jdbc.sql("""
 						INSERT INTO fixture_officials (game_id, user_id, assigned_by, assigned_at)
 						VALUES (:game, :user, :by, :at)
-						""").param("game", id(gameId)).param("user", id("u-yaw")).param("by", id(OPERATOR))
-					.param("at", utc(at(-27, 9))).update();
+						""").param("game", id(gameId)).param("user", id(slot % LOCATIONS.size() == 0 ? "u-yaw" : "u-nii"))
+					.param("by", id(OPERATOR)).param("at", utc(at(-27, 9))).update();
 			}
 			order.add(1, order.remove(order.size() - 1));
 		}
