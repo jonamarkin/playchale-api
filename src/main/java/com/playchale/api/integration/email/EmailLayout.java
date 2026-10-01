@@ -37,12 +37,24 @@ public final class EmailLayout {
 	 * @param values    the card's placeholders
 	 */
 	public static String render(String webApp, String card, String subject, String preheader, String footer, Map<String, String> values) {
+		return render(webApp, card, subject, preheader, footer, values, null);
+	}
+
+	/**
+	 * The same, with the link that stops this kind of email. Every message that needed someone's
+	 * agreement carries one, and it works with nobody signed in.
+	 *
+	 * @param unsubscribeUrl where the link goes, or null for an email that needed no agreement
+	 */
+	public static String render(String webApp, String card, String subject, String preheader, String footer, Map<String, String> values,
+			String unsubscribeUrl) {
 		var home = webApp.replaceAll("/+$", "");
 		var content = fill(read(card), values);
 		return fill(LAYOUT, Map.of("subject", subject, "preheader", preheader, "footer", footer, "webApp", home,
 				"webAppName", URI.create(home).getHost()))
 			// The card is our own markup, filled above; it goes in last so its text isn't filled twice.
-			.replace("{{content}}", content);
+			.replace("{{content}}", content)
+			.replace("{{unsubscribe}}", unsubscribe(unsubscribeUrl));
 	}
 
 	private static String fill(String template, Map<String, String> values) {
@@ -50,11 +62,18 @@ public final class EmailLayout {
 		for (var value : values.entrySet()) {
 			out = out.replace("{{" + value.getKey() + "}}", HtmlUtils.htmlEscape(value.getValue()));
 		}
-		var left = PLACEHOLDER.matcher(out.replace("{{content}}", ""));
+		var left = PLACEHOLDER.matcher(out.replace("{{content}}", "").replace("{{unsubscribe}}", ""));
 		if (left.find()) {
 			throw new IllegalArgumentException("Email template left unfilled: " + left.group());
 		}
 		return out;
+	}
+
+	/** The footer's opt-out link, as its own markup so the URL isn't escaped into uselessness. */
+	private static String unsubscribe(String url) {
+		return url == null ? ""
+				: " · <a class=\"pc-link\" href=\"%s\" style=\"color:#64716f;text-decoration:underline;\">Unsubscribe</a>"
+					.formatted(HtmlUtils.htmlEscape(url));
 	}
 
 	private static String read(String name) {

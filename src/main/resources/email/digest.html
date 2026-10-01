@@ -1,0 +1,26 @@
+<!--
+  The weekly round-up. Everything in it is this person's own week, assembled from what actually
+  happened (WeeklyDigest) — there is no editorial copy to get wrong, and a week with nothing in it
+  is not sent at all.
+
+  {{greeting}} names them, {{week}} dates it, and {{yours}} and {{competitions}} are each a short
+  plain-text block already written as lines (white-space:pre-line turns the newlines into breaks).
+  Both always say something, even if it is "you didn't play this week": a section that sometimes
+  disappears needs conditional markup, which email clients render badly.
+-->
+<h1 class="pc-ink" style="margin:0 0 6px;font-size:24px;line-height:32px;font-weight:600;letter-spacing:-0.01em;color:#0b1716;">{{greeting}}</h1>
+<p class="pc-mute" style="margin:0 0 26px;font-size:14px;line-height:21px;color:#64716f;">{{week}}</p>
+
+<p class="pc-ink" style="margin:0 0 6px;font-size:13px;line-height:18px;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;color:#0b1716;">Your week</p>
+<p class="pc-body" style="margin:0 0 24px;font-size:16px;line-height:25px;color:#2a3635;white-space:pre-line;">{{yours}}</p>
+
+<p class="pc-ink" style="margin:0 0 6px;font-size:13px;line-height:18px;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;color:#0b1716;">Your competitions</p>
+<p class="pc-body" style="margin:0 0 26px;font-size:16px;line-height:25px;color:#2a3635;white-space:pre-line;">{{competitions}}</p>
+
+<table role="presentation" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="background:#0c3a3a;border-radius:999px;">
+      <a href="{{actionUrl}}" style="display:inline-block;padding:14px 26px;font-family:'Onest',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;font-weight:500;color:#7cf0c8;text-decoration:none;">Open PlayChale</a>
+    </td>
+  </tr>
+</table>

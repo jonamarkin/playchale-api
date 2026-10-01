@@ -66,10 +66,11 @@ public class CorporateOperationsService {
 		var competition = requireManager(competitionId, userId);
 		var teams = number("SELECT count(*) FROM competition_entries WHERE competition_id = :id", competitionId);
 		var confirmed = number("SELECT count(*) FROM competition_entries WHERE competition_id = :id AND status = 'entered'", competitionId);
-		var submitted = number("SELECT count(DISTINCT team_id) FROM roster_members WHERE competition_id = :id AND eligibility_state = 'submitted'", competitionId);
-		var approved = number("SELECT count(DISTINCT team_id) FROM roster_members WHERE competition_id = :id AND eligibility_state = 'approved'", competitionId);
+		// Players, not teams: the screen says "Players awaiting review" and "Players approved", and an
+		// eight-company league with fifteen waiting read as "1" while it counted the teams they were in.
+		var submitted = number("SELECT count(*) FROM roster_members WHERE competition_id = :id AND eligibility_state = 'submitted'", competitionId);
+		var approved = number("SELECT count(*) FROM roster_members WHERE competition_id = :id AND eligibility_state = 'approved'", competitionId);
 		var rosterTotal = number("SELECT count(*) FROM roster_members WHERE competition_id = :id", competitionId);
-		var claimed = number("SELECT count(*) FROM roster_members WHERE competition_id = :id AND user_id IS NOT NULL", competitionId);
 		var fixtureTotal = number("SELECT count(*) FROM games WHERE competition_id = :id", competitionId);
 		var played = number("SELECT count(*) FROM games WHERE competition_id = :id AND status = 'completed'", competitionId);
 		var missing = number("SELECT count(*) FROM games g LEFT JOIN fixture_officials f ON f.game_id = g.id WHERE g.competition_id = :id AND f.game_id IS NULL", competitionId);
@@ -88,7 +89,7 @@ public class CorporateOperationsService {
 				LEFT JOIN announcement_recipients r ON r.announcement_id=a.id WHERE a.competition_id=:id
 				""").param("id", competitionId).query((rs, n) -> new int[] {rs.getInt(1), rs.getInt(2)}).single();
 		return new CorporateViews.Dashboard(competitionId, competition.organisationId(), competition.name(), competition.scheduleStatus(),
-			new CorporateViews.Counts(teams, teams - confirmed, confirmed), new CorporateViews.Counts(rosterTotal, submitted, claimed),
+			new CorporateViews.Counts(teams, teams - confirmed, confirmed), new CorporateViews.Counts(rosterTotal, submitted, approved),
 			new CorporateViews.Counts(fixtureTotal, Math.max(0, fixtureTotal - played), played), missing, money[0], money[1],
 			match[0], match[1], match[2], match[3], comms[0], comms[1]);
 	}

@@ -214,6 +214,29 @@ class CorporateAccessTest {
 			.doesNotContain("Not on the payroll");
 	}
 
+	@Test
+	void theOverviewCountsPlayersRatherThanTheTeamsTheyAreIn() throws Exception {
+		// Three on one company's list: one still waiting on the operator, two approved.
+		for (var name : new String[] { "Kofi Asare", "Yaw Darko", "Ama Nyarko" }) {
+			mvc.perform(post("/competitions/" + competitionId + "/operations/teams/" + teamId + "/roster").cookie(teamManager)
+				.contentType(MediaType.APPLICATION_JSON).content("{\"displayName\":\"%s\"}".formatted(name)))
+				.andExpect(status().isCreated());
+		}
+		var roster = body(mvc.perform(post("/competitions/" + competitionId + "/operations/teams/" + teamId + "/roster/submit")
+			.cookie(teamManager).contentType(MediaType.APPLICATION_JSON).content("{\"attest\":true}")).andExpect(status().isOk()));
+		var approve = "{\"memberIds\":[\"%s\",\"%s\"],\"decision\":\"approved\"}"
+			.formatted(roster.get(0).get("id").asString(), roster.get(1).get("id").asString());
+		mvc.perform(post("/competitions/" + competitionId + "/operations/teams/" + teamId + "/roster/review").cookie(operator)
+			.contentType(MediaType.APPLICATION_JSON).content(approve)).andExpect(status().isOk());
+
+		// All three are on one team, so counting teams would say "1 approved, 1 waiting".
+		mvc.perform(get("/competitions/" + competitionId + "/operations").cookie(operator))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.rosters.total").value(3))
+			.andExpect(jsonPath("$.rosters.complete").value(2))
+			.andExpect(jsonPath("$.rosters.pending").value(1));
+	}
+
 	private JsonNode body(org.springframework.test.web.servlet.ResultActions actions) throws Exception {
 		return json.readTree(actions.andReturn().getResponse().getContentAsString());
 	}

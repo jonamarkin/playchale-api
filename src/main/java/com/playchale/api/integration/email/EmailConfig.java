@@ -21,7 +21,7 @@ import tools.jackson.databind.ObjectMapper;
  * signing in by email isn't offered.
  */
 @Configuration
-@EnableConfigurationProperties(ResendProperties.class)
+@EnableConfigurationProperties({ ResendProperties.class, BulkEmailProperties.class })
 class EmailConfig {
 
 	private static final Logger log = LoggerFactory.getLogger("email");
