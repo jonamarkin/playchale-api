@@ -264,6 +264,47 @@ class CorporateMatchdayTest {
 		return url.substring(url.indexOf("token=") + "token=".length());
 	}
 
+	@Test
+	void anOfficialOpensASheetAlreadyFilledWithBothSquads() throws Exception {
+		// They cannot read a roster — that is the company's and the organiser's business — so if the
+		// sheet arrived empty there would be nobody to tick, which is what used to happen.
+		mvc.perform(get("/competitions/" + competitionId + "/operations/teams/" + homeTeamId + "/roster").cookie(official))
+			.andExpect(status().isNotFound());
+
+		mvc.perform(get(matchSheet()).cookie(official))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.status").value("draft"))
+			.andExpect(jsonPath("$.players.length()").value(2))
+			.andExpect(jsonPath("$.players[?(@.displayName == 'Kofi Asare')]").exists())
+			.andExpect(jsonPath("$.players[?(@.displayName == 'Samuel Adjei')]").exists());
+	}
+
+	@Test
+	void everyoneWithAPartInItIsToldWhatTheirPartIs() throws Exception {
+		// The official referees but keeps no roster.
+		mvc.perform(get("/competitions/" + competitionId + "/operations/me").cookie(official))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.officiates").value(true))
+			.andExpect(jsonPath("$.teams.length()").value(0));
+
+		// The company's manager keeps one roster and referees nothing.
+		mvc.perform(get("/competitions/" + competitionId + "/operations/me").cookie(teamManager))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.officiates").value(false))
+			.andExpect(jsonPath("$.teams.length()").value(1))
+			.andExpect(jsonPath("$.teams[0].teamId").value(homeTeamId));
+
+		// Neither of them can load the operator's dashboard, which is why they needed this at all.
+		mvc.perform(get("/competitions/" + competitionId + "/operations").cookie(official)).andExpect(status().isNotFound());
+		mvc.perform(get("/competitions/" + competitionId + "/operations").cookie(teamManager)).andExpect(status().isNotFound());
+	}
+
+	@Test
+	void someoneWithNoPartInItIsToldNothing() throws Exception {
+		var stranger = TestSignIn.as(mvc, "024 455 5209");
+		mvc.perform(get("/competitions/" + competitionId + "/operations/me").cookie(stranger)).andExpect(status().isNotFound());
+	}
+
 	private JsonNode body(ResultActions actions) throws Exception {
 		return json.readTree(actions.andReturn().getResponse().getContentAsString());
 	}

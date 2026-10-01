@@ -65,6 +65,16 @@ class CorporateOperationsController {
 		return operations.dashboard(id, me.id());
 	}
 
+	/**
+	 * corporate.myPart: what a company's manager or a match official may do here. Separate from the
+	 * dashboard on purpose — that one is for the people running the competition, and refusing it is
+	 * what used to leave everyone else with no screen at all.
+	 */
+	@GetMapping("/competitions/{id}/operations/me")
+	CorporateViews.MyPart myPart(CurrentUser me, @PathVariable UUID id) {
+		return operations.myPart(id, me.id());
+	}
+
 	@GetMapping("/competitions/{id}/operations/teams/{teamId}/roster")
 	List<CorporateViews.RosterMember> roster(CurrentUser me, @PathVariable UUID id, @PathVariable UUID teamId) {
 		return operations.roster(id, teamId, me.id());

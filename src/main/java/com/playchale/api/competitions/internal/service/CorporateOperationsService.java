@@ -40,6 +40,7 @@ public class CorporateOperationsService {
 
 	private static final SecureRandom RANDOM = new SecureRandom();
 
+	private final CorporateRoles roles;
 	private final JdbcClient jdbc;
 	private final Clock clock;
 	private final Fixtures fixtures;
@@ -50,7 +51,9 @@ public class CorporateOperationsService {
 	private final ObjectMapper json;
 
 	public CorporateOperationsService(JdbcClient jdbc, Clock clock, Fixtures fixtures, OfficialResults results,
-			PitchBookings bookings, OrganisationAccess organisations, ApplicationEventPublisher events, ObjectMapper json) {
+			PitchBookings bookings, OrganisationAccess organisations, ApplicationEventPublisher events, ObjectMapper json,
+			CorporateRoles roles) {
+		this.roles = roles;
 		this.jdbc = jdbc;
 		this.clock = clock;
 		this.fixtures = fixtures;
@@ -59,6 +62,42 @@ public class CorporateOperationsService {
 		this.organisations = organisations;
 		this.events = events;
 		this.json = json;
+	}
+
+	/**
+	 * What this person may do here, for someone who is not a manager: the companies whose roster they
+	 * keep, and whether they referee any of its fixtures. It answers without the manager dashboard,
+	 * which is the whole point — a company's manager and a match official have no business seeing the
+	 * league's money or anyone else's roster, so they cannot load it.
+	 */
+	@Transactional(readOnly = true)
+	public CorporateViews.MyPart myPart(UUID competitionId, UUID userId) {
+		var competition = competition(competitionId);
+		var teams = roles.teamsFor(competitionId, userId).stream()
+			.map(t -> new CorporateViews.ManagedTeam(t.teamId(), t.teamName()))
+			.toList();
+		var officiates = officiates(competitionId, userId);
+		if (teams.isEmpty() && !officiates && !manages(competitionId, userId)) {
+			throw BusinessException.notFound("That competition doesn’t exist any more.");
+		}
+		return new CorporateViews.MyPart(competitionId, competition.name(), teams, officiates);
+	}
+
+	private boolean officiates(UUID competitionId, UUID userId) {
+		return jdbc.sql("""
+				SELECT count(*) FROM fixture_officials f JOIN games g ON g.id = f.game_id
+				WHERE g.competition_id = :competition AND f.user_id = :user
+				""").param("competition", competitionId).param("user", userId).query(Integer.class).single() > 0;
+	}
+
+	private boolean manages(UUID competitionId, UUID userId) {
+		try {
+			requireManager(competitionId, userId);
+			return true;
+		}
+		catch (BusinessException ignored) {
+			return false;
+		}
 	}
 
 	@Transactional(readOnly = true)
@@ -650,16 +689,32 @@ public class CorporateOperationsService {
 			rs.getInt("home_score"),rs.getInt("away_score"),rs.getString("notes"),rs.getString("status"),(UUID)rs.getObject("saved_by"),
 			instant(rs,"saved_at"),(UUID)rs.getObject("submitted_by"),instant(rs,"submitted_at"),rs.getInt("version"))).optional()
 			.orElse(new SheetRow(0,0,null,"draft",actorId,clock.instant(),null,null,1));
-		var players=jdbc.sql("""
+		List<CorporateViews.MatchPlayer> players=jdbc.sql("""
 				SELECT p.roster_member_id,p.team_id,r.display_name,r.user_id,p.participation,p.checked_in,p.goals,p.assists
 				FROM match_sheet_players p JOIN roster_members r ON r.id=p.roster_member_id WHERE p.game_id=:game ORDER BY r.display_name
 				""").param("game",gameId).query((rs,n)->new CorporateViews.MatchPlayer((UUID)rs.getObject(1),(UUID)rs.getObject(2),rs.getString(3),
 				(UUID)rs.getObject(4),rs.getString(5),rs.getBoolean(6),rs.getInt(7),rs.getInt(8))).list();
+		// Never opened: hand back a blank sheet already filled with both sides' approved players, so an
+		// official has something to tick. They cannot read a roster themselves — that is the company's
+		// and the organiser's business — so the sheet has to arrive complete or not at all.
+		if(players.isEmpty()) players=blankSheetFor(gameId);
 		var cards=jdbc.sql("SELECT id,roster_member_id,colour,minute,note FROM match_sheet_cards WHERE game_id=:game ORDER BY minute NULLS LAST")
 			.param("game",gameId).query((rs,n)->new CorporateViews.Card((UUID)rs.getObject(1),(UUID)rs.getObject(2),rs.getString(3),
 				(Integer)rs.getObject(4),rs.getString(5))).list();
 		return new CorporateViews.MatchSheet(gameId,sheet.home(),sheet.away(),sheet.notes(),sheet.status(),sheet.savedBy(),sheet.savedAt(),
 			sheet.submittedBy(),sheet.submittedAt(),sheet.version(),players,cards);
+	}
+
+	/** Everyone approved to play for either side, as a sheet nobody has filled in yet. */
+	private List<CorporateViews.MatchPlayer> blankSheetFor(UUID gameId) {
+		return jdbc.sql("""
+				SELECT r.id,r.team_id,r.display_name,r.user_id
+				FROM roster_members r
+				JOIN games g ON g.competition_id = r.competition_id
+				WHERE g.id = :game AND r.eligibility_state = 'approved' AND r.team_id IN (g.home_team_id, g.away_team_id)
+				ORDER BY r.display_name
+				""").param("game",gameId).query((rs,n)->new CorporateViews.MatchPlayer((UUID)rs.getObject(1),(UUID)rs.getObject(2),
+				rs.getString(3),(UUID)rs.getObject(4),"starter",true,0,0)).list();
 	}
 
 	public record SheetInput(int homeScore,int awayScore,String notes,List<PlayerInput> players,List<CardInput> cards) {

@@ -21,6 +21,17 @@ public final class CorporateViews {
 	public record Counts(int total, int pending, int complete) {
 	}
 
+	/** A company whose entry someone keeps the roster for. */
+	public record ManagedTeam(UUID teamId, String teamName) {
+	}
+
+	/**
+	 * What a person who is not running the competition may do in it: the companies they enter, and
+	 * whether they referee any of its fixtures. Enough for their own screen, and nothing more.
+	 */
+	public record MyPart(UUID competitionId, String competitionName, List<ManagedTeam> teams, boolean officiates) {
+	}
+
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record RosterMember(UUID id, UUID teamId, String displayName, String employeeReference, UUID userId,
 			String eligibilityState, UUID attestedBy, Instant attestedAt, UUID reviewedBy, Instant reviewedAt,

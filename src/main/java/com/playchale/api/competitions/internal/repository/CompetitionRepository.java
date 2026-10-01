@@ -22,10 +22,15 @@ public interface CompetitionRepository extends JpaRepository<Competition, UUID> 
 
 	boolean existsByOrganiserIdAndStatusIn(UUID organiserId, List<String> statuses);
 
-	/** Competitions someone organises or plays in, newest first. */
+	/**
+	 * Competitions someone organises, helps organise or plays in, newest first. A company league also
+	 * involves people whose part is held in tables with no mapping here (its managers, its officials,
+	 * the workspace's members); those ids come from CorporateRoles and are added by the service.
+	 */
 	@Query("""
 			select c from Competition c
 			where c.organiserId = :userId
+			   or :userId member of c.organisers
 			   or exists (select 1 from Entry e join e.players p where e.id.competitionId = c.id and p.userId = :userId)
 			order by c.createdAt desc
 			""")

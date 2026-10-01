@@ -6,6 +6,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -45,8 +46,10 @@ class CompetitionViews {
 
 	private final PublicRosters rosters;
 
+	private final RosterScorers rosterScorers;
+
 	CompetitionViews(EntryRepository entries, TeamDirectory directory, Fixtures fixtures, UserDirectory users, PitchBookings venues,
-			OrganisationAccess organisations, PublicRosters rosters) {
+			OrganisationAccess organisations, PublicRosters rosters, RosterScorers rosterScorers) {
 		this.entries = entries;
 		this.directory = directory;
 		this.fixtures = fixtures;
@@ -54,10 +57,24 @@ class CompetitionViews {
 		this.venues = venues;
 		this.organisations = organisations;
 		this.rosters = rosters;
+		this.rosterScorers = rosterScorers;
 	}
 
 	List<CompetitionResponse> of(Collection<Competition> competitions, UUID viewer) {
 		return competitions.stream().map(c -> of(c, viewer)).toList();
+	}
+
+	/**
+	 * A company's player as the chart shows them: their account if they have claimed their place,
+	 * otherwise just the name their company put forward. They have no profile to open and no stats of
+	 * their own, which is the honest picture — a staff list is not a set of PlayChale accounts.
+	 */
+	private static UserSummary namedPlayer(RosterScorers.RosterScorer scorer, UserSummary claimed, UUID viewer) {
+		if (claimed != null) {
+			return claimed.as(viewer);
+		}
+		return new UserSummary(scorer.rosterMemberId(), null, scorer.displayName(), null, null, null, null, null,
+				List.of(), Map.of(), null, true, null, null, null, null, null, null);
 	}
 
 	CompetitionResponse of(Competition c, UUID viewer) {
@@ -66,9 +83,12 @@ class CompetitionViews {
 		var pending = directory.pendingRequests(cards.keySet());
 		// Scorers are looked up with everyone else: someone who has left a squad still scored their goals.
 		var scored = fixtures.scorers(c.getId(), c.getSport());
+		// A company league's chart comes from the match sheets instead (see RosterScorers).
+		var fromSheets = c.getOrganisationId() == null ? List.<RosterScorers.RosterScorer>of() : rosterScorers.of(c.getId());
 		var people = users.findAll(Stream.of(Stream.of(c.getOrganiserId()), squads.stream().flatMap(e -> e.playerIds().stream()),
 				cards.values().stream().map(TeamCard::captainId), pending.stream().map(JoinRequestCard::userId),
-				scored.stream().map(Fixtures.Scorer::userId), c.getOrganisers().stream()).flatMap(s -> s).distinct().toList());
+				scored.stream().map(Fixtures.Scorer::userId), fromSheets.stream().map(RosterScorers.RosterScorer::userId).filter(Objects::nonNull),
+				c.getOrganisers().stream()).flatMap(s -> s).distinct().toList());
 
 		// A company enters as itself, so who plays for it is its approved roster rather than a squad.
 		var rostersByTeam = c.getOrganisationId() == null ? Map.<UUID, List<PublicRosters.PublicPlayer>>of() : rosters.of(c.getId());
@@ -84,7 +104,12 @@ class CompetitionViews {
 
 		// Two players level on goals, assists and games are separated by name, so the chart reads the
 		// same every time rather than in whatever order the rows came back.
-		var scorers = scored.stream()
+		var scorers = c.getOrganisationId() != null
+			? fromSheets.stream()
+				.map(r -> new CompetitionResponse.ScorerView(namedPlayer(r, people.get(r.userId()), viewer), r.teamId(),
+						cards.containsKey(r.teamId()) ? cards.get(r.teamId()).name() : null, r.goals(), r.assists(), 0, r.games()))
+				.toList()
+			: scored.stream()
 			.map(s -> new CompetitionResponse.ScorerView(shown(people.get(s.userId()), viewer), s.teamId(),
 					s.teamId() == null ? null : cards.containsKey(s.teamId()) ? cards.get(s.teamId()).name() : null,
 					s.goals(), s.assists(), s.points(), s.games()))

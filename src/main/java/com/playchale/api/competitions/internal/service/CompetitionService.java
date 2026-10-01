@@ -4,6 +4,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -78,8 +80,11 @@ public class CompetitionService {
 
 	private final CorporateOperationsService corporateOperations;
 
+	private final CorporateRoles corporateRoles;
+
 	CompetitionService(CompetitionRepository competitions, EntryRepository entries, TeamDirectory directory, CompetitionViews views,
-			Fixtures fixtures, UserDirectory users, PitchBookings venues, ApplicationEventPublisher events, Clock clock, OrganisationAccess organisations, CorporateOperationsService corporateOperations) {
+			Fixtures fixtures, UserDirectory users, PitchBookings venues, ApplicationEventPublisher events, Clock clock, OrganisationAccess organisations,
+			CorporateOperationsService corporateOperations, CorporateRoles corporateRoles) {
 		this.competitions = competitions;
 		this.entries = entries;
 		this.directory = directory;
@@ -91,6 +96,7 @@ public class CompetitionService {
 		this.clock = clock;
 		this.organisations = organisations;
 		this.corporateOperations = corporateOperations;
+		this.corporateRoles = corporateRoles;
 	}
 
 	/** competitions.list: leagues anyone can look at (drawn, not drafts), newest first. */
@@ -102,7 +108,20 @@ public class CompetitionService {
 	/** competitions.mine: leagues the player organises or plays in. */
 	@Transactional(readOnly = true)
 	public List<CompetitionResponse> mine(UUID me) {
-		return views.of(competitions.involving(me, Limit.of(LIST_LIMIT)), me);
+		// Organising or playing is the common case; a company league can also involve someone as its
+		// manager, its official or a member of the workspace, and they need to find it just as much.
+		var involved = new LinkedHashMap<UUID, Competition>();
+		for (var c : competitions.involving(me, Limit.of(LIST_LIMIT))) {
+			involved.put(c.getId(), c);
+		}
+		for (var c : competitions.findAllById(corporateRoles.competitionsFor(me))) {
+			involved.putIfAbsent(c.getId(), c);
+		}
+		var newestFirst = involved.values().stream()
+			.sorted(Comparator.comparing(Competition::getCreatedAt).reversed())
+			.limit(LIST_LIMIT)
+			.toList();
+		return views.of(newestFirst, me);
 	}
 
 	/** competitions.get */

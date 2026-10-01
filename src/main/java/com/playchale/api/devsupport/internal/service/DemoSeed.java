@@ -104,6 +104,24 @@ class DemoSeed {
 	}
 
 	/**
+	 * A few days ago, but never before the start of this week or this month. A record and a crew
+	 * table both open on "this month", so a game seeded a week back leaves them empty on the first of
+	 * the month — the demo looks like nobody has ever played. Mirrors the web app's seed
+	 * (webapp/app/services/mock/seed.ts).
+	 *
+	 * @param daysAgo how far back to aim, as a positive number of days
+	 */
+	private Instant recently(int daysAgo, int hours) {
+		var today = now.toLocalDate();
+		var intoWeek = today.getDayOfWeek().getValue() - 1;
+		var intoMonth = today.getDayOfMonth() - 1;
+		var back = Math.min(daysAgo, Math.min(intoWeek, intoMonth));
+		var when = today.minusDays(back).atTime(hours, 0).atZone(now.getZone()).toInstant();
+		// Pulled onto today, it can land in the future; an hour ago is still "played".
+		return when.isAfter(now.toInstant()) ? at(0, Math.max(0, now.getHour() - 1)) : when;
+	}
+
+	/**
 	 * Days to the next Saturday whose games are still to come: 0 if it's Saturday before 08:00 (the
 	 * earliest Saturday game is at 09:00), otherwise the one after. Mirrors the web app's seed.
 	 */
@@ -304,22 +322,22 @@ class DemoSeed {
 		list.add(game("g-osu-mon", "football", "5-a-side", "Monday night 5s", at(-2, 19), 60, "v-osu", 10, 25000, "u-kwame", null,
 				List.of("u-kwame", "u-kojo", "u-yaw", "u-kofi", "u-nii", "u-abena")));
 		// Completed with a verified result: Kwame's latest form and match history.
-		var last = game("g-osu-last", "football", "5-a-side", "Friday 5s", at(-6, 18), 60, "v-osu", 10, 25000, "u-kojo", null,
+		var last = game("g-osu-last", "football", "5-a-side", "Friday 5s", recently(6, 18), 60, "v-osu", 10, 25000, "u-kojo", null,
 				List.of("u-kojo", "u-kwame", "u-yaw", "u-kofi", "u-nii"));
 		list.add(withResult(last, new Result(5, 3, List.of("u-kojo", "u-kwame", "u-kofi"), List.of("u-yaw", "u-nii"),
-				Map.of("u-kwame", new int[] { 3, 0, 0 }, "u-kojo", new int[] { 2, 1, 0 }), List.of(), "u-kojo", at(-6, 20), List.of())));
+				Map.of("u-kwame", new int[] { 3, 0, 0 }, "u-kojo", new int[] { 2, 1, 0 }), List.of(), "u-kojo", recently(6, 20), List.of())));
 		// Played three days ago, hosted by Kwame: a basketball result to record.
 		list.add(game("g-legon-3x3", "basketball", "3x3", "Thursday 3x3", at(-3, 18), 60, "v-legon", 6, 15000, "u-kwame", null,
 				List.of("u-kwame", "u-ama", "u-abena", "u-kofi", "u-nii", "u-yaw")));
 		// Set-based results, so volleyball and tennis profiles show sets.
-		var volley = unlisted("g-labadi-last", "volleyball", "Beach 2v2", "Sunday beach volley", at(-5, 15), 90, "Labadi Beach", "Labadi, Accra",
+		var volley = unlisted("g-labadi-last", "volleyball", "Beach 2v2", "Sunday beach volley", recently(5, 15), 90, "Labadi Beach", "Labadi, Accra",
 				4, 0, "u-abena", null, List.of("u-abena", "u-ama", "u-esi", "u-akos"));
 		list.add(withResult(volley, new Result(2, 1, List.of("u-abena", "u-ama"), List.of("u-esi", "u-akos"), Map.of(),
-				List.of(new int[] { 21, 17 }, new int[] { 18, 21 }, new int[] { 15, 12 }), "u-abena", at(-5, 17), List.of())));
-		var tennis = unlisted("g-tennis-last", "tennis", "Singles", "Morning singles", at(-4, 8), 90, "Achimota Golf Club courts",
+				List.of(new int[] { 21, 17 }, new int[] { 18, 21 }, new int[] { 15, 12 }), "u-abena", recently(5, 17), List.of())));
+		var tennis = unlisted("g-tennis-last", "tennis", "Singles", "Morning singles", recently(4, 8), 90, "Achimota Golf Club courts",
 				"Achimota, Accra", 2, 8000, "u-esi", null, List.of("u-esi", "u-abena"));
 		list.add(withResult(tennis, new Result(2, 1, List.of("u-esi"), List.of("u-abena"), Map.of(),
-				List.of(new int[] { 6, 4 }, new int[] { 3, 6 }, new int[] { 7, 5 }), "u-esi", at(-4, 10), List.of())));
+				List.of(new int[] { 6, 4 }, new int[] { 3, 6 }, new int[] { 7, 5 }), "u-esi", recently(4, 10), List.of())));
 		list.forEach(this::insertGame);
 
 		// The venue owners' own blocks, so their dashboards start with a real schedule.
@@ -583,12 +601,19 @@ class DemoSeed {
 			new Place("loc-accra-sports-park", "Accra Sports Park", "Airport Residential, Accra"),
 			new Place("loc-aviation-centre", "Aviation Social Centre", "Airport, Accra"));
 
+	/**
+	 * A hundred and twenty people from two pools of thirty, all of them different. The surname is
+	 * chosen so each first name is paired with a different one every time it comes round: two sides of
+	 * the same match used to share nine names, which reads as a bug to anyone being shown the demo.
+	 * The web app's seed does exactly the same (webapp/app/services/mock/seed-corporate.ts).
+	 */
 	private static List<String> squadFor(int companyIndex) {
 		var squad = new ArrayList<String>();
 		for (int i = 0; i < SQUAD_SIZE; i++) {
-			var seed = companyIndex * SQUAD_SIZE + i;
-			squad.add(FIRST_NAMES.get(Math.floorMod(seed * 7 + companyIndex, FIRST_NAMES.size())) + " "
-					+ LAST_NAMES.get(Math.floorMod(seed * 11 + companyIndex * 3, LAST_NAMES.size())));
+			var nth = companyIndex * SQUAD_SIZE + i;
+			var first = Math.floorMod(nth, FIRST_NAMES.size());
+			var last = Math.floorMod(11 * (nth / FIRST_NAMES.size()) + 3 * first, LAST_NAMES.size());
+			squad.add(FIRST_NAMES.get(first) + " " + LAST_NAMES.get(last));
 		}
 		return List.copyOf(squad);
 	}
