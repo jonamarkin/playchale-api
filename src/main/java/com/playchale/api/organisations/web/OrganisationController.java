@@ -59,10 +59,14 @@ class OrganisationController {
 		return organisations.update(id, request.name(), request.primaryColour(), request.corporateEnabled(), me.id());
 	}
 
+	/** {"role": "admin" | "official"}; an older app that sends nothing still means an admin. */
+	record InviteRequest(String role) {
+	}
+
 	@PostMapping("/organisations/{id}/invitations")
 	@ResponseStatus(HttpStatus.CREATED)
-	OrganisationViews.Invitation invite(CurrentUser me, @PathVariable UUID id) {
-		return organisations.invite(id, me.id());
+	OrganisationViews.Invitation invite(CurrentUser me, @PathVariable UUID id, @RequestBody(required = false) InviteRequest request) {
+		return organisations.invite(id, request == null || request.role() == null ? "admin" : request.role(), me.id());
 	}
 
 	@PostMapping("/organisation-invitations/accept")

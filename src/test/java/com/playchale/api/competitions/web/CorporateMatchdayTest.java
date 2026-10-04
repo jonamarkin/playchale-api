@@ -60,6 +60,8 @@ class CorporateMatchdayTest {
 
 	private String homeTeamId;
 
+	private String organisationId;
+
 	private String homePlayerId;
 
 	private String awayPlayerId;
@@ -78,7 +80,7 @@ class CorporateMatchdayTest {
 		var workspace = body(mvc.perform(post("/organisations").cookie(operator).contentType(MediaType.APPLICATION_JSON).content("""
 				{"name":"Accra Corporate Games","slug":"accra-matchday","country":"GH","primaryColour":"#0c3a3a"}
 				""")).andExpect(status().isCreated()));
-		var organisationId = workspace.at("/organisation/id").asString();
+		organisationId = workspace.at("/organisation/id").asString();
 		mvc.perform(patch("/organisations/" + organisationId).cookie(operator).contentType(MediaType.APPLICATION_JSON).content("""
 				{"name":"Accra Corporate Games","primaryColour":"#0c3a3a","corporateEnabled":true}
 				""")).andExpect(status().isOk());
@@ -303,6 +305,33 @@ class CorporateMatchdayTest {
 	void someoneWithNoPartInItIsToldNothing() throws Exception {
 		var stranger = TestSignIn.as(mvc, "024 455 5209");
 		mvc.perform(get("/competitions/" + competitionId + "/operations/me").cookie(stranger)).andExpect(status().isNotFound());
+	}
+
+	@Test
+	void aRefereeTakesASeatInTheWorkspaceWithoutTakingTheKeys() throws Exception {
+		// The operator invites them as a match official rather than as an admin.
+		var invite = body(mvc.perform(post("/organisations/" + organisationId + "/invitations").cookie(operator)
+			.contentType(MediaType.APPLICATION_JSON).content("{\"role\":\"official\"}")).andExpect(status().isCreated()));
+		mvc.perform(post("/organisation-invitations/accept").cookie(official).contentType(MediaType.APPLICATION_JSON)
+			.content("{\"token\":\"%s\"}".formatted(tokenOf(invite)))).andExpect(status().isOk());
+
+		// They are in the workspace, so the operator can pick them off the staff list.
+		mvc.perform(get("/organisations/" + organisationId).cookie(operator))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.members[?(@.role == 'official')]").exists());
+
+		// And the seat grants nothing else: not the league's money, not a company's roster, not the
+		// workspace itself. Before this there was only one seat, and it opened all of them.
+		mvc.perform(get("/competitions/" + competitionId + "/operations").cookie(official)).andExpect(status().isNotFound());
+		mvc.perform(get("/competitions/" + competitionId + "/operations/finance").cookie(official)).andExpect(status().isNotFound());
+		mvc.perform(get("/competitions/" + competitionId + "/operations/teams/" + homeTeamId + "/roster").cookie(official))
+			.andExpect(status().isNotFound());
+		mvc.perform(get("/competitions/" + competitionId + "/operations/audit").cookie(official)).andExpect(status().isNotFound());
+		mvc.perform(post("/organisations/" + organisationId + "/invitations").cookie(official)
+			.contentType(MediaType.APPLICATION_JSON).content("{\"role\":\"admin\"}")).andExpect(status().isNotFound());
+
+		// What they came for still works: the fixture they were given, and its sheet.
+		mvc.perform(get(matchSheet()).cookie(official)).andExpect(status().isOk());
 	}
 
 	private JsonNode body(ResultActions actions) throws Exception {
