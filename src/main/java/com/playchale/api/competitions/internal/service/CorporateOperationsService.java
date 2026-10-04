@@ -776,7 +776,8 @@ public class CorporateOperationsService {
 				SELECT count(*) FROM competitions c WHERE c.id=:competition AND (
 				 c.organiser_id=:user OR EXISTS (SELECT 1 FROM competition_organisers x WHERE x.competition_id=c.id AND x.user_id=:user)
 				 OR EXISTS (SELECT 1 FROM competition_staff s WHERE s.competition_id=c.id AND s.user_id=:user AND s.role='manager')
-				 OR EXISTS (SELECT 1 FROM organisation_memberships m WHERE m.organisation_id=c.organisation_id AND m.user_id=:user))
+				 OR EXISTS (SELECT 1 FROM organisation_memberships m WHERE m.organisation_id=c.organisation_id AND m.user_id=:user
+				            AND m.role IN ('owner','admin')))
 				""").param("competition",competitionId).param("user",userId).query(Integer.class).single()>0;
 		if(!allowed) throw BusinessException.notFound("That competition doesn’t exist any more.");
 		return competition;

@@ -643,6 +643,10 @@ class DemoSeed {
 				""").param("id", id(WORKSPACE)).param("owner", id(OPERATOR)).param("created", utc(created)).update();
 		member(OPERATOR, "owner", created);
 		member("u-abena", "admin", at(-38, 9));
+		// The two referees hold a seat that lets them be put on a fixture and nothing else: they see
+		// their own match sheets, and none of the league's money or any company's roster.
+		member("u-yaw", "official", at(-32, 9));
+		member("u-nii", "official", at(-32, 9));
 
 		jdbc.sql("""
 				INSERT INTO competitions (id, name, sport, format, organiser_id, organisation_id, schedule_status, player_lists, venue_kind,

@@ -48,8 +48,10 @@ class CompetitionViews {
 
 	private final RosterScorers rosterScorers;
 
+	private final CorporateRoles corporateRoles;
+
 	CompetitionViews(EntryRepository entries, TeamDirectory directory, Fixtures fixtures, UserDirectory users, PitchBookings venues,
-			OrganisationAccess organisations, PublicRosters rosters, RosterScorers rosterScorers) {
+			OrganisationAccess organisations, PublicRosters rosters, RosterScorers rosterScorers, CorporateRoles corporateRoles) {
 		this.entries = entries;
 		this.directory = directory;
 		this.fixtures = fixtures;
@@ -58,6 +60,7 @@ class CompetitionViews {
 		this.organisations = organisations;
 		this.rosters = rosters;
 		this.rosterScorers = rosterScorers;
+		this.corporateRoles = corporateRoles;
 	}
 
 	List<CompetitionResponse> of(Collection<Competition> competitions, UUID viewer) {
@@ -140,9 +143,30 @@ class CompetitionViews {
 				c.getCreatedAt(), shown(people.get(c.getOrganiserId()), viewer), teamViews, table(c, squads, cards, summaries, viewer), views, rounds,
 				requestViews, c.getPlayerLists(), c.getCountry(), c.getCurrency(), c.getTimezone(), scorers, organisers, c.getStructure(),
 				bracket(c, squads, cards, summaries, viewer), c.getOrganisationId(), c.isCorporate() ? c.getScheduleStatus() : null,
-				c.isCorporate() ? ((c.isOrganisedBy(viewer) || organisations.isAdmin(c.getOrganisationId(), viewer))
-					? List.of("manage", "schedule", "eligibility", "finance", "reports") : List.of()) : null,
+				c.isCorporate() ? permissionsFor(c, viewer) : null,
 				brand(c));
+	}
+
+	/**
+	 * What this person may do here, carried with the competition so a screen never has to ask a second
+	 * time. A company's manager and a match official each get their own entry: they can't run the
+	 * competition, but they do have work in it, and the page needs to offer it to them.
+	 */
+	private List<String> permissionsFor(Competition c, UUID viewer) {
+		if (viewer == null) {
+			return List.of();
+		}
+		if (c.isOrganisedBy(viewer) || organisations.isAdmin(c.getOrganisationId(), viewer)) {
+			return List.of("manage", "schedule", "eligibility", "finance", "reports");
+		}
+		var mine = new ArrayList<String>();
+		if (corporateRoles.managesAnEntry(c.getId(), viewer)) {
+			mine.add("team-manager");
+		}
+		if (corporateRoles.officiates(c.getId(), viewer)) {
+			mine.add("official");
+		}
+		return List.copyOf(mine);
 	}
 
 	private CompetitionResponse.Brand brand(Competition competition) {

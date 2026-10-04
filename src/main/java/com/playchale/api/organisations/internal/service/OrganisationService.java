@@ -122,8 +122,11 @@ public class OrganisationService implements OrganisationAccess {
 	}
 
 	@Transactional
-	public OrganisationViews.Invitation invite(UUID id, UUID userId) {
+	public OrganisationViews.Invitation invite(UUID id, String role, UUID userId) {
 		requireOwner(id, userId);
+		if (!List.of("admin", "official").contains(role)) {
+			throw BusinessException.invalid("Invite them as an admin or as a match official.");
+		}
 		var bytes = new byte[24];
 		RANDOM.nextBytes(bytes);
 		var token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
@@ -132,11 +135,11 @@ public class OrganisationService implements OrganisationAccess {
 		var expiry = now.plus(Duration.ofDays(7));
 		jdbc.sql("""
 				INSERT INTO organisation_invitations (id, organisation_id, role, token_hash, invited_by, expires_at, created_at)
-				VALUES (:invite, :organisation, 'admin', :hash, :user, :expiry, :now)
-				""").param("invite", inviteId).param("organisation", id).param("hash", hash(token))
+				VALUES (:invite, :organisation, :role, :hash, :user, :expiry, :now)
+				""").param("invite", inviteId).param("organisation", id).param("role", role).param("hash", hash(token))
 			.param("user", userId).param("expiry", db(expiry)).param("now", db(now)).update();
-		audit(id, null, userId, "membership.invited", "invitation", inviteId, "{\"role\":\"admin\"}");
-		return new OrganisationViews.Invitation(inviteId, "admin", expiry, now, "/organisations/join?token=" + token);
+		audit(id, null, userId, "membership.invited", "invitation", inviteId, "{\"role\":\"%s\"}".formatted(role));
+		return new OrganisationViews.Invitation(inviteId, role, expiry, now, "/organisations/join?token=" + token);
 	}
 
 	@Transactional
@@ -158,7 +161,7 @@ public class OrganisationService implements OrganisationAccess {
 				""").param("organisation", row.organisationId()).param("user", userId).param("role", row.role()).param("now", db(now)).update();
 		jdbc.sql("UPDATE organisation_invitations SET accepted_by = :user, accepted_at = :now WHERE id = :id")
 			.param("user", userId).param("now", db(now)).param("id", row.id()).update();
-		audit(row.organisationId(), null, userId, "membership.accepted", "membership", userId, "{\"role\":\"admin\"}");
+		audit(row.organisationId(), null, userId, "membership.accepted", "membership", userId, "{\"role\":\"%s\"}".formatted(row.role()));
 		return get(row.organisationId(), userId);
 	}
 
@@ -168,10 +171,10 @@ public class OrganisationService implements OrganisationAccess {
 		if (memberId.equals(userId)) {
 			throw BusinessException.conflict("Transfer ownership before leaving this organisation.");
 		}
-		var changed = jdbc.sql("DELETE FROM organisation_memberships WHERE organisation_id = :organisation AND user_id = :member AND role = 'admin'")
+		var changed = jdbc.sql("DELETE FROM organisation_memberships WHERE organisation_id = :organisation AND user_id = :member AND role <> 'owner'")
 			.param("organisation", organisationId).param("member", memberId).update();
 		if (changed == 0) {
-			throw BusinessException.notFound("That admin is no longer in this organisation.");
+			throw BusinessException.notFound("That person is no longer in this organisation.");
 		}
 		audit(organisationId, null, userId, "membership.removed", "membership", memberId, "{}");
 		return get(organisationId, userId);
@@ -183,9 +186,14 @@ public class OrganisationService implements OrganisationAccess {
 			.orElseThrow(() -> BusinessException.notFound("That organisation doesn’t exist any more."));
 	}
 
+	/** The two seats that run a workspace. An official holds a seat but runs nothing. */
+	private static final List<String> RUNS_IT = List.of("owner", "admin");
+
 	@Override
 	public void requireAdmin(UUID organisationId, UUID userId) {
-		role(organisationId, userId);
+		if (!RUNS_IT.contains(role(organisationId, userId))) {
+			throw BusinessException.notFound("That organisation doesn’t exist any more.");
+		}
 	}
 
 	@Override
@@ -197,8 +205,8 @@ public class OrganisationService implements OrganisationAccess {
 	@Override
 	public boolean isAdmin(UUID organisationId, UUID userId) {
 		if (organisationId == null || userId == null) return false;
-		return jdbc.sql("SELECT count(*) FROM organisation_memberships WHERE organisation_id=:organisation AND user_id=:user")
-			.param("organisation",organisationId).param("user",userId).query(Integer.class).single()>0;
+		return jdbc.sql("SELECT count(*) FROM organisation_memberships WHERE organisation_id=:organisation AND user_id=:user AND role IN (:roles)")
+			.param("organisation",organisationId).param("user",userId).param("roles",RUNS_IT).query(Integer.class).single()>0;
 	}
 
 	@Override
