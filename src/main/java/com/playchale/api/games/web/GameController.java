@@ -8,6 +8,7 @@ import com.playchale.api.games.internal.service.GameFilters;
 import com.playchale.api.games.api.GameResponse;
 import com.playchale.api.games.internal.service.GameService;
 import com.playchale.api.games.internal.service.ResultService;
+import com.playchale.api.games.web.dto.GameRequests.AttendanceRequest;
 import com.playchale.api.games.web.dto.GameRequests.CancelRequest;
 import com.playchale.api.games.web.dto.GameRequests.ClaimRequest;
 import com.playchale.api.games.web.dto.GameRequests.DisputeRequest;
@@ -181,6 +182,13 @@ class GameController {
 	@PostMapping("/games/{id}/players/{player}/cash")
 	GameResponse markPaidCash(CurrentUser me, @PathVariable UUID id, @PathVariable String player) {
 		return games.markPaidCash(id, player, me.id());
+	}
+
+	/** games.markAttendance */
+	@PostMapping("/games/{id}/players/{player}/attendance")
+	GameResponse markAttendance(CurrentUser me, @PathVariable UUID id, @PathVariable String player,
+			@RequestBody AttendanceRequest request) {
+		return games.markAttendance(id, player, request.showedUp(), me.id());
 	}
 
 }

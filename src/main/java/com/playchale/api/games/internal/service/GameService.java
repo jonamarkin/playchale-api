@@ -400,6 +400,18 @@ public class GameService {
 		return views.of(game, host);
 	}
 
+	/**
+	 * games.markAttendance: host only, once the game has been played. {@code playerKey} is a player's
+	 * ID or "guest:&lt;token&gt;". Marking it again corrects it.
+	 */
+	@Transactional
+	public GameResponse markAttendance(UUID gameId, String playerKey, boolean showedUp, UUID host) {
+		var game = hosted(gameId, host);
+		var spot = game.spotByKey(playerKey).orElseThrow(() -> BusinessException.notFound("That player isn’t in this game."));
+		game.attended(spot, showedUp, clock.instant());
+		return views.of(game, host);
+	}
+
 	/** A new game where it's played: at a partner venue, the venue's country and time; anywhere else, {@code place}. */
 	private Game createGame(GameDetails details, Place place, UUID host) {
 		Game game;

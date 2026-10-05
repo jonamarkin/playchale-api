@@ -27,6 +27,10 @@ public final class GameRequests {
 	public record InviteAnswer(boolean accept) {
 	}
 
+	/** {"showedUp": true}: the host saying whether a player turned up. */
+	public record AttendanceRequest(boolean showedUp) {
+	}
+
 	/** {"invited": 3} */
 	public record InviteResponse(int invited) {
 	}

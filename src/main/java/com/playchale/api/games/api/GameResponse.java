@@ -109,7 +109,7 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record PlayerResponse(String id, String phone, String name, String handle, String avatar, String avatarSeed, String tint,
 			String area, List<String> sports, Map<String, List<String>> roles, Instant createdAt, boolean onboarded, String payoutPhone,
-			boolean paid, Guest guest) {
+			boolean paid, Boolean attended, Guest guest) {
 	}
 
 }

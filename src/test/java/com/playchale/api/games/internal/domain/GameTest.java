@@ -134,6 +134,47 @@ class GameTest {
 	}
 
 	@Test
+	void whoTurnedUpIsTheHostsToSayAfterTheGame() {
+		var game = game(10, 0);
+		game.join(kojo, NOW);
+		var spot = game.spotOf(kojo).orElseThrow();
+
+		assertThat(spot.getAttended()).as("nothing is assumed before kick-off").isNull();
+		assertThatThrownBy(() -> game.attended(spot, true, NOW))
+			.hasMessage("Wait until the game has been played, then say who turned up.");
+
+		var afterwards = KICKOFF.plus(Duration.ofHours(2));
+		game.attended(spot, false, afterwards);
+		assertThat(spot.getAttended()).isFalse();
+		assertThat(spot.getAttendedAt()).isEqualTo(afterwards);
+
+		// Hosts get it wrong, so it can be put right.
+		game.attended(spot, true, afterwards.plus(Duration.ofMinutes(5)));
+		assertThat(spot.getAttended()).as("marking again corrects it").isTrue();
+	}
+
+	@Test
+	void aCalledOffGameHasNobodyToMark() {
+		var game = game(10, 0);
+		game.join(kojo, NOW);
+		var spot = game.spotOf(kojo).orElseThrow();
+		game.cancel(null, List.of(), NOW);
+		assertThatThrownBy(() -> game.attended(spot, false, KICKOFF.plus(Duration.ofHours(1))))
+			.hasMessage("This game was called off, so nobody was expected.");
+	}
+
+	@Test
+	void unmarkedIsEveryoneUntilTheHostSays() {
+		var game = game(10, 0);
+		game.join(kojo, NOW);
+		game.join(ama, NOW);
+		assertThat(game.unmarked()).as("the host, Kojo and Ama").hasSize(3);
+		var afterwards = KICKOFF.plus(Duration.ofHours(2));
+		game.attended(game.spotOf(kojo).orElseThrow(), true, afterwards);
+		assertThat(game.unmarked()).hasSize(2);
+	}
+
+	@Test
 	void nobodyJoinsAGameThatsOffOrUnderway() {
 		var game = game(10, 0);
 		game.cancel(null, List.of(), NOW);

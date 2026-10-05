@@ -551,6 +551,25 @@ public class Game extends AuditableEntity {
 		spot.paidInCash();
 	}
 
+	/**
+	 * The host saying who turned up, once the game has been played. Marking it again corrects it,
+	 * because hosts get it wrong and a record nobody can fix is worse than no record.
+	 */
+	public void attended(Participant spot, boolean showedUp, Instant now) {
+		if (!hasStarted(now)) {
+			throw BusinessException.conflict("Wait until the game has been played, then say who turned up.");
+		}
+		if (isCancelled()) {
+			throw BusinessException.conflict("This game was called off, so nobody was expected.");
+		}
+		spot.attended(showedUp, now);
+	}
+
+	/** Spots the host hasn't said either way about yet. Empty before kick-off. */
+	public List<Participant> unmarked() {
+		return participants.stream().filter(p -> p.getAttended() == null).toList();
+	}
+
 	/** Players who still owe their share (not guests, not the host), optionally only some of them. */
 	public List<Participant> unpaid(Collection<UUID> only) {
 		if (totalCost == 0) {

@@ -54,6 +54,14 @@ public class Participant {
 	/** The side they play for in a friendly: the home or away team. Null elsewhere. */
 	private UUID teamId;
 
+	/**
+	 * Whether they turned up, once the host has said. Null until then: not marked and did not turn
+	 * up are different things, and most games will never be marked at all.
+	 */
+	private Boolean attended;
+
+	private Instant attendedAt;
+
 	protected Participant() {
 	}
 
@@ -104,6 +112,21 @@ public class Participant {
 	void paidInCash() {
 		paid = true;
 		paidVia = PAID_IN_CASH;
+	}
+
+	/** The host saying whether they turned up. Marking it again corrects it. */
+	void attended(boolean showedUp, Instant now) {
+		attended = showedUp;
+		attendedAt = now;
+	}
+
+	/** Null when the host hasn't said, which is not the same as a no-show. */
+	public Boolean getAttended() {
+		return attended;
+	}
+
+	public Instant getAttendedAt() {
+		return attendedAt;
 	}
 
 	void reminded(Instant now) {
