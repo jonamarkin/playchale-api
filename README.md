@@ -280,6 +280,12 @@ Sign-in rules: codes last 10 minutes, five wrong guesses lock a code, five codes
 number. Codes and session tokens are stored only as hashes. The session cookie is `HttpOnly`,
 `SameSite=Lax`, and `Secure` in production.
 
+## Showing up
+
+**[RELIABILITY.md](RELIABILITY.md)** is why there's no trust score and what we record instead: the
+case against peer ratings, the missing `left_at` on a spot, and why paying up front does more for
+turnout than any reputation system.
+
 ## Deploying
 
 **[DEPLOYMENT.md](DEPLOYMENT.md)** is the step-by-step guide for the production server (a Contabo VPS
