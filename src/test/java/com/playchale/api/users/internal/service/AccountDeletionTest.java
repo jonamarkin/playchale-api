@@ -135,6 +135,27 @@ class AccountDeletionTest {
 	}
 
 	@Test
+	void aDropOutRecordDoesNotOutliveTheAccount() {
+		auth.requestCode("024 455 5131", null, "203.0.113.9");
+		var ama = auth.signIn("024 455 5131", null, "123456").user().id();
+		var game = game(0);
+		games.join(game, ama);
+		games.leave(game, ama);
+
+		assertThat(departures(ama)).as("giving the spot up is written down").isOne();
+
+		profiles.deleteAccount(ama);
+
+		// The users row is only anonymised (V11), so nothing clears this for us: GameAccountDeletion
+		// has to, or a closed account would keep a behaviour record nobody can reach or dispute.
+		assertThat(departures(ama)).as("and it goes with the account").isZero();
+	}
+
+	private long departures(UUID userId) {
+		return jdbc.sql("SELECT count(*) FROM game_departures WHERE user_id = :id").param("id", userId).query(Long.class).single();
+	}
+
+	@Test
 	void someoneOthersDependOnHasToSortThatOutFirst() {
 		game(0);
 		assertThatThrownBy(() -> profiles.deleteAccount(host))

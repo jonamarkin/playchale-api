@@ -66,8 +66,71 @@ class GameTest {
 		game.join(kojo, NOW);
 		assertThat(game.getStatus()).isEqualTo(Game.FULL);
 		assertThatThrownBy(() -> game.join(ama, NOW)).hasMessage("Sorry, this game just filled up.");
-		game.leave(kojo);
+		game.leave(kojo, NOW);
 		assertThat(game.getStatus()).isEqualTo(Game.OPEN);
+	}
+
+	@Test
+	void droppingOutIsWrittenDownWithTheNoticeItGave() {
+		var game = game(10, 0);
+		game.join(kojo, NOW);
+		// Kick-off is a day away, and they pull out three hours before it.
+		var threeHoursBefore = KICKOFF.minus(Duration.ofHours(3));
+		game.leave(kojo, threeHoursBefore);
+
+		assertThat(game.spotOf(kojo)).as("the spot is given up").isEmpty();
+		assertThat(game.getDepartures()).singleElement().satisfies(d -> {
+			assertThat(d.getUserId()).isEqualTo(kojo);
+			assertThat(d.getNoticeMinutes()).isEqualTo(180);
+			assertThat(d.isOwnDoing()).isTrue();
+		});
+	}
+
+	@Test
+	void leavingAfterKickOffIsNoticeInTheOtherDirection() {
+		var game = game(10, 0);
+		game.join(kojo, NOW);
+		game.leave(kojo, KICKOFF.plus(Duration.ofMinutes(20)));
+		assertThat(game.getDepartures()).singleElement()
+			.satisfies(d -> assertThat(d.getNoticeMinutes()).as("negative once kick-off has passed").isEqualTo(-20));
+	}
+
+	@Test
+	void aSpotTheHostTookBackIsNotTheirDoing() {
+		var game = game(10, 0);
+		game.join(kojo, NOW);
+		game.remove(game.spotOf(kojo).orElseThrow(), host, "Kojo", NOW);
+		assertThat(game.getDepartures()).singleElement()
+			.satisfies(d -> assertThat(d.isOwnDoing()).as("the host removed them, so it is not held against them").isFalse());
+	}
+
+	@Test
+	void aGuestSpotLeavesNoRecord() {
+		var game = game(10, 0);
+		var guest = game.holdForGuest("Ama", null, "hash", host, NOW);
+		game.remove(guest, host, "Ama", NOW);
+		assertThat(game.getDepartures()).as("there is no account to hold it against").isEmpty();
+	}
+
+	@Test
+	void closingAnAccountIsNotADropOut() {
+		var game = game(10, 0);
+		game.join(kojo, NOW);
+		game.giveUpSpotOnAccountClosed(kojo);
+		assertThat(game.spotOf(kojo)).as("the spot still goes").isEmpty();
+		assertThat(game.getDepartures()).as("but nothing is recorded against someone leaving PlayChale").isEmpty();
+	}
+
+	@Test
+	void aDropOutNeverHoldsASpot() {
+		var game = game(2, 0);
+		game.join(kojo, NOW);
+		assertThat(game.getStatus()).isEqualTo(Game.FULL);
+		game.leave(kojo, NOW);
+		assertThat(game.getStatus()).as("the record must not keep the game full").isEqualTo(Game.OPEN);
+		game.join(ama, NOW);
+		assertThat(game.getParticipants()).hasSize(2);
+		assertThat(game.getDepartures()).hasSize(1);
 	}
 
 	@Test
@@ -84,12 +147,12 @@ class GameTest {
 		game.join(kojo, NOW);
 		var spot = game.spotOf(kojo).orElseThrow();
 		game.paidInCash(spot);
-		assertThatThrownBy(() -> game.leave(kojo)).hasMessage("You’ve already paid. Ask the host to sort out a refund.");
+		assertThatThrownBy(() -> game.leave(kojo, NOW)).hasMessage("You’ve already paid. Ask the host to sort out a refund.");
 		assertThatThrownBy(() -> game.remove(spot, host, "Kojo", NOW))
 			.hasMessage("Kojo has already paid. Sort out a refund with them first, then they can leave.");
 		assertThatThrownBy(() -> game.cancel(null, List.of("Kojo"), NOW))
 			.hasMessage("Kojo has already paid. Refunds aren’t in the app yet, so sort that out with them first.");
-		assertThatThrownBy(() -> game.leave(host)).hasMessage("Hosts can’t leave their own game.");
+		assertThatThrownBy(() -> game.leave(host, NOW)).hasMessage("Hosts can’t leave their own game.");
 	}
 
 	@Test

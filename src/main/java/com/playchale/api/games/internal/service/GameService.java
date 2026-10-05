@@ -236,7 +236,7 @@ public class GameService {
 	public GameResponse leave(UUID gameId, UUID me) {
 		var game = locked(gameId);
 		var wasIn = game.spotOf(me).isPresent();
-		game.leave(me);
+		game.leave(me, clock.instant());
 		// Out after saying yes: the host sees they can't make it after all.
 		if (wasIn) {
 			invites.findById(new InviteId(gameId, me)).filter(GameInvite::isAccepted).ifPresent(i -> i.decline(clock.instant()));

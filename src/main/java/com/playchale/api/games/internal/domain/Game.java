@@ -148,6 +148,14 @@ public class Game extends AuditableEntity {
 	@OrderBy("joinedAt")
 	private List<Participant> participants = new ArrayList<>();
 
+	/**
+	 * Spots given up, kept after the spot itself is gone. Nothing about running a game reads this —
+	 * {@link #participants} alone says who is in — so a departure can never hold a spot by accident.
+	 */
+	@OneToMany(mappedBy = "game", cascade = CascadeType.ALL, orphanRemoval = true)
+	@OrderBy("leftAt")
+	private List<Departure> departures = new ArrayList<>();
+
 	protected Game() {
 	}
 
@@ -362,20 +370,52 @@ public class Game extends AuditableEntity {
 		}
 	}
 
-	/** A player dropping out. Once they've paid, getting their money back comes first. */
-	public void leave(UUID userId) {
+	/**
+	 * A player dropping out. Once they've paid, getting their money back comes first.
+	 *
+	 * <p>The notice they gave is written down ({@link Departure}): a spot given up a fortnight early
+	 * and one given up an hour before are not the same thing, and once the spot is gone there is
+	 * nothing left to tell them apart.
+	 */
+	public void leave(UUID userId, Instant now) {
+		var spot = givingUpSpot(userId);
+		if (spot == null) {
+			return;
+		}
+		var departure = Departure.of(this, spot, Departure.LEFT, now);
+		if (departure != null) {
+			departures.add(departure);
+		}
+		participants.remove(spot);
+		syncStatus();
+	}
+
+	/**
+	 * Giving up a spot because the account is closing. Nothing is recorded: they are leaving
+	 * PlayChale, not letting a game down, and what is already on their record goes with the account.
+	 */
+	public void giveUpSpotOnAccountClosed(UUID userId) {
+		var spot = givingUpSpot(userId);
+		if (spot == null) {
+			return;
+		}
+		participants.remove(spot);
+		syncStatus();
+	}
+
+	/** The checks both ways out of a game share. Null when there was no spot to give up. */
+	private Participant givingUpSpot(UUID userId) {
 		if (isHost(userId)) {
 			throw BusinessException.conflict("Hosts can’t leave their own game.");
 		}
 		var spot = spotOf(userId);
 		if (spot.isEmpty()) {
-			return;
+			return null;
 		}
 		if (spot.get().isPaid() && totalCost > 0) {
 			throw BusinessException.conflict("You’ve already paid. Ask the host to sort out a refund.");
 		}
-		participants.remove(spot.get());
-		syncStatus();
+		return spot.get();
 	}
 
 	/**
@@ -391,6 +431,11 @@ public class Game extends AuditableEntity {
 		requireNotPlayed(now);
 		if (!spot.isGuest() && spot.isPaid() && totalCost > 0) {
 			throw BusinessException.conflict("%s has already paid. Sort out a refund with them first, then they can leave.".formatted(playerName));
+		}
+		// Recorded as the host's doing, so it never reads as the player letting anyone down.
+		var departure = Departure.of(this, spot, Departure.REMOVED, now);
+		if (departure != null) {
+			departures.add(departure);
 		}
 		participants.remove(spot);
 		syncStatus();
@@ -788,6 +833,11 @@ public class Game extends AuditableEntity {
 
 	public List<Participant> getParticipants() {
 		return List.copyOf(participants);
+	}
+
+	/** Spots given up, oldest first. Who is in the game is {@link #getParticipants()}; this is history. */
+	public List<Departure> getDepartures() {
+		return List.copyOf(departures);
 	}
 
 	/** Everything needed to set the same game up again. */

@@ -35,15 +35,29 @@ records who joined, when, and whether they paid. Facts like these don't inflate,
 with, and can be explained to the person they describe. A host reading "played 14 games, been here
 eight months" judges for themselves, which they do better than a score would.
 
-### The gap to close first
+### The gap to close first — done (V32)
 
-When a player leaves, `Game.leave` removes the row (`internal/domain/Game.java`). There's no
-`left_at`, so the single most trust-relevant act in the app — dropping out the night before —
-leaves no trace at all. A late withdrawal is indistinguishable from never having joined.
+A spot that was given up used to vanish: `game_participants` lost the row and nothing said it had
+ever been there, so dropping out the night before was indistinguishable from never having joined.
+`game_departures` now records it, written through the `Game` aggregate.
 
-This is worth fixing before anything else here, because history that was never recorded can't be
-recovered later. Every week without it is gone. Soft-delete the spot, keep `left_at`, and "left three
-hours before kick-off" becomes a timestamped fact that needs nobody's judgment.
+It is a separate table rather than a flag on `game_participants`, because that table answers "who is
+in this game" and every count in the app reads it — spots left, who has paid, whether it is full.
+Marking rows dead in place would mean every one of those had to remember to skip them, and the first
+one that forgot would hold a spot for someone already gone. Nothing about running a game reads
+`game_departures`.
+
+Three things it gets right that are easy to get wrong:
+
+- **`notice_minutes` is settled when they leave**, along with the kick-off it was measured against.
+  Hosts move games, so working it out later from the game's current start time would turn a
+  fortnight's notice into an hour's.
+- **A removal is not a drop-out.** The host taking someone off is recorded as `reason = 'removed'`,
+  so it never reads as the player letting anyone down. Guests record nothing: there is no account.
+- **Closing an account clears the record.** The users row is only anonymised (V11), so nothing would
+  remove these otherwise, and a closed account must not leave behind a behaviour record its owner
+  can no longer reach or dispute. `giveUpSpotOnAccountClosed` writes nothing, and
+  `GameAccountDeletion` deletes what is already there.
 
 ### Then: who actually played
 
@@ -72,8 +86,8 @@ matters as much.
 
 ## Order of work
 
-1. **Record `left_at`**, with how long before kick-off. Cheap, and unrecoverable if we skip it.
-2. **Host confirms the squad** at kick-off, reusing the paid-marking UI.
+1. ~~**Record `left_at`**, with how long before kick-off.~~ Done: `game_departures`, V32.
+2. **Host confirms the squad** at kick-off, reusing the paid-marking UI. Next.
 3. **Plain history on player profiles** — games played, how long they've been here. No score.
 4. **Turn on paying up front** when the rails are ready.
 5. Only then consider anything score-shaped, and if we do, make it a threshold ("new", "regular"),

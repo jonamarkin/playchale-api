@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import com.playchale.api.games.internal.domain.Game;
+import com.playchale.api.games.internal.repository.DepartureRepository;
 import com.playchale.api.games.internal.repository.GameInviteRepository;
 import com.playchale.api.games.internal.repository.GameRepository;
 import com.playchale.api.shared.error.BusinessException;
@@ -25,11 +26,14 @@ class GameAccountDeletion implements AccountHolds {
 
 	private final GameInviteRepository invites;
 
+	private final DepartureRepository departures;
+
 	private final Clock clock;
 
-	GameAccountDeletion(GameRepository games, GameInviteRepository invites, Clock clock) {
+	GameAccountDeletion(GameRepository games, GameInviteRepository invites, DepartureRepository departures, Clock clock) {
 		this.games = games;
 		this.invites = invites;
+		this.departures = departures;
 		this.clock = clock;
 	}
 
@@ -47,11 +51,13 @@ class GameAccountDeletion implements AccountHolds {
 	void on(AccountDeleted e) {
 		// Their invites go: nobody is waiting on a deleted player's answer.
 		invites.forget(e.userId());
+		// And their drop-outs: the users row is only anonymised, so nothing else would clear them.
+		departures.forget(e.userId());
 		var now = clock.instant();
 		for (var game : games.involving(e.userId(), Limit.of(1000))) {
 			if (!game.hasStarted(now) && !game.isCancelled() && !Game.COMPLETED.equals(game.getStatus())) {
 				try {
-					game.leave(e.userId());
+					game.giveUpSpotOnAccountClosed(e.userId());
 				}
 				catch (BusinessException paidAlready) {
 					// Paid: the spot stays.
