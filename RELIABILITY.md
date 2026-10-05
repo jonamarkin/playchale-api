@@ -59,10 +59,21 @@ Three things it gets right that are easy to get wrong:
   can no longer reach or dispute. `giveUpSpotOnAccountClosed` writes nothing, and
   `GameAccountDeletion` deletes what is already there.
 
-### Then: who actually played
+### Then: who actually played — done (V33)
 
-The host already marks who paid. Asking the same question about who turned up is the same gesture at
-the same moment, and it gives us attendance without asking anyone to rate anyone.
+The host already marks who paid, so asking who turned up is the same gesture at the same moment.
+`attended` and `attended_at` sit on `game_participants`, written through `Game.attended` and offered
+on the game page once it has been played ("Who turned up", host only).
+
+Unlike departures this lives on the spot: a played game keeps its participants, so nothing vanishes
+and nothing that counts a roster reads these columns.
+
+- **`attended` is null until the host says.** Not marked and did not turn up are different things.
+  Most games will never be marked at all, and the absence of a record must never read as a record of
+  absence — which is why both answers are a tap and neither is filled in by default.
+- **Only after kick-off**, and never on a game that was called off: nobody was expected.
+- **Marking again corrects it.** Both answers stay on screen, so changing one is the same tap as
+  giving it. Hosts misremember, and a record nobody can fix is worse than no record.
 
 ## Paying up front is the stronger lever
 
@@ -87,8 +98,9 @@ matters as much.
 ## Order of work
 
 1. ~~**Record `left_at`**, with how long before kick-off.~~ Done: `game_departures`, V32.
-2. **Host confirms the squad** at kick-off, reusing the paid-marking UI. Next.
-3. **Plain history on player profiles** — games played, how long they've been here. No score.
+2. ~~**Host confirms the squad** at kick-off, reusing the paid-marking UI.~~ Done: V33.
+3. **Plain history on player profiles** — games played, how long they've been here. No score. Next:
+   the two records above are what it reads.
 4. **Turn on paying up front** when the rails are ready.
 5. Only then consider anything score-shaped, and if we do, make it a threshold ("new", "regular"),
    never a grade.
