@@ -3,6 +3,7 @@ package com.playchale.api.integration.payments;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Optional;
 
 /**
  * A stand-in for the real provider on a laptop and in tests, behaving like the web app's mock
@@ -18,6 +19,20 @@ class SimulatedPaymentProvider implements PaymentProvider {
 
 	SimulatedPaymentProvider(Clock clock) {
 		this.clock = clock;
+	}
+
+	/**
+	 * It settles to the host in the sense that matters here: nothing is really collected, and the
+	 * same destination is demanded of it, so a laptop exercises the path a deploy takes.
+	 */
+	@Override
+	public boolean settlesToHost() {
+		return true;
+	}
+
+	@Override
+	public Optional<String> registerPayee(Payee payee) {
+		return Optional.of("SIM_" + payee.accountNumber());
 	}
 
 	/** The payer "approves it on their phone", so the number matters: one ending in 000 is declined. */

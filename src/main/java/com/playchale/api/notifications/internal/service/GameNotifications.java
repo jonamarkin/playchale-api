@@ -35,6 +35,20 @@ class GameNotifications {
 		this.clock = clock;
 	}
 
+	/**
+	 * Talk about a game reaches the others in it. A message nobody sees is no use for the thing this
+	 * is actually for: "running ten minutes late", said an hour before kick-off.
+	 */
+	@EventListener
+	void on(GameEvents.MessagePosted e) {
+		var who = firstName(e.said());
+		var link = "/games/%s".formatted(e.game().gameId());
+		for (var recipient : e.recipients()) {
+			notifications.send(recipient, "game-message", "%s said something about %s".formatted(who, e.game().title()), e.body(), link,
+					e.said());
+		}
+	}
+
 	@EventListener
 	void on(GameEvents.PitchBooked e) {
 		if (e.venueOwnerId() == null || e.venueOwnerId().equals(e.game().hostId())) {

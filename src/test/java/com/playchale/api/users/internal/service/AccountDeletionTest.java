@@ -13,6 +13,7 @@ import com.playchale.api.competitions.internal.domain.CompetitionDetails;
 import com.playchale.api.competitions.internal.service.CompetitionService;
 import com.playchale.api.games.internal.domain.GameDetails;
 import com.playchale.api.games.internal.service.GameService;
+import com.playchale.api.games.internal.service.GameTalk;
 import com.playchale.api.notifications.internal.service.NotificationService;
 import com.playchale.api.shared.TestClock;
 import com.playchale.api.users.api.UserDirectory;
@@ -74,6 +75,9 @@ class AccountDeletionTest {
 
 	@Autowired
 	TestClock clock;
+
+	@Autowired
+	GameTalk talk;
 
 	@Autowired
 	JdbcClient jdbc;
@@ -144,11 +148,21 @@ class AccountDeletionTest {
 
 		assertThat(departures(ama)).as("giving the spot up is written down").isOne();
 
+		var talked = game(0);
+		games.join(talked, ama);
+		talk.say(talked, "See you Saturday", ama);
+		assertThat(messages(ama)).isOne();
+
 		profiles.deleteAccount(ama);
 
 		// The users row is only anonymised (V11), so nothing clears this for us: GameAccountDeletion
 		// has to, or a closed account would keep a behaviour record nobody can reach or dispute.
 		assertThat(departures(ama)).as("and it goes with the account").isZero();
+		assertThat(messages(ama)).as("so does what they said in a game").isZero();
+	}
+
+	private long messages(UUID userId) {
+		return jdbc.sql("SELECT count(*) FROM game_messages WHERE user_id = :id").param("id", userId).query(Long.class).single();
 	}
 
 	private long departures(UUID userId) {

@@ -38,6 +38,16 @@ public final class GameEvents {
 	}
 
 	/**
+	 * Someone in a game said something to the others in it.
+	 *
+	 * @param said      who said it
+	 * @param body      what they said, already trimmed and length-checked
+	 * @param recipients everyone else in the game: the only people it is ever shown to
+	 */
+	public record MessagePosted(GameInfo game, UUID said, String body, List<UUID> recipients) {
+	}
+
+	/**
 	 * Someone took a spot: by joining, or by claiming the one the host held for them.
 	 *
 	 * @param filled spots taken now, out of {@code capacity}

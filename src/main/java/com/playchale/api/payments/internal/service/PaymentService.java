@@ -105,8 +105,10 @@ public class PaymentService implements InitializingBean {
 		}
 		var payment = payments.save(new Payment(gameId, me, method, share.amount(), share.currency(), phone, provider.needsPayerPhone(),
 				clock.instant()));
+		// No destination yet: nobody is registered to be settled directly. See PaymentProvider.Payee —
+		// an ordinary host will never have one, which is why in-app collecting stays off.
 		var started = provider.charge(new PaymentProvider.Charge(payment.getReference(), payment.getMethod(), payment.getAmount(),
-				payment.getCurrency(), payment.getPayerPhone(), email, returnUrl(payment)));
+				payment.getCurrency(), payment.getPayerPhone(), email, returnUrl(payment), null));
 		if (started.checkoutUrl() != null) {
 			payment.sendToCheckout(started.checkoutUrl());
 		}
@@ -267,7 +269,7 @@ public class PaymentService implements InitializingBean {
 	}
 
 	private static PaymentProvider.Charge charge(Payment p) {
-		return new PaymentProvider.Charge(p.getReference(), p.getMethod(), p.getAmount(), p.getCurrency(), p.getPayerPhone(), null, null);
+		return new PaymentProvider.Charge(p.getReference(), p.getMethod(), p.getAmount(), p.getCurrency(), p.getPayerPhone(), null, null, null);
 	}
 
 	private static BusinessException notFound() {

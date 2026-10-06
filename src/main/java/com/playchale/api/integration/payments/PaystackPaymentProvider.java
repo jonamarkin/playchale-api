@@ -69,6 +69,30 @@ class PaystackPaymentProvider implements PaymentProvider {
 		return true;
 	}
 
+	/** Paystack splits a payment and settles each party itself, so the money is never in our balance. */
+	@Override
+	public boolean settlesToHost() {
+		return true;
+	}
+
+	@Override
+	public Optional<String> registerPayee(Payee payee) {
+		var body = new LinkedHashMap<String, Object>();
+		body.put("business_name", payee.name());
+		body.put("bank_code", payee.bankCode());
+		body.put("account_number", payee.accountNumber());
+		// We take nothing: the host's share is the whole payment, less Paystack's own fee.
+		body.put("percentage_charge", 0);
+		var answer = call(() -> http.post().uri("/subaccount").contentType(MediaType.APPLICATION_JSON)
+			.body(json.writeValueAsString(body)).retrieve().body(String.class), "payee");
+		var code = answer.path("data").path("subaccount_code").asString("");
+		if (code.isBlank()) {
+			log.error("Paystack would not register a payee: {}", answer.path("message").asString(""));
+			throw BusinessException.paymentFailed("We couldn’t set up where your money goes. Check the details and try again.");
+		}
+		return Optional.of(code);
+	}
+
 	@Override
 	public Started charge(Charge charge) {
 		var body = new LinkedHashMap<String, Object>();
@@ -77,6 +101,13 @@ class PaystackPaymentProvider implements PaymentProvider {
 		body.put("currency", charge.currency());
 		body.put("reference", charge.reference());
 		body.put("channels", List.of(charge.method().startsWith("momo-") ? "mobile_money" : "card"));
+		// The payee's own subaccount, so Paystack settles them directly and nothing lands in our
+		// balance. "bearer" puts Paystack's fee on that same share: we take no cut, so there is
+		// nothing of ours to take it from.
+		if (charge.destination() != null) {
+			body.put("subaccount", charge.destination());
+			body.put("bearer", "subaccount");
+		}
 		if (charge.returnUrl() != null) {
 			body.put("callback_url", charge.returnUrl());
 		}

@@ -45,6 +45,11 @@ class HostedCheckoutTest {
 		Charge lastCharge;
 
 		@Override
+		public boolean settlesToHost() {
+			return true;
+		}
+
+		@Override
 		public boolean needsPayerPhone() {
 			return false;
 		}

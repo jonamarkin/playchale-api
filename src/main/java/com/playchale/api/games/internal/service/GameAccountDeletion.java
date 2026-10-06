@@ -7,6 +7,7 @@ import java.util.UUID;
 import com.playchale.api.games.internal.domain.Game;
 import com.playchale.api.games.internal.repository.DepartureRepository;
 import com.playchale.api.games.internal.repository.GameInviteRepository;
+import com.playchale.api.games.internal.repository.GameMessageRepository;
 import com.playchale.api.games.internal.repository.GameRepository;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.users.api.AccountDeleted;
@@ -28,12 +29,16 @@ class GameAccountDeletion implements AccountHolds {
 
 	private final DepartureRepository departures;
 
+	private final GameMessageRepository messages;
+
 	private final Clock clock;
 
-	GameAccountDeletion(GameRepository games, GameInviteRepository invites, DepartureRepository departures, Clock clock) {
+	GameAccountDeletion(GameRepository games, GameInviteRepository invites, DepartureRepository departures,
+			GameMessageRepository messages, Clock clock) {
 		this.games = games;
 		this.invites = invites;
 		this.departures = departures;
+		this.messages = messages;
 		this.clock = clock;
 	}
 
@@ -53,6 +58,8 @@ class GameAccountDeletion implements AccountHolds {
 		invites.forget(e.userId());
 		// And their drop-outs: the users row is only anonymised, so nothing else would clear them.
 		departures.forget(e.userId());
+		// And what they said in a game: the same reason, and nobody can ask them about it now.
+		messages.forget(e.userId());
 		var now = clock.instant();
 		for (var game : games.involving(e.userId(), Limit.of(1000))) {
 			if (!game.hasStarted(now) && !game.isCancelled() && !Game.COMPLETED.equals(game.getStatus())) {

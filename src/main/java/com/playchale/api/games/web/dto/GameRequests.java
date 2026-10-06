@@ -31,6 +31,10 @@ public final class GameRequests {
 	public record AttendanceRequest(boolean showedUp) {
 	}
 
+	/** {"body": "Running ten minutes late"} */
+	public record SayRequest(String body) {
+	}
+
 	/** {"invited": 3} */
 	public record InviteResponse(int invited) {
 	}

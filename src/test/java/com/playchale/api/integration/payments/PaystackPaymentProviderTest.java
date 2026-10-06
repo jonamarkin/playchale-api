@@ -43,7 +43,7 @@ class PaystackPaymentProviderTest {
 	private PaystackPaymentProvider provider;
 
 	private final PaymentProvider.Charge charge = new PaymentProvider.Charge("PC-7K2M9QXA", "momo-mtn", 2500, "GHS", null,
-			"kwame@example.com", "https://playchale.com/games/g1?payment=p1");
+			"kwame@example.com", "https://playchale.com/games/g1?payment=p1", null);
 
 	@BeforeEach
 	void setUp() {

@@ -8,7 +8,10 @@ import com.playchale.api.games.internal.service.GameFilters;
 import com.playchale.api.games.api.GameResponse;
 import com.playchale.api.games.internal.service.GameService;
 import com.playchale.api.games.internal.service.ResultService;
+import com.playchale.api.games.api.GameMessageResponse;
+import com.playchale.api.games.internal.service.GameTalk;
 import com.playchale.api.games.web.dto.GameRequests.AttendanceRequest;
+import com.playchale.api.games.web.dto.GameRequests.SayRequest;
 import com.playchale.api.games.web.dto.GameRequests.CancelRequest;
 import com.playchale.api.games.web.dto.GameRequests.ClaimRequest;
 import com.playchale.api.games.web.dto.GameRequests.DisputeRequest;
@@ -44,9 +47,12 @@ class GameController {
 
 	private final ResultService results;
 
-	GameController(GameService games, ResultService results) {
+	private final GameTalk talk;
+
+	GameController(GameService games, ResultService results, GameTalk talk) {
 		this.games = games;
 		this.results = results;
+		this.talk = talk;
 	}
 
 	/** games.list */
@@ -182,6 +188,24 @@ class GameController {
 	@PostMapping("/games/{id}/players/{player}/cash")
 	GameResponse markPaidCash(CurrentUser me, @PathVariable UUID id, @PathVariable String player) {
 		return games.markPaidCash(id, player, me.id());
+	}
+
+	/** games.messages */
+	@GetMapping("/games/{id}/messages")
+	List<GameMessageResponse> messages(CurrentUser me, @PathVariable UUID id) {
+		return talk.list(id, me.id());
+	}
+
+	/** games.say */
+	@PostMapping("/games/{id}/messages")
+	List<GameMessageResponse> say(CurrentUser me, @PathVariable UUID id, @RequestBody SayRequest request) {
+		return talk.say(id, request.body(), me.id());
+	}
+
+	/** games.removeMessage */
+	@DeleteMapping("/games/{id}/messages/{messageId}")
+	List<GameMessageResponse> removeMessage(CurrentUser me, @PathVariable UUID id, @PathVariable UUID messageId) {
+		return talk.remove(id, messageId, me.id());
 	}
 
 	/** games.markAttendance */
