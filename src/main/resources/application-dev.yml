@@ -4,6 +4,8 @@
 playchale:
   cors-origins:
     - http://localhost:3000
+    # The admin desk, a separate app (playchalenew/admin).
+    - http://localhost:3200
   secret: development-only-secret-do-not-use-in-production
   # Every sign-in code is this, and it's handed to the web app to show, so sign-in works without
   # SMS and the web app's end-to-end tests can type it.

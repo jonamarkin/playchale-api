@@ -69,8 +69,22 @@ class DemoSeed {
 		corporateLeague();
 		notifications();
 		mapPins();
+		staff();
 		// A contribution to play rather than a cost to split, as in the web app's seed: GH₵ 20 each (280 across 14 spots).
 		jdbc.sql("UPDATE games SET pricing = 'per-player' WHERE id = :id").param("id", id("g-labone-tonight")).update();
+	}
+
+	/* ------------------------------------------------------------------ staff */
+
+	/**
+	 * On a laptop Kojo also works at PlayChale, so the admin desk (the separate admin app) can be
+	 * tried: sign in there with his phone, 024 000 0002, code 123456 (not kojo@example.com — that is
+	 * only his contact address, and signing in with it makes a new account). Nothing in the player
+	 * app reads this, so his demo there is unchanged. In production the first staff row is an INSERT
+	 * run by hand on the server; no seed and no endpoint creates one.
+	 */
+	private void staff() {
+		jdbc.sql("INSERT INTO platform_staff (user_id, role, note) VALUES (:id, 'owner', 'demo data')").param("id", id("u-kojo")).update();
 	}
 
 	/* ------------------------------------------------------------------ map pins */

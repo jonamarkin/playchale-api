@@ -10,6 +10,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -55,12 +57,31 @@ public class Happened {
 	 * @param actorId     who did it, or null when the app itself did
 	 * @param details     facts worth keeping, small and not personal
 	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void record(String type, String subjectType, UUID subjectId, UUID actorId, Map<String, Object> details) {
-		record(type, subjectType, subjectId, actorId, null, null, details);
+		write(type, subjectType, subjectId, actorId, null, null, details);
 	}
 
-	/** The same, for something inside a workspace, so the corporate audit trail picks it up too. */
+	/**
+	 * The same, for something inside a workspace, so the corporate audit trail picks it up too.
+	 *
+	 * <p>In a transaction of its own, which is what actually makes "never fail what happened" true.
+	 * Catching the exception is not enough: a failed statement poisons a Postgres transaction, so an
+	 * event that would not write took the caller's work down with it however carefully it was caught.
+	 * Its own transaction also means it can be written from a read-only one, which every screen that
+	 * looks something up is.
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public void record(String type, String subjectType, UUID subjectId, UUID actorId, UUID organisationId, UUID competitionId,
+			Map<String, Object> details) {
+		write(type, subjectType, subjectId, actorId, organisationId, competitionId, details);
+	}
+
+	/**
+	 * Both entry points call this rather than each other: a call from inside the class skips the
+	 * proxy, so the overload that delegated was quietly running in its caller's transaction.
+	 */
+	private void write(String type, String subjectType, UUID subjectId, UUID actorId, UUID organisationId, UUID competitionId,
 			Map<String, Object> details) {
 		try {
 			jdbc.sql("""
