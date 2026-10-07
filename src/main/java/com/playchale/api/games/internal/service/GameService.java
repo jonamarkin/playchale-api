@@ -34,6 +34,7 @@ import com.playchale.api.games.internal.repository.GameRepository;
 import com.playchale.api.games.internal.repository.GameSeriesRepository;
 import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
+import com.playchale.api.shared.security.RateLimiter;
 import com.playchale.api.teams.api.TeamCard;
 import com.playchale.api.teams.api.TeamDirectory;
 import com.playchale.api.users.api.UserDirectory;
@@ -57,6 +58,11 @@ public class GameService {
 	/** Discover and "my games" show at most this many. */
 	private static final int LIST_LIMIT = 100;
 
+	/** Players a host can invite in one go, and in a day. */
+	static final int MAX_INVITES_AT_ONCE = 100;
+
+	static final int MAX_INVITES_PER_DAY = 500;
+
 	private static final SecureRandom random = new SecureRandom();
 
 	private final GameRepository games;
@@ -79,8 +85,11 @@ public class GameService {
 
 	private final GameSeriesRepository series;
 
+	private final RateLimiter limiter;
+
 	GameService(GameRepository games, GameInviteRepository invites, GameViews views, UserDirectory users, PitchBookings pitches,
-			TeamDirectory teams, ApplicationEventPublisher events, Clock clock, FixtureRunners runners, GameSeriesRepository series) {
+			TeamDirectory teams, ApplicationEventPublisher events, Clock clock, FixtureRunners runners, GameSeriesRepository series,
+			RateLimiter limiter) {
 		this.games = games;
 		this.invites = invites;
 		this.views = views;
@@ -91,6 +100,7 @@ public class GameService {
 		this.clock = clock;
 		this.runners = runners;
 		this.series = series;
+		this.limiter = limiter;
 	}
 
 	/** games.list: upcoming games still on that the viewer may see, soonest first. */
@@ -308,8 +318,16 @@ public class GameService {
 	 */
 	@Transactional
 	public int invite(UUID gameId, Collection<UUID> userIds, UUID host) {
+		var people = userIds.stream().distinct().toList();
+		if (people.size() > MAX_INVITES_AT_ONCE) {
+			throw BusinessException.invalid("Invite up to %d players at a time.".formatted(MAX_INVITES_AT_ONCE));
+		}
 		var game = invitable(gameId, host);
-		return ask(game, userIds.stream().distinct().toList(), null, null, host);
+		// Every invite is a notification on someone's phone, so a host can't send them without end.
+		if (!limiter.tryAcquire("invites:" + host, Duration.ofDays(1), MAX_INVITES_PER_DAY, people.size())) {
+			throw BusinessException.conflict("You’ve invited a lot of players today. Try again tomorrow.");
+		}
+		return ask(game, people, null, null, host);
 	}
 
 	/** games.inviteTeam: host only, for a team they're in. Its members not in the game yet are each invited. */

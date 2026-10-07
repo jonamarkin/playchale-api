@@ -303,6 +303,20 @@ class GameServiceTest {
 	}
 
 	@Test
+	void aHostCantInviteWithoutEnd() {
+		var game = games.create(unlisted(10, 0), kwame);
+		var tooMany = java.util.stream.Stream.generate(UUID::randomUUID).limit(GameService.MAX_INVITES_AT_ONCE + 1).toList();
+		assertThatThrownBy(() -> games.invite(game.id(), tooMany, kwame)).hasMessage("Invite up to 100 players at a time.");
+
+		// Each invite is a notification on someone's phone, so there's a day's limit across all their games.
+		for (int i = 0; i < GameService.MAX_INVITES_PER_DAY / GameService.MAX_INVITES_AT_ONCE; i++) {
+			games.invite(game.id(), tooMany.subList(0, GameService.MAX_INVITES_AT_ONCE), kwame);
+		}
+		assertThatThrownBy(() -> games.invite(game.id(), List.of(ama), kwame))
+			.hasMessage("You’ve invited a lot of players today. Try again tomorrow.");
+	}
+
+	@Test
 	void discoverShowsUpcomingGamesTheViewerMaySee() {
 		var saturday = games.create(unlisted(10, 0), kwame);
 		var privateGame = games.create(new GameDetails("basketball", "3x3", "Friends only", NOW.plus(Duration.ofHours(3)), 60, "unlisted",

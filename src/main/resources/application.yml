@@ -60,13 +60,15 @@ logging:
     level: "%5p [%X{request_id:-}]"
 
 # Spring Boot Actuator. /actuator/health checks the database too, so "UP" means "can serve
-# requests"; /actuator/health/liveness and /readiness are for the load balancer. /actuator/info
-# shows the build version.
+# requests"; /actuator/health/liveness and /readiness are for the load balancer. Nothing else is on
+# the internet: not the build details, not even the list of what's there.
 management:
   endpoints:
     web:
       exposure:
-        include: health, info
+        include: health
+      discovery:
+        enabled: false
   endpoint:
     health:
       probes:

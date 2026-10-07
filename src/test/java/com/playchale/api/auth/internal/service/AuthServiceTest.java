@@ -1,5 +1,7 @@
 package com.playchale.api.auth.internal.service;
 
+import java.time.Duration;
+
 import com.playchale.api.TestcontainersConfiguration;
 import com.playchale.api.auth.internal.domain.SignInCode;
 import com.playchale.api.integration.email.Email;
@@ -153,6 +155,45 @@ class AuthServiceTest {
 		auth.requestCode("024 455 5123", null, CONNECTION);
 		clock.advance(SignInCode.LIFETIME.plusSeconds(1));
 		assertRefused(() -> auth.signIn("024 455 5123", null, sms.code()), ErrorCode.INVALID, "That code has expired. Ask for a new one.");
+	}
+
+	@Test
+	void aNumberGetsTenCodesADay() {
+		var connection = "203.0.113.21";
+		for (int hour = 0; hour < SignInCode.MAX_PER_DAY / SignInCode.MAX_PER_HOUR; hour++) {
+			for (int i = 0; i < SignInCode.MAX_PER_HOUR; i++) {
+				auth.requestCode("024 455 5124", null, connection);
+			}
+			clock.advance(Duration.ofMinutes(61));
+		}
+		assertRefused(() -> auth.requestCode("024 455 5124", null, connection), ErrorCode.CONFLICT,
+				"Too many codes sent to this number today. Try again tomorrow.");
+		clock.advance(Duration.ofDays(1));
+		assertThat(auth.requestCode("024 455 5124", null, connection)).as("a day later, it can sign in again").isEmpty();
+	}
+
+	@Test
+	void newCodesDontBuyMoreGuessesThanTheDaysLimit() {
+		var connection = "203.0.113.22";
+		var codes = SignInCode.MAX_WRONG_PER_DAY / SignInCode.MAX_WRONG_GUESSES;
+		for (int c = 0; c < codes; c++) {
+			// A moment apart, as real requests are: "the newest code" needs telling apart.
+			clock.advance(Duration.ofSeconds(1));
+			auth.requestCode("024 455 5125", null, connection);
+			var wrong = sms.code().equals("000000") ? "111111" : "000000";
+			for (int i = 0; i < SignInCode.MAX_WRONG_GUESSES; i++) {
+				assertRefused(() -> auth.signIn("024 455 5125", null, wrong), ErrorCode.INVALID, null);
+			}
+		}
+		// A fresh code, and the right one, still doesn't get in today: the guesses are spent.
+		clock.advance(Duration.ofSeconds(1));
+		auth.requestCode("024 455 5125", null, connection);
+		assertRefused(() -> auth.signIn("024 455 5125", null, sms.code()), ErrorCode.INVALID,
+				"Too many wrong tries today. Try again tomorrow, or sign in another way.");
+
+		clock.advance(Duration.ofDays(1).plusMinutes(1));
+		auth.requestCode("024 455 5125", null, connection);
+		assertThat(auth.signIn("024 455 5125", null, sms.code()).user()).isNotNull();
 	}
 
 	@Test

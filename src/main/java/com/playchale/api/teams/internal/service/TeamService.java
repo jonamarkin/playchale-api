@@ -295,8 +295,14 @@ public class TeamService implements TeamDirectory, TeamMemberships {
 
 	/* ------------------------------------------------------------------ */
 
+	/** People added in one go, at most: a squad, not a phone book. */
+	static final int MAX_AT_ONCE = 100;
+
 	/** Adds real players who aren't in yet, and says so. Returns who was added. */
 	private List<UUID> add(Team team, Collection<UUID> userIds, UUID addedBy, boolean announce) {
+		if (userIds.size() > MAX_AT_ONCE) {
+			throw BusinessException.invalid("Add up to %d players at a time.".formatted(MAX_AT_ONCE));
+		}
 		var real = users.findAll(userIds).keySet();
 		var now = clock.instant();
 		var added = userIds.stream().distinct().filter(real::contains).filter(u -> team.add(u, now)).toList();

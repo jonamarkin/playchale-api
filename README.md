@@ -123,7 +123,6 @@ production logs: the logging stand-ins exist only in the dev profile.
 | Method and path | Web app contract | Does |
 |---|---|---|
 | `GET /actuator/health` | | `UP` when the app can reach the database (`/liveness`, `/readiness` for the load balancer) |
-| `GET /actuator/info` | | Build version |
 | `POST /dev/reset` | | Dev profile only: back to the demo data → 204 |
 | `GET /dev/demo-accounts` | `auth.demoAccounts` | Dev profile only: the seeded players the sign-in page offers |
 | `GET /auth/options` | `auth.options` | Which ways of signing in are set up: `{"phone", "email"}` |

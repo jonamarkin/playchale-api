@@ -14,8 +14,12 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface SignInCodeRepository extends JpaRepository<SignInCode, UUID> {
 
-	/** How many codes a phone or address has been sent since a moment, for the hourly limit. */
+	/** How many codes a phone or address has been sent since a moment, for the hourly and daily limits. */
 	long countByRecipientAndCreatedAtAfter(String recipient, Instant since);
+
+	/** Wrong guesses at a phone's or address's codes since a moment, across all of them. */
+	@Query("select coalesce(sum(c.attempts), 0) from SignInCode c where c.recipient = :recipient and c.createdAt > :since")
+	long wrongGuessesSince(String recipient, Instant since);
 
 	@Modifying
 	@Query("delete from SignInCode c where c.recipient in :recipients")

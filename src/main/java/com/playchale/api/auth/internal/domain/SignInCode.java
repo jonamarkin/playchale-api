@@ -25,6 +25,16 @@ public class SignInCode {
 	/** A phone or address can be sent this many codes an hour, so nobody can flood it. */
 	public static final int MAX_PER_HOUR = 5;
 
+	/**
+	 * And this many a day. Five wrong guesses a code and five codes an hour would let someone keep
+	 * guessing at one person's six-digit codes all month (about 18,000 guesses, a 2% chance); a day's
+	 * limit on codes and on wrong guesses keeps that under 0.6% a year.
+	 */
+	public static final int MAX_PER_DAY = 10;
+
+	/** Wrong guesses at one phone's or address's codes in a day, across all of them, before it waits a day. */
+	public static final int MAX_WRONG_PER_DAY = 15;
+
 	/** What a guess did. */
 	public enum Attempt {
 

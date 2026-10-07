@@ -169,6 +169,7 @@ public class CompetitionService {
 	 */
 	@Transactional
 	public CompetitionResponse addTeam(UUID id, UUID teamId, String name, UUID captainId, Collection<UUID> playerIds, UUID me) {
+		atMostAtOnce(playerIds);
 		var competition = organised(id, me);
 		var existing = entries.inCompetition(id);
 		var names = directory.findAll(existing.stream().map(Entry::getTeamId).toList());
@@ -406,6 +407,7 @@ public class CompetitionService {
 	/** competitions.addPlayers: captain or organiser. They join the team too, and upcoming fixtures pick them up. */
 	@Transactional
 	public CompetitionResponse addPlayers(UUID id, UUID teamId, Collection<UUID> userIds, UUID me) {
+		atMostAtOnce(userIds);
 		var competition = locked(id);
 		var entry = runBy(competition, teamId, me);
 		var real = users.findAll(userIds).keySet();
@@ -635,6 +637,13 @@ public class CompetitionService {
 
 	private static CompetitionInfo info(Competition c) {
 		return new CompetitionInfo(c.getId(), c.getName(), c.noun(), c.getCountry(), c.getTimezone());
+	}
+
+	/** Players added in one go, at most: a squad, not a phone book. */
+	private static void atMostAtOnce(Collection<UUID> userIds) {
+		if (userIds != null && userIds.size() > 100) {
+			throw BusinessException.invalid("Add up to 100 players at a time.");
+		}
 	}
 
 }

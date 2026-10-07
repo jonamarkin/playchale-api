@@ -191,6 +191,10 @@ public class AuthService {
 			throw BusinessException.conflict(to.bySms() ? "Too many codes sent to this number. Try again in an hour."
 					: "Too many codes sent to this address. Try again in an hour.");
 		}
+		if (codes.countByRecipientAndCreatedAtAfter(to.address(), now.minus(Duration.ofDays(1))) >= SignInCode.MAX_PER_DAY) {
+			throw BusinessException.conflict(to.bySms() ? "Too many codes sent to this number today. Try again tomorrow."
+					: "Too many codes sent to this address today. Try again tomorrow.");
+		}
 		if (!limiter.tryAcquire("sign-in:connection:" + connection, Duration.ofHours(1), limits.perConnectionPerHour())) {
 			throw BusinessException.conflict("Too many codes asked for from this connection. Try again in an hour.");
 		}
@@ -264,6 +268,10 @@ public class AuthService {
 	private void check(Recipient from, String code, Instant now) {
 		var live = codes.lockLatestLive(from.address(), now)
 			.orElseThrow(() -> BusinessException.invalid("That code has expired. Ask for a new one."));
+		// Across every code this day, not just this one: asking for new codes doesn't buy more guesses.
+		if (codes.wrongGuessesSince(from.address(), now.minus(Duration.ofDays(1))) >= SignInCode.MAX_WRONG_PER_DAY) {
+			throw BusinessException.invalid("Too many wrong tries today. Try again tomorrow, or sign in another way.");
+		}
 		switch (live.attempt(hash(from.address(), code), now)) {
 			case LOCKED -> throw BusinessException.invalid("Too many wrong tries. Ask for a new code.");
 			case WRONG -> throw BusinessException.invalid(from.bySms() ? "That code isn’t right. Check the SMS and try again."

@@ -38,12 +38,19 @@ public class RateLimiter {
 	 */
 	@Transactional(propagation = Propagation.REQUIRES_NEW)
 	public boolean tryAcquire(String key, Duration window, int limit) {
+		return tryAcquire(key, window, limit, 1);
+	}
+
+	/** As above, counting {@code amount} at once: forty invites in one request are forty invites. */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public boolean tryAcquire(String key, Duration window, int limit, int amount) {
 		var count = jdbc.sql("""
-				INSERT INTO rate_limits (key, window_start, count) VALUES (:key, :window, 1)
-				ON CONFLICT (key, window_start) DO UPDATE SET count = rate_limits.count + 1
+				INSERT INTO rate_limits (key, window_start, count) VALUES (:key, :window, :amount)
+				ON CONFLICT (key, window_start) DO UPDATE SET count = rate_limits.count + :amount
 				RETURNING count
 				""")
 			.param("key", key)
+			.param("amount", Math.max(1, amount))
 			.param("window", windowStart(clock.instant(), window).atOffset(ZoneOffset.UTC))
 			.query(Integer.class)
 			.single();
