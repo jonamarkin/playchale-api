@@ -170,7 +170,7 @@ class GameViews {
 				g.getPitchName(), mapUrl);
 		var participants = g.getParticipants().stream()
 			.map(p -> new GameResponse.ParticipantResponse(p.isGuest() ? "" : p.getUserId().toString(), p.getJoinedAt(), p.isPaid(),
-					p.getPaymentId(), p.getPaidVia(), p.getRemindedAt(), guest(p, hostView)))
+					p.getPaymentId(), p.getPaidVia(), p.getRemindedAt(), guest(p, hostView), p.getAttended(), p.getAttendedAt()))
 			.toList();
 		var players = g.getParticipants().stream()
 			.map(p -> p.isGuest() ? guestPlayer(p, hostView) : player(p, people.get(p.getUserId()), viewer))

@@ -104,7 +104,7 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 	 */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record ParticipantResponse(String userId, Instant joinedAt, boolean paid, UUID paymentId, String paidVia,
-			Instant remindedAt, Guest guest) {
+			Instant remindedAt, Guest guest, Boolean attended, Instant attendedAt) {
 	}
 
 	/** A guest spot as the web app's Guest type. The number is only shown to the host. */
