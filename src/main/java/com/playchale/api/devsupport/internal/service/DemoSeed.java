@@ -65,6 +65,7 @@ class DemoSeed {
 		users();
 		venues();
 		games();
+		series();
 		league();
 		corporateLeague();
 		notifications();
@@ -72,6 +73,27 @@ class DemoSeed {
 		staff();
 		// A contribution to play rather than a cost to split, as in the web app's seed: GH₵ 20 each (280 across 14 spots).
 		jdbc.sql("UPDATE games SET pricing = 'per-player' WHERE id = :id").param("id", id("g-labone-tonight")).update();
+	}
+
+	/* ------------------------------------------------------------------ repeating games */
+
+	/**
+	 * Kojo's Saturday 5-a-side repeats every week, as in the web app's seed: the next one opens when
+	 * this one ends, and invites this one's players.
+	 */
+	private void series() {
+		jdbc.sql("""
+				INSERT INTO game_series (id, host_id, sport, format, title, duration_minutes, venue_kind, venue_id, pitch_id, venue_name,
+				  venue_area, map_url, capacity, total_cost, pricing, visibility, notes, country, timezone, frequency, weekday, kick_off,
+				  next_starts_at, opens_at, last_game_id, status, created_at, updated_at)
+				SELECT :series, host_id, sport, format, title, duration_minutes, venue_kind, venue_id, pitch_id, venue_name,
+				  venue_area, map_url, capacity, total_cost, pricing, visibility, notes, country, timezone, 'weekly',
+				  extract(isodow FROM starts_at AT TIME ZONE timezone)::int, (starts_at AT TIME ZONE timezone)::time,
+				  starts_at + interval '7 days', starts_at + duration_minutes * interval '1 minute', id, 'active', created_at, created_at
+				FROM games WHERE id = :game
+				""").param("series", id("s-osu-sat")).param("game", id("g-osu-sat")).update();
+		jdbc.sql("UPDATE games SET series_id = :series WHERE id = :game").param("series", id("s-osu-sat")).param("game", id("g-osu-sat"))
+			.update();
 	}
 
 	/* ------------------------------------------------------------------ staff */

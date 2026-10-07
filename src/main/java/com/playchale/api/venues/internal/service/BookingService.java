@@ -80,7 +80,9 @@ public class BookingService implements PitchBookings {
 		if (venue == null) return Optional.of("That partner venue is no longer available.");
 		if (venue.activePitch(pitchId).isEmpty()) return Optional.of("That pitch is no longer available at this venue.");
 		if (!venue.isOpen(startsAt, endsAt)) return Optional.of("%s is closed at that time.".formatted(venue.getName()));
-		var own = bookings.findByGameIdAndStatus(gameId, Booking.CONFIRMED).stream().findFirst();
+		// A game not created yet has no booking of its own to leave out. (Asked with null, the lookup would
+		// find gameless bookings — the owner's blocks and walk-ins — and then skip the very one in the way.)
+		var own = gameId == null ? Optional.<Booking>empty() : bookings.findByGameIdAndStatus(gameId, Booking.CONFIRMED).stream().findFirst();
 		var clash = own.isPresent() ? bookings.findClashExcept(pitchId, startsAt, endsAt, own.get().getId())
 			: bookings.findClash(pitchId, startsAt, endsAt);
 		return clash.map(BookingService::clashMessage);

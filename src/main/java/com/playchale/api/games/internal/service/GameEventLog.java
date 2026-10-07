@@ -27,6 +27,8 @@ class GameEventLog {
 
 	private static final String GAME = "game";
 
+	private static final String SERIES = "game-series";
+
 	private final Happened happened;
 
 	GameEventLog(Happened happened) {
@@ -80,6 +82,33 @@ class GameEventLog {
 	void on(GameEvents.CashShareCollected e) {
 		happened.record("game.share-collected", GAME, e.game().gameId(), e.game().hostId(),
 				Map.of("amount", e.amount(), "currency", e.currency(), "method", "cash"));
+	}
+
+	/** Repeating games: with game.joined, how many of a regular game's players keep coming back. */
+	@EventListener
+	void on(GameEvents.SeriesGameOpened e) {
+		happened.record("series.opened", SERIES, e.seriesId(), e.game().hostId(),
+				Map.of("gameId", e.game().gameId().toString(), "startsAt", e.game().startsAt().toString(), "invited", e.invited()));
+	}
+
+	@EventListener
+	void on(GameEvents.SeriesDateMissed e) {
+		happened.record("series.date-missed", SERIES, e.seriesId(), null, Map.of("startsAt", e.startsAt().toString(), "reason", e.reason()));
+	}
+
+	@EventListener
+	void on(GameEvents.SeriesPaused e) {
+		happened.record("series.paused", SERIES, e.seriesId(), null, Map.of("reason", e.reason()));
+	}
+
+	@EventListener
+	void on(GameEvents.SeriesUpdated e) {
+		happened.record("series." + e.change(), SERIES, e.seriesId(), e.hostId(), Map.of());
+	}
+
+	@EventListener
+	void on(GameEvents.SeriesOptOut e) {
+		happened.record(e.out() ? "series.opted-out" : "series.opted-in", SERIES, e.seriesId(), e.userId(), Map.of());
 	}
 
 }

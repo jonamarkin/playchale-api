@@ -6,6 +6,7 @@ import java.util.UUID;
 
 import com.playchale.api.games.internal.service.GameFilters;
 import com.playchale.api.games.api.GameResponse;
+import com.playchale.api.games.internal.service.GameSeriesService;
 import com.playchale.api.games.internal.service.GameService;
 import com.playchale.api.games.internal.service.ResultService;
 import com.playchale.api.games.api.GameMessageResponse;
@@ -49,10 +50,13 @@ class GameController {
 
 	private final GameTalk talk;
 
-	GameController(GameService games, ResultService results, GameTalk talk) {
+	private final GameSeriesService series;
+
+	GameController(GameService games, ResultService results, GameTalk talk, GameSeriesService series) {
 		this.games = games;
 		this.results = results;
 		this.talk = talk;
+		this.series = series;
 	}
 
 	/** games.list */
@@ -85,7 +89,14 @@ class GameController {
 	@PostMapping("/games")
 	@ResponseStatus(HttpStatus.CREATED)
 	GameResponse create(CurrentUser me, @Valid @RequestBody NewGameRequest request) {
-		return games.create(request.toDetails(), request.timezone(), request.homeTeamId(), request.awayTeamId(), me.id());
+		var repeats = request.repeats();
+		if (repeats == null || repeats.frequency() == null) {
+			return games.create(request.toDetails(), request.timezone(), request.homeTeamId(), request.awayTeamId(), me.id());
+		}
+		if (request.homeTeamId() != null || request.awayTeamId() != null) {
+			throw BusinessException.invalid("A team game can’t repeat on its own. Set it up once, then use “Same again next week”.");
+		}
+		return series.start(request.toDetails(), request.timezone(), repeats.frequency(), repeats.weekOfMonth(), me.id());
 	}
 
 	/** games.repeat */

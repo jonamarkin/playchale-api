@@ -20,7 +20,17 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 		List<ParticipantResponse> participants, String status, ResultResponse result, FixtureRef fixture, Instant createdAt,
 		Instant cancelledAt, String cancelReason, UserSummary host, List<PlayerResponse> players, FixtureTeamsResponse fixtureTeams,
 		long share, int spotsLeft, String hostPayoutPhone, List<InviteResponse> invites, FriendlyResponse friendly, String country,
-		String timezone) {
+		String timezone, SeriesRef series) {
+
+	/**
+	 * The repeating game this is one of. {@code weekday} is ISO (1 is Monday), {@code kickOff} is
+	 * "18:00" in the game's own time, and {@code weekOfMonth} (1 to 4, or -1 for the last) is set for a
+	 * monthly one. {@code nextStartsAt} is the next game it will open and {@code opensAt} when.
+	 * {@code optedOut} is whether the viewer asked not to be invited; null with nobody signed in.
+	 */
+	public record SeriesRef(UUID id, String frequency, int weekday, Integer weekOfMonth, String kickOff, String status, Instant nextStartsAt,
+			Instant opensAt, Boolean optedOut) {
+	}
 
 	/**
 	 * A friendly's two teams, each with who's playing for it here, and where the challenge stands:

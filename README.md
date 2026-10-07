@@ -151,8 +151,13 @@ production logs: the logging stand-ins exist only in the dev profile.
 | `GET /games?query=&sport=&when=` | `games.list` | Upcoming games still on that you may see; `when` is `today`, `tomorrow` or `weekend` in local time |
 | `GET /me/games` | `games.mine` | Games you host or have a spot in |
 | `GET /games/{id}` | `games.get` | One game; 404 (the app's `null`) if it doesn't exist |
-| `POST /games` | `games.create` | Hosts a game; on a partner pitch it's booked in the same transaction → 201 |
-| `POST /games/{id}/repeat` | `games.repeat` | Host only: the same game a week later → 201 |
+| `POST /games` | `games.create` | Hosts a game; on a partner pitch it's booked in the same transaction. With `"repeats": {"frequency", "weekOfMonth"?}` it's the first of a repeating game → 201 |
+| `POST /games/{id}/repeat` | `games.repeat` | Host only: the same game a week later (or the first of its weekdays still at least 12 hours away) → 201 |
+| `POST /games/{id}/series` | `series.startFrom` | Host only: `{"frequency", "weekOfMonth"?}` makes a game repeat; one already over opens its next at once, and that's the game returned → 201 |
+| `GET /me/series` | `series.mine` | Your repeating games, running, paused or stopped |
+| `PATCH /series/{id}` | `series.change` | Host only: day, time, how often, length, spots, cost, visibility, notes, from the next game opened |
+| `POST /series/{id}/stop`, `/restart` | `series.stop`, `series.restart` | Host only. Restarting with no game still to come opens the next one at once |
+| `PUT` / `DELETE /series/{id}/optout` | `series.optOut`, `series.optIn` | Stop (or start again) being invited to its games → 204 |
 | `POST /games/{id}/players` | `games.join` | Takes a spot (the game row is locked, so the last spot can't go twice) |
 | `DELETE /games/{id}/players/me` | `games.leave` | Gives up your spot, unless you've paid |
 | `DELETE /games/{id}/players/{player}` | `games.removePlayer` | Host only: a player's id, or `guest:<token>` |
@@ -279,6 +284,20 @@ won't start with neither, so the service can go live on email while an SMS sende
 Sign-in rules: codes last 10 minutes, five wrong guesses lock a code, five codes an hour per
 number. Codes and session tokens are stored only as hashes. The session cookie is `HttpOnly`,
 `SameSite=Lax`, and `Secure` in production.
+
+## Repeating games
+
+A host sets a game to repeat every week, every other week, or monthly on the same weekday ("the 2nd
+Saturday", "the last Sunday"; never a date of the month). Only one game is open at a time:
+`SeriesOpener` runs every two minutes, finds series whose last game has ended, and opens the next of
+their days at least 12 hours away, in the game's own timezone. It books the pitch, and invites the last
+game's players (not guests, and not anyone who opted out). Nobody gets a spot without saying yes.
+
+- A date whose pitch is taken, or whose venue is closed, is skipped and the host told; the series carries on.
+- Calling a game off skips that week. Two played games in a row with nobody but the host pause the series.
+- Changes apply from the next game opened; the one already open stays as players said yes to it.
+- Each series is locked while it opens and `games_series_once` refuses a second game on the same date,
+  so any number of copies of the API can run the opener.
 
 ## Showing up
 

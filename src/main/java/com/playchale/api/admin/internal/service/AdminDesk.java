@@ -118,6 +118,9 @@ public class AdminDesk {
 				  SELECT gm.created_at, 'Said in ' || g.title, gm.body
 				  FROM game_messages gm JOIN games g ON g.id = gm.game_id WHERE gm.user_id = :id
 				  UNION ALL
+				  SELECT s.created_at, 'Started a repeating game', s.title || ' · ' || s.frequency || ' · ' || s.status
+				  FROM game_series s WHERE s.host_id = :id
+				  UNION ALL
 				  SELECT e.occurred_at, 'Event: ' || e.event_type, coalesce(e.details ->> 'note', '')
 				  FROM audit_events e WHERE e.actor_id = :id
 				) h
@@ -183,16 +186,18 @@ public class AdminDesk {
 	public Map<String, Object> export(UUID by, UUID userId) {
 		staff.require(by);
 		happened.record("admin.exported-person", "user", userId, by, Map.of());
-		return Map.of(
-				"user", one("SELECT * FROM users WHERE id = :id", userId),
-				"games", rows("SELECT g.* FROM games g JOIN game_participants p ON p.game_id = g.id WHERE p.user_id = :id", userId),
-				"spots", rows("SELECT * FROM game_participants WHERE user_id = :id", userId),
-				"departures", rows("SELECT * FROM game_departures WHERE user_id = :id", userId),
-				"messages", rows("SELECT * FROM game_messages WHERE user_id = :id", userId),
-				"payments", rows("SELECT * FROM payments WHERE user_id = :id", userId),
-				"movements", rows("SELECT * FROM movements WHERE user_id = :id", userId),
-				"notifications", rows("SELECT * FROM notifications WHERE user_id = :id", userId),
-				"results", rows("SELECT * FROM result_players WHERE user_id = :id", userId));
+		return Map.ofEntries(
+				Map.entry("user", one("SELECT * FROM users WHERE id = :id", userId)),
+				Map.entry("games", rows("SELECT g.* FROM games g JOIN game_participants p ON p.game_id = g.id WHERE p.user_id = :id", userId)),
+				Map.entry("spots", rows("SELECT * FROM game_participants WHERE user_id = :id", userId)),
+				Map.entry("departures", rows("SELECT * FROM game_departures WHERE user_id = :id", userId)),
+				Map.entry("messages", rows("SELECT * FROM game_messages WHERE user_id = :id", userId)),
+				Map.entry("series", rows("SELECT * FROM game_series WHERE host_id = :id", userId)),
+				Map.entry("seriesOptOuts", rows("SELECT * FROM game_series_optouts WHERE user_id = :id", userId)),
+				Map.entry("payments", rows("SELECT * FROM payments WHERE user_id = :id", userId)),
+				Map.entry("movements", rows("SELECT * FROM movements WHERE user_id = :id", userId)),
+				Map.entry("notifications", rows("SELECT * FROM notifications WHERE user_id = :id", userId)),
+				Map.entry("results", rows("SELECT * FROM result_players WHERE user_id = :id", userId)));
 	}
 
 	private List<Map<String, Object>> rows(String sql, UUID userId) {

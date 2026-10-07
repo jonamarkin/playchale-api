@@ -1,6 +1,5 @@
 package com.playchale.api.games.internal.domain;
 
-import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -24,10 +23,10 @@ public record GameDetails(String sport, String format, String title, Instant sta
 				capacity, totalCost, pricing, visibility, notes);
 	}
 
-	/** The same game a week later: how a host repeats last week's. */
-	public GameDetails weekLater() {
-		return new GameDetails(sport, format, title, startsAt.plus(Duration.ofDays(7)), durationMinutes, venueKind,
-				venueId, pitchId, venueName, venueArea, venueMapUrl, capacity, totalCost, pricing, visibility, notes);
+	/** The same game at another time: how a host repeats last week's. */
+	public GameDetails startingAt(Instant startsAt) {
+		return new GameDetails(sport, format, title, startsAt, durationMinutes, venueKind, venueId, pitchId, venueName, venueArea, venueMapUrl,
+				capacity, totalCost, pricing, visibility, notes);
 	}
 
 }

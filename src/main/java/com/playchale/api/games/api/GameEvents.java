@@ -74,8 +74,37 @@ public final class GameEvents {
 	 *
 	 * @param invitedBy the host, or in a friendly the away team's captain asking their own players
 	 * @param teamName  set when a team was invited
+	 * @param regulars  a repeating game's next game, inviting the last one's players: nobody asked them by hand
 	 */
-	public record PlayersInvited(GameInfo game, UUID invitedBy, List<UUID> playerIds, long share, String currency, String teamName) {
+	public record PlayersInvited(GameInfo game, UUID invitedBy, List<UUID> playerIds, long share, String currency, String teamName,
+			boolean regulars) {
+	}
+
+	/**
+	 * A repeating game opened its next game and invited the last one's players.
+	 *
+	 * @param invited how many were invited (they're told by {@link PlayersInvited})
+	 */
+	public record SeriesGameOpened(GameInfo game, UUID seriesId, int invited) {
+	}
+
+	/**
+	 * A repeating game couldn't open one of its dates (its pitch was booked, the venue is closed). It
+	 * carries on with the date after.
+	 */
+	public record SeriesDateMissed(UUID seriesId, UUID hostId, String title, Instant startsAt, String country, String timezone, String reason) {
+	}
+
+	/** A repeating game paused itself rather than open another game nobody comes to. */
+	public record SeriesPaused(UUID seriesId, UUID hostId, String title, String reason) {
+	}
+
+	/** The host started, changed, stopped or restarted a repeating game. {@code change} says which. */
+	public record SeriesUpdated(UUID seriesId, UUID hostId, String change) {
+	}
+
+	/** A player asked not to be invited to a repeating game's games ({@code out}), or asked to be again. */
+	public record SeriesOptOut(UUID seriesId, UUID userId, boolean out) {
 	}
 
 	/** A team's captain challenged another team to a friendly; that team's captain accepts or declines. */

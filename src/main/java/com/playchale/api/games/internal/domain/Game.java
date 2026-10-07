@@ -144,6 +144,9 @@ public class Game extends AuditableEntity {
 	 */
 	private String opponentStatus;
 
+	/** The repeating game this is one of ({@link GameSeries}), or null for a one-off. */
+	private UUID seriesId;
+
 	@OneToMany(mappedBy = "game", cascade = CascadeType.ALL, orphanRemoval = true)
 	@OrderBy("joinedAt")
 	private List<Participant> participants = new ArrayList<>();
@@ -221,6 +224,14 @@ public class Game extends AuditableEntity {
 	}
 
 	/**
+	 * Checks {@code details} as creating a game from them would, without creating one: for a repeating
+	 * game's settings, which have to be right before its next game is due rather than when it fails to open.
+	 */
+	public static void check(GameDetails details, UUID hostId, Market market, Instant now) {
+		new Game(details, hostId, market, now);
+	}
+
+	/**
 	 * A competition fixture. The organiser hosts it, the two squads fill it, and nobody pays through
 	 * the app for it. {@code slot} and {@code decider} place a knockout tie in its bracket and say it
 	 * has to produce a winner; a league fixture has neither.
@@ -270,6 +281,15 @@ public class Game extends AuditableEntity {
 			requireNotPlayed(now);
 		}
 		this.opponentStatus = accept ? CHALLENGE_ACCEPTED : CHALLENGE_DECLINED;
+	}
+
+	/** One of a repeating game's games. */
+	public void belongTo(UUID seriesId) {
+		this.seriesId = seriesId;
+	}
+
+	public UUID getSeriesId() {
+		return seriesId;
 	}
 
 	/** A game between two teams outside a league. */

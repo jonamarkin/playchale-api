@@ -25,10 +25,13 @@ import com.playchale.api.games.api.GameEvents;
 import com.playchale.api.games.internal.domain.Game;
 import com.playchale.api.games.internal.domain.GameDetails;
 import com.playchale.api.games.internal.domain.GameInvite;
+import com.playchale.api.games.internal.domain.GameSeries;
 import com.playchale.api.games.internal.domain.InviteId;
 import com.playchale.api.games.internal.domain.Participant;
+import com.playchale.api.games.internal.domain.SeriesRule;
 import com.playchale.api.games.internal.repository.GameInviteRepository;
 import com.playchale.api.games.internal.repository.GameRepository;
+import com.playchale.api.games.internal.repository.GameSeriesRepository;
 import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.teams.api.TeamCard;
@@ -74,8 +77,10 @@ public class GameService {
 
 	private final FixtureRunners runners;
 
+	private final GameSeriesRepository series;
+
 	GameService(GameRepository games, GameInviteRepository invites, GameViews views, UserDirectory users, PitchBookings pitches,
-			TeamDirectory teams, ApplicationEventPublisher events, Clock clock, FixtureRunners runners) {
+			TeamDirectory teams, ApplicationEventPublisher events, Clock clock, FixtureRunners runners, GameSeriesRepository series) {
 		this.games = games;
 		this.invites = invites;
 		this.views = views;
@@ -85,6 +90,7 @@ public class GameService {
 		this.events = events;
 		this.clock = clock;
 		this.runners = runners;
+		this.series = series;
 	}
 
 	/** games.list: upcoming games still on that the viewer may see, soonest first. */
@@ -181,11 +187,20 @@ public class GameService {
 		return views.of(createFriendly(details, place, homeTeamId, awayTeamId, host), host);
 	}
 
-	/** games.repeat: the same game a week later, on the same pitch if it's free. A friendly challenges the same team again. */
+	/**
+	 * games.repeat: the same game a week later, on the same pitch if it's free. A friendly challenges
+	 * the same team again. Repeated late, it's the first of its weekdays still far enough away: a week
+	 * after a game ten days ago is already gone.
+	 */
 	@Transactional
 	public GameResponse repeat(UUID gameId, UUID host) {
 		var game = hosted(gameId, host);
-		var details = game.details().weekLater();
+		if (game.getSeriesId() != null && series.findById(game.getSeriesId()).map(GameSeries::isActive).orElse(false)) {
+			throw BusinessException.conflict("This game repeats already. The next one opens when this one ends.");
+		}
+		var startsAt = SeriesRule.of(SeriesRule.WEEKLY, null, game.getStartsAt(), game.zone())
+			.firstAfter(game.getStartsAt(), clock.instant().plus(GameSeries.LEAD));
+		var details = game.details().startingAt(startsAt);
 		var place = new Place(game.getCountry(), game.getTimezone());
 		return views.of(game.isFriendly() ? createFriendly(details, place, game.getHomeTeamId(), game.getAwayTeamId(), host)
 				: createGame(details, place, host), host);
@@ -413,7 +428,29 @@ public class GameService {
 	}
 
 	/** A new game where it's played: at a partner venue, the venue's country and time; anywhere else, {@code place}. */
+	/**
+	 * A repeating game's first game (GameSeriesService): an ordinary one, where the host's app says it is.
+	 * Not a friendly: a team game doesn't repeat on its own.
+	 */
+	Game createFirstOfSeries(GameDetails details, String timezone, UUID host) {
+		return createGame(details, new Place(countryOf(host), timezone), host, null);
+	}
+
+	/** A repeating game's next game (GameSeriesService): created as any other, belonging to it. */
+	Game createForSeries(GameDetails details, String country, String timezone, UUID host, UUID seriesId) {
+		return createGame(details, new Place(country, timezone), host, seriesId);
+	}
+
+	/** Invites a repeating game's regulars to its next game: the last one's players. Returns how many. */
+	int inviteRegulars(Game game, Collection<UUID> userIds) {
+		return ask(game, userIds, null, null, game.getHostId(), true);
+	}
+
 	private Game createGame(GameDetails details, Place place, UUID host) {
+		return createGame(details, place, host, null);
+	}
+
+	private Game createGame(GameDetails details, Place place, UUID host, UUID seriesId) {
 		Game game;
 		if (Game.LISTED.equals(details.venueKind())) {
 			if (details.venueId() == null) {
@@ -429,6 +466,7 @@ public class GameService {
 			game.keepTime(place.timezone());
 			game.playAt(details.venueName(), details.venueArea(), details.venueMapUrl());
 		}
+		game.belongTo(seriesId);
 		games.save(game);
 
 		if (details.pitchId() != null && game.getVenueId() != null) {
@@ -460,6 +498,10 @@ public class GameService {
 	 * them. Returns how many. {@code by} is the host, or a friendly's away captain asking their players.
 	 */
 	private int ask(Game game, Collection<UUID> userIds, UUID teamId, String teamName, UUID by) {
+		return ask(game, userIds, teamId, teamName, by, false);
+	}
+
+	private int ask(Game game, Collection<UUID> userIds, UUID teamId, String teamName, UUID by, boolean regulars) {
 		var candidates = userIds.stream().filter(id -> !id.equals(game.getHostId()) && game.spotOf(id).isEmpty()).toList();
 		var real = users.findAll(candidates).keySet();
 		var invited = candidates.stream().filter(real::contains).distinct().toList();
@@ -476,7 +518,7 @@ public class GameService {
 			}
 		}
 		if (!invited.isEmpty()) {
-			events.publishEvent(new GameEvents.PlayersInvited(info(game), by, invited, share(game), game.getCurrency(), teamName));
+			events.publishEvent(new GameEvents.PlayersInvited(info(game), by, invited, share(game), game.getCurrency(), teamName, regulars));
 		}
 		return invited.size();
 	}

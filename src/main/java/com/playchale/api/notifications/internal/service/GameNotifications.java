@@ -121,13 +121,39 @@ class GameNotifications {
 		var game = e.game();
 		var host = firstName(e.invitedBy());
 		var cost = e.share() > 0 ? " · %s each".formatted(money(game, e.share())) : " · free";
-		var title = e.teamName() == null ? "%s invited you to %s".formatted(host, game.title())
+		// A repeating game's next one asks its regulars itself; "Kojo invited you" would be untrue.
+		var title = e.regulars() ? "%s is on again".formatted(game.title())
+				: e.teamName() == null ? "%s invited you to %s".formatted(host, game.title())
 				: "%s invited %s to %s".formatted(host, e.teamName(), game.title());
 		for (var player : e.playerIds()) {
 			notifications.send(player, "game-invite", title,
 					"%s · %s%s. Say if you’re in.".formatted(kickoff(game), game.venueName(), cost), "/games/%s".formatted(game.gameId()),
 					e.invitedBy());
 		}
+	}
+
+	/** The host of a repeating game hears that its next game is up, and who was asked. */
+	@EventListener
+	void on(GameEvents.SeriesGameOpened e) {
+		var game = e.game();
+		var body = e.invited() == 0 ? "Nobody from last time to invite. Share the link with your players."
+				: e.invited() == 1 ? "1 player from last time is invited." : "%d players from last time are invited.".formatted(e.invited());
+		notifications.send(game.hostId(), "series", "%s is set for %s".formatted(game.title(), kickoff(game)), body,
+				"/games/%s".formatted(game.gameId()), null);
+	}
+
+	/** A date a repeating game couldn't open, and why. The host may want to set that one up somewhere else. */
+	@EventListener
+	void on(GameEvents.SeriesDateMissed e) {
+		var when = Market.get(e.country()).formatKickoff(e.startsAt(), clock.instant(), ZoneId.of(e.timezone()));
+		notifications.send(e.hostId(), "series", "%s skips %s".formatted(e.title(), when),
+				"%s It carries on with the date after.".formatted(e.reason()), "/me/games", null);
+	}
+
+	@EventListener
+	void on(GameEvents.SeriesPaused e) {
+		notifications.send(e.hostId(), "series", "%s is paused".formatted(e.title()),
+				"%s Restart it from My games when you’re ready.".formatted(e.reason()), "/me/games", null);
 	}
 
 	@EventListener

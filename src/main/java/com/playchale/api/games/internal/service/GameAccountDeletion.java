@@ -31,14 +31,17 @@ class GameAccountDeletion implements AccountHolds {
 
 	private final GameMessageRepository messages;
 
+	private final GameSeriesService series;
+
 	private final Clock clock;
 
 	GameAccountDeletion(GameRepository games, GameInviteRepository invites, DepartureRepository departures,
-			GameMessageRepository messages, Clock clock) {
+			GameMessageRepository messages, GameSeriesService series, Clock clock) {
 		this.games = games;
 		this.invites = invites;
 		this.departures = departures;
 		this.messages = messages;
+		this.series = series;
 		this.clock = clock;
 	}
 
@@ -60,6 +63,8 @@ class GameAccountDeletion implements AccountHolds {
 		departures.forget(e.userId());
 		// And what they said in a game: the same reason, and nobody can ask them about it now.
 		messages.forget(e.userId());
+		// Their repeating games stop: nobody is left to host the next one. And their opt-outs go.
+		series.accountClosed(e.userId());
 		var now = clock.instant();
 		for (var game : games.involving(e.userId(), Limit.of(1000))) {
 			if (!game.hasStarted(now) && !game.isCancelled() && !Game.COMPLETED.equals(game.getStatus())) {

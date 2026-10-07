@@ -3,6 +3,7 @@ package com.playchale.api.games.internal.service;
 import com.playchale.api.games.api.FixtureOrganisers;
 import com.playchale.api.games.api.FixtureTeams;
 import com.playchale.api.games.api.GameResponse;
+import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -17,10 +18,12 @@ import java.util.stream.Stream;
 import com.playchale.api.games.internal.domain.Game;
 import com.playchale.api.games.internal.domain.GameInvite;
 import com.playchale.api.games.internal.domain.GameResult;
+import com.playchale.api.games.internal.domain.GameSeries;
 import com.playchale.api.games.internal.domain.Participant;
 import com.playchale.api.games.internal.domain.ResultLine;
 import com.playchale.api.games.internal.repository.GameInviteRepository;
 import com.playchale.api.games.internal.repository.GameResultRepository;
+import com.playchale.api.games.internal.repository.GameSeriesRepository;
 import com.playchale.api.teams.api.TeamCard;
 import com.playchale.api.teams.api.TeamDirectory;
 import com.playchale.api.users.api.UserDirectory;
@@ -53,8 +56,11 @@ class GameViews {
 
 	private final TeamDirectory teams;
 
+	private final GameSeriesRepository series;
+
 	GameViews(UserDirectory users, GameResultRepository results, ObjectProvider<FixtureTeams> fixtureTeams,
-			ObjectProvider<FixtureOrganisers> fixtureOrganisers, PitchBookings venues, GameInviteRepository invites, TeamDirectory teams) {
+			ObjectProvider<FixtureOrganisers> fixtureOrganisers, PitchBookings venues, GameInviteRepository invites, TeamDirectory teams,
+			GameSeriesRepository series) {
 		this.users = users;
 		this.results = results;
 		this.fixtureTeams = fixtureTeams;
@@ -62,6 +68,7 @@ class GameViews {
 		this.venues = venues;
 		this.invites = invites;
 		this.teams = teams;
+		this.series = series;
 	}
 
 	GameResponse of(Game game, UUID viewer) {
@@ -102,11 +109,30 @@ class GameViews {
 					.orElse(Set.of());
 		// Partner venues' own map links, in one query: a pin the owner adds later reaches every game there.
 		var mapLinks = venues.mapLinks(games.stream().map(Game::getVenueId).filter(Objects::nonNull).distinct().toList());
+		var seriesRefs = seriesRefs(games, viewer);
 		return games.stream().map(g -> view(g, viewer, people, resultsByGame.get(g.getId()),
 				g.getCompetitionId() == null ? Map.of() : teamsByLeague.getOrDefault(g.getCompetitionId(), Map.of()), mapLinks,
 				invites(invitesByGame.get(g.getId()), people, teamNames, viewer), friendly(g, standingTeams),
-				g.getCompetitionId() != null && organised.contains(g.getCompetitionId()))).toList();
+				g.getCompetitionId() != null && organised.contains(g.getCompetitionId()),
+				g.getSeriesId() == null ? null : seriesRefs.get(g.getSeriesId()))).toList();
 	}
+
+	/** The repeating games these games belong to, and whether the viewer asked not to be invited to each, in two queries. */
+	private Map<UUID, GameResponse.SeriesRef> seriesRefs(Collection<Game> games, UUID viewer) {
+		var ids = games.stream().map(Game::getSeriesId).filter(Objects::nonNull).distinct().toList();
+		if (ids.isEmpty()) {
+			return Map.of();
+		}
+		var optedOut = viewer == null ? Set.<UUID>of() : Set.copyOf(series.optedOut(viewer, ids));
+		return series.findAllById(ids).stream().collect(Collectors.toMap(GameSeries::getId, s -> seriesRef(s, viewer == null ? null : optedOut.contains(s.getId()))));
+	}
+
+	static GameResponse.SeriesRef seriesRef(GameSeries s, Boolean optedOut) {
+		return new GameResponse.SeriesRef(s.getId(), s.getFrequency(), s.getWeekday(), s.getWeekOfMonth(), s.getKickOff().format(KICK_OFF),
+				s.getStatus(), s.getNextStartsAt(), s.getOpensAt(), optedOut);
+	}
+
+	private static final DateTimeFormatter KICK_OFF = DateTimeFormatter.ofPattern("HH:mm");
 
 	/** Invites as the viewer sees them, or null (left out) when there are none to show. */
 	private static List<GameResponse.InviteResponse> invites(List<GameInvite> invites, Map<UUID, UserSummary> people,
@@ -137,7 +163,7 @@ class GameViews {
 
 	private GameResponse view(Game g, UUID viewer, Map<UUID, UserSummary> people, GameResult result,
 			Map<UUID, FixtureTeams.TeamCard> teams, Map<UUID, String> mapLinks, List<GameResponse.InviteResponse> invites,
-			GameResponse.FriendlyResponse friendly, boolean organiser) {
+			GameResponse.FriendlyResponse friendly, boolean organiser, GameResponse.SeriesRef series) {
 		var hostView = g.isHost(viewer);
 		var mapUrl = g.getVenueId() != null ? mapLinks.get(g.getVenueId()) : g.getMapUrl();
 		var venue = new GameResponse.VenueRef(g.getVenueKind(), g.getVenueId(), g.getVenueName(), g.getVenueArea(), g.getPitchId(),
@@ -165,7 +191,7 @@ class GameViews {
 				g.getStatus(), result == null ? null : result(result), fixture, g.getCreatedAt(), g.getCancelledAt(), g.getCancelReason(),
 				host == null ? null : host.as(viewer), players, fixtureTeams, g.share(), g.spotsLeft(),
 				host != null && viewer != null && g.spotOf(viewer).isPresent() ? host.payoutPhone() : null, invites, friendly, g.getCountry(),
-				g.getTimezone());
+				g.getTimezone(), series);
 	}
 
 	private static GameResponse.ResultResponse result(GameResult r) {
