@@ -36,6 +36,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * Signs players in with their phone number and a one-time code, and keeps them signed in with a
@@ -107,9 +108,12 @@ public class AuthService {
 
 	private final GoogleIdTokens googleTokens;
 
+	private final TransactionTemplate tx;
+
 	AuthService(SignInCodeRepository codes, SessionRepository sessions, UserDirectory users, ObjectProvider<SmsSender> sms,
 			ObjectProvider<EmailSender> email, RateLimiter limiter, SignInLimits limits, Clock clock, PlaychaleProperties properties,
-			GoogleSignInProperties google, GoogleIdTokens googleTokens) {
+			GoogleSignInProperties google, GoogleIdTokens googleTokens, TransactionTemplate tx) {
+		this.tx = tx;
 		this.codes = codes;
 		this.sessions = sessions;
 		this.users = users;
@@ -136,7 +140,6 @@ public class AuthService {
 	 *
 	 * @param connection the client's address, for the per-connection limit
 	 */
-	@Transactional
 	public Optional<String> requestCode(String typedPhone, String typedEmail, String connection) {
 		return send(recipient(typedPhone, typedEmail), connection, false);
 	}
@@ -145,7 +148,6 @@ public class AuthService {
 	 * Sends a code to a phone or an email address a signed-in player wants to sign in with too. Refused
 	 * when it's already theirs, or someone else's: two accounts can't share a way in.
 	 */
-	@Transactional
 	public Optional<String> requestCodeToAdd(UUID userId, String typedPhone, String typedEmail, String connection) {
 		var to = recipient(typedPhone, typedEmail);
 		requireFree(userId, to);
@@ -184,8 +186,39 @@ public class AuthService {
 		});
 	}
 
-	/** A new code to a phone or email, within the limits; {@code adding} words it for adding it to an account. */
+	/**
+	 * A new code to a phone or email, within the limits; {@code adding} words it for adding it to an account.
+	 *
+	 * <p>The code is saved in a short transaction of its own and sent after it has committed. Sending
+	 * is a call to Resend or the SMS provider that can take half a second; holding a database
+	 * connection through it would let a rush of sign-ins (a launch, a link going round) use up every
+	 * connection and stall the whole app. If sending fails, the code is taken back out, so it doesn't
+	 * count against the person's limits.
+	 */
 	private Optional<String> send(Recipient to, String connection, boolean adding) {
+		var issued = tx.execute(status -> issue(to, connection));
+		var message = "Your PlayChale code is %s. It expires in 10 minutes. Don’t share it.".formatted(issued.code());
+		try {
+			if (to.bySms()) {
+				sms.getObject().send(to.address(), message);
+			}
+			else {
+				email.getObject().send(signInEmail(to.address(), issued.code(), message, adding));
+			}
+		}
+		catch (RuntimeException failed) {
+			tx.executeWithoutResult(status -> codes.deleteById(issued.id()));
+			throw failed;
+		}
+		return demoCode.isEmpty() ? Optional.empty() : Optional.of(demoCode);
+	}
+
+	/** A code saved and ready to send. */
+	private record Issued(UUID id, String code) {
+	}
+
+	/** Checks the limits and saves a new code, in the caller's (short) transaction. */
+	private Issued issue(Recipient to, String connection) {
 		var now = clock.instant();
 		if (codes.countByRecipientAndCreatedAtAfter(to.address(), now.minus(Duration.ofHours(1))) >= SignInCode.MAX_PER_HOUR) {
 			throw BusinessException.conflict(to.bySms() ? "Too many codes sent to this number. Try again in an hour."
@@ -206,15 +239,8 @@ public class AuthService {
 		}
 
 		var code = demoCode.isEmpty() ? "%06d".formatted(random.nextInt(1_000_000)) : demoCode;
-		codes.save(new SignInCode(to.channel(), to.address(), hash(to.address(), code), now));
-		var message = "Your PlayChale code is %s. It expires in 10 minutes. Don’t share it.".formatted(code);
-		if (to.bySms()) {
-			sms.getObject().send(to.address(), message);
-		}
-		else {
-			email.getObject().send(signInEmail(to.address(), code, message, adding));
-		}
-		return demoCode.isEmpty() ? Optional.empty() : Optional.of(demoCode);
+		var saved = codes.save(new SignInCode(to.channel(), to.address(), hash(to.address(), code), now));
+		return new Issued(saved.getId(), code);
 	}
 
 	/** The sign-in code email, in PlayChale's look, with a plain-text copy. */

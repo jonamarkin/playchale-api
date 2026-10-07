@@ -101,6 +101,10 @@ public class SignInCode {
 		return usedAt == null && expiresAt.isAfter(now);
 	}
 
+	public UUID getId() {
+		return id;
+	}
+
 	public int getAttempts() {
 		return attempts;
 	}

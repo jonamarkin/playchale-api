@@ -47,13 +47,26 @@ class AuthServiceTest {
 
 	}
 
-	/** Keeps the last email instead of sending it. */
+	/** Keeps the last email instead of sending it, or fails like an email provider that's down. */
 	static class Mailbox implements EmailSender {
 
 		Email last;
 
+		boolean down;
+
+		/** The codes saved when the email went out: proof it went out after they were committed. */
+		long savedWhenSent = -1;
+
+		JdbcClient jdbc;
+
 		@Override
 		public void send(Email email) {
+			if (down) {
+				throw BusinessException.conflict("We couldn’t send the email just now. Please try again in a minute.");
+			}
+			if (jdbc != null) {
+				savedWhenSent = jdbc.sql("SELECT count(*) FROM sign_in_codes").query(Long.class).single();
+			}
 			this.last = email;
 		}
 
@@ -155,6 +168,30 @@ class AuthServiceTest {
 		auth.requestCode("024 455 5123", null, CONNECTION);
 		clock.advance(SignInCode.LIFETIME.plusSeconds(1));
 		assertRefused(() -> auth.signIn("024 455 5123", null, sms.code()), ErrorCode.INVALID, "That code has expired. Ask for a new one.");
+	}
+
+	@Test
+	void theEmailGoesOutAfterTheCodeIsSavedAndAFailedOneDoesntCount() {
+		mail.jdbc = jdbc;
+		try {
+			// Sent outside the transaction: another connection can already see the code.
+			auth.requestCode(null, "ama@example.com", "203.0.113.30");
+			assertThat(mail.savedWhenSent).isOne();
+
+			mail.down = true;
+			for (int i = 0; i < SignInCode.MAX_PER_HOUR; i++) {
+				assertRefused(() -> auth.requestCode(null, "ama@example.com", "203.0.113.30"), ErrorCode.CONFLICT,
+						"We couldn’t send the email just now. Please try again in a minute.");
+			}
+			mail.down = false;
+			// The failures took their codes back with them, so they didn't use up the hour's five.
+			assertThat(auth.requestCode(null, "ama@example.com", "203.0.113.30")).isEmpty();
+			assertThat(jdbc.sql("SELECT count(*) FROM sign_in_codes").query(Long.class).single()).isEqualTo(2);
+		}
+		finally {
+			mail.down = false;
+			mail.jdbc = null;
+		}
 	}
 
 	@Test
