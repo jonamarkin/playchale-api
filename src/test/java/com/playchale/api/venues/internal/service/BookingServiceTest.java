@@ -92,7 +92,7 @@ class BookingServiceTest {
 		clock.set(NOW);
 		owner = users.registerOrFind("+233244100200", "GH").id();
 		host = users.registerOrFind("+233244555123", "GH").id();
-		osu = venues.create(owner, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null,
+		osu = venues.create(owner, new VenueDetails("Halfway Line Turf", "Osu, Accra", null, null, null, null,
 				List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000),
 						new PitchDetails(null, "Pitch B", "football", "5-a-side", "turf", 25_000)),
 				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of()));
@@ -137,7 +137,7 @@ class BookingServiceTest {
 	void gamesMustFitTheOpeningHours() {
 		assertThatThrownBy(() -> bookings.bookForGame(osu.id(), pitchA, Instant.parse("2026-09-26T22:30:00Z"),
 				Instant.parse("2026-09-26T23:30:00Z"), UUID.randomUUID(), host))
-			.hasMessage("Osu Astro Turf is closed at that time.");
+			.hasMessage("Halfway Line Turf is closed at that time.");
 	}
 
 	@Test
@@ -157,7 +157,7 @@ class BookingServiceTest {
 	@Test
 	void aPitchWithBookingsToComeCantBeRemoved() {
 		bookings.bookForGame(osu.id(), pitchA, TEN, ELEVEN, UUID.randomUUID(), host);
-		var onlyB = new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null,
+		var onlyB = new VenueDetails("Halfway Line Turf", "Osu, Accra", null, null, null, null,
 				List.of(new PitchDetails(osu.pitches().get(1).id(), "Pitch B", "football", "5-a-side", "turf", 25_000)),
 				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of());
 		assertThatThrownBy(() -> venues.update(owner, osu.id(), onlyB))
@@ -173,9 +173,9 @@ class BookingServiceTest {
 
 	@Test
 	void anInPersonBookingIsNamedPricedAndPaidOrOwed() {
-		var booked = bookings.bookInPerson(owner, osu.id(), pitchA, TEN, ELEVEN, walkIn(" Labone Old Boys ", null, ""));
+		var booked = bookings.bookInPerson(owner, osu.id(), pitchA, TEN, ELEVEN, walkIn(" Back Post Rangers ", null, ""));
 		assertThat(booked.kind()).isEqualTo("in-person");
-		assertThat(booked.customerName()).isEqualTo("Labone Old Boys");
+		assertThat(booked.customerName()).isEqualTo("Back Post Rangers");
 		assertThat(booked.customerPhone()).isEqualTo("+233241112222");
 		assertThat(booked.price()).as("the pitch's rate, unless agreed otherwise").isEqualTo(25_000);
 		assertThat(booked.paidVia()).as("still owed").isNull();
@@ -188,7 +188,7 @@ class BookingServiceTest {
 		var paid = bookings.updateInPerson(owner, booked.id(), new InPersonDetails(null, null, 20_000L, "cash", "Regulars' rate"));
 		assertThat(paid.paidVia()).isEqualTo("cash");
 		assertThat(paid.price()).isEqualTo(20_000);
-		assertThat(paid.customerName()).as("left as it was").isEqualTo("Labone Old Boys");
+		assertThat(paid.customerName()).as("left as it was").isEqualTo("Back Post Rangers");
 		assertThat(bookings.updateInPerson(owner, booked.id(), new InPersonDetails(null, null, null, "", null)).paidVia())
 			.as("back to owed").isNull();
 
@@ -208,7 +208,7 @@ class BookingServiceTest {
 	@Test
 	void theManagerMovesBookingsToAnotherPitchOrTime() {
 		var pitchB = osu.pitches().get(1).id();
-		var walkIn = bookings.bookInPerson(owner, osu.id(), pitchA, TEN, ELEVEN, walkIn("Labone Old Boys", null, "momo"));
+		var walkIn = bookings.bookInPerson(owner, osu.id(), pitchA, TEN, ELEVEN, walkIn("Back Post Rangers", null, "momo"));
 		var block = bookings.block(owner, osu.id(), pitchB, TEN, ELEVEN, "Maintenance");
 
 		// Another time on the same pitch, longer too.

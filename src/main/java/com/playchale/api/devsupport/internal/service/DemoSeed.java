@@ -57,8 +57,8 @@ class DemoSeed {
 			new DemoAccount("u-kwame", "Apex Ltd\u2019s manager · a roster to submit"),
 			new DemoAccount("u-yaw", "Match official · fixtures to referee"),
 			new DemoAccount("u-abena", "Three sports · owes a share"),
-			new DemoAccount("u-adwoa", "Venue owner · Osu Astro Turf"),
-			new DemoAccount("u-sam", "Venue owner · East Legon Courts"));
+			new DemoAccount("u-adwoa", "Venue owner · Halfway Line Turf"),
+			new DemoAccount("u-sam", "Venue owner · Rebound Courts"));
 
 	void load() {
 		now = clock.instant().atZone(Market.get(Market.DEFAULT).zone());
@@ -224,7 +224,7 @@ class DemoSeed {
 	}
 
 	private static final List<Venue> VENUES = List.of(
-			new Venue("v-osu", "Osu Astro Turf", "Osu, Accra", "u-adwoa",
+			new Venue("v-osu", "Halfway Line Turf", "Osu, Accra", "u-adwoa",
 					"Two floodlit 5-a-side turfs off Oxford Street. Bibs and balls available at the gate.",
 					"Behind Danquah Circle, Osu · GA-015-3451", "+233244100200",
 					List.of(new Pitch("p-osu-a", "Pitch A", "football", "5-a-side", "turf", 25000),
@@ -232,12 +232,12 @@ class DemoSeed {
 							new Pitch("p-osu-7", "Big pitch", "football", "7-a-side", "turf", 35000)),
 					everyDay("06:00", "23:00"), new String[] { "floodlights", "changing-rooms", "water", "equipment", "toilets" },
 					"2026-01-10T09:00:00Z"),
-			new Venue("v-legon", "East Legon Courts", "East Legon, Accra", "u-sam", "Outdoor basketball and volleyball courts, resurfaced this year.",
+			new Venue("v-legon", "Rebound Courts", "East Legon, Accra", "u-sam", "Outdoor basketball and volleyball courts, resurfaced this year.",
 					"Lagos Avenue, East Legon", null,
 					List.of(new Pitch("p-legon-b1", "Basketball court", "basketball", "5v5", "hard", 15000),
 							new Pitch("p-legon-v1", "Volleyball court", "volleyball", "6v6", "sand", 12000)),
 					everyDay("06:00", "21:00"), new String[] { "floodlights", "parking", "seating" }, "2026-02-02T09:00:00Z"),
-			new Venue("v-cantonments", "Cantonments Sports Club", "Cantonments, Accra", "u-sam", "Members’ club with courts open to PlayChale bookings.",
+			new Venue("v-cantonments", "Crossbar Sports Club", "Cantonments, Accra", "u-sam", "Members’ club with courts open to PlayChale bookings.",
 					null, null,
 					List.of(new Pitch("p-cant-t1", "Court 1", "tennis", "Doubles", "hard", 12000),
 							new Pitch("p-cant-t2", "Court 2", "tennis", "Doubles", "hard", 12000),
@@ -245,7 +245,7 @@ class DemoSeed {
 					// Closed Mondays
 					new String[] { "07:00-20:00", "", "07:00-21:00", "07:00-21:00", "07:00-21:00", "07:00-21:00", "07:00-20:00" },
 					new String[] { "changing-rooms", "showers", "parking", "toilets", "seating" }, "2026-03-15T09:00:00Z"),
-			new Venue("v-tema", "Community 11 Park", "Tema", "u-adwoa", null, null, null,
+			new Venue("v-tema", "Touchline Park", "Tema", "u-adwoa", null, null, null,
 					List.of(new Pitch("p-tema-f", "Main pitch", "football", "5-a-side", "grass", 15000),
 							new Pitch("p-tema-b", "Court", "basketball", "5v5", "hard", 10000)),
 					everyDay("05:30", "20:00"), new String[] { "parking", "water" }, "2026-04-01T09:00:00Z"));
@@ -348,7 +348,7 @@ class DemoSeed {
 				4, 0, "u-abena", null, List.of("u-abena", "u-ama", "u-esi", "u-akos"));
 		list.add(withResult(volley, new Result(2, 1, List.of("u-abena", "u-ama"), List.of("u-esi", "u-akos"), Map.of(),
 				List.of(new int[] { 21, 17 }, new int[] { 18, 21 }, new int[] { 15, 12 }), "u-abena", recently(5, 17), List.of())));
-		var tennis = unlisted("g-tennis-last", "tennis", "Singles", "Morning singles", recently(4, 8), 90, "Achimota Golf Club courts",
+		var tennis = unlisted("g-tennis-last", "tennis", "Singles", "Morning singles", recently(4, 8), 90, "Baseline Courts",
 				"Achimota, Accra", 2, 8000, "u-esi", null, List.of("u-esi", "u-abena"));
 		list.add(withResult(tennis, new Result(2, 1, List.of("u-esi"), List.of("u-abena"), Map.of(),
 				List.of(new int[] { 6, 4 }, new int[] { 3, 6 }, new int[] { 7, 5 }), "u-esi", recently(4, 10), List.of())));
@@ -359,8 +359,8 @@ class DemoSeed {
 		block("b-blk-2", "v-osu", "p-osu-b", at(1, 6), at(1, 8), "Turf maintenance", at(-5, 9));
 		block("b-blk-3", "v-osu", "p-osu-7", at(2, 19), at(2, 21), "Corporate booking (invoice)", at(-4, 9));
 		// Taken at the gate or on the phone, as in the web app's seed: one paid, one still owed.
-		inPerson("b-inp-1", "v-osu", "p-osu-b", at(1, 20), at(1, 21), "Labone Old Boys", "+233241112222", 25000, "cash", at(-1, 12));
-		inPerson("b-inp-2", "v-osu", "p-osu-7", at(2, 17), at(2, 18), "Airport Hills FC", null, 35000, null, at(-1, 15));
+		inPerson("b-inp-1", "v-osu", "p-osu-b", at(1, 20), at(1, 21), "Back Post Rangers", "+233241112222", 25000, "cash", at(-1, 12));
+		inPerson("b-inp-2", "v-osu", "p-osu-7", at(2, 17), at(2, 18), "Offside Trap FC", null, 35000, null, at(-1, 15));
 	}
 
 	private static Game unpaid(Game g, Set<String> unpaid) {
@@ -589,7 +589,7 @@ class DemoSeed {
 			new Team("t-densu", "Densu Energy", "u-kojo", List.of(), "#d9b8e8"),
 			new Team("t-enyo", "Enyo Foods", "u-kojo", List.of(), "#b7d3c9"),
 			new Team("t-frontier", "Frontier Insurance", "u-kojo", List.of(), "#f5c9b3"),
-			new Team("t-gold", "Goldfields Mining", "u-kojo", List.of(), "#c9a1d8"),
+			new Team("t-gold", "Bluefinch Mining", "u-kojo", List.of(), "#c9a1d8"),
 			new Team("t-harbour", "Harbour Logistics", "u-kojo", List.of(), "#e8e8e4"));
 
 	/**
@@ -612,8 +612,8 @@ class DemoSeed {
 	}
 
 	private static final List<Place> LOCATIONS = List.of(
-			new Place("loc-accra-sports-park", "Accra Sports Park", "Airport Residential, Accra"),
-			new Place("loc-aviation-centre", "Aviation Social Centre", "Airport, Accra"));
+			new Place("loc-accra-sports-park", "Penalty Spot Park", "Airport Residential, Accra"),
+			new Place("loc-aviation-centre", "Far Post Arena", "Airport, Accra"));
 
 	/**
 	 * A hundred and twenty people from two pools of thirty, all of them different. The surname is
@@ -653,7 +653,7 @@ class DemoSeed {
 		var created = at(-40, 9);
 		jdbc.sql("""
 				INSERT INTO organisations (id, name, slug, country, primary_colour, corporate_enabled, created_by, created_at, updated_at)
-				VALUES (:id, 'Accra Corporate Games', 'accra-corporate-games', 'GH', '#0c3a3a', true, :owner, :created, :created)
+				VALUES (:id, 'Overlap Corporate Sports', 'overlap-corporate-sports', 'GH', '#0c3a3a', true, :owner, :created, :created)
 				""").param("id", id(WORKSPACE)).param("owner", id(OPERATOR)).param("created", utc(created)).update();
 		member(OPERATOR, "owner", created);
 		member("u-abena", "admin", at(-38, 9));
@@ -666,7 +666,7 @@ class DemoSeed {
 				INSERT INTO competitions (id, name, sport, format, organiser_id, organisation_id, schedule_status, player_lists, venue_kind,
 				                          venue_name, venue_area, starts_at, duration_minutes, status, created_at, updated_at)
 				VALUES (:id, 'Inter-Company League 2026', 'football', '5-a-side', :organiser, :organisation, 'published', 'optional',
-				        'unlisted', 'Accra Sports Park', 'Airport Residential, Accra', :starts, 60, 'running', :created, :created)
+				        'unlisted', 'Penalty Spot Park', 'Airport Residential, Accra', :starts, 60, 'running', :created, :created)
 				""")
 			.param("id", id(CORPORATE_LEAGUE)).param("organiser", id(OPERATOR)).param("organisation", id(WORKSPACE))
 			.param("starts", utc(at(-28, 18))).param("created", utc(at(-35, 9)))
@@ -866,7 +866,7 @@ class DemoSeed {
 				"u-kojo", minutesAgo(60 * 24 * 6 - 120), true);
 		note("u-kojo", "payment-received", "Kwame paid GH₵ 25", "Saturday 5-a-side · 5 of 7 paid", "/games/%s".formatted(id("g-osu-sat")),
 				"u-kwame", minutesAgo(130), false);
-		note("u-adwoa", "booking", "Kwame booked Pitch A", "Midweek 5s · Osu Astro Turf", "/venues/%s/manage".formatted(id("v-osu")), "u-kwame",
+		note("u-adwoa", "booking", "Kwame booked Pitch A", "Midweek 5s · Halfway Line Turf", "/venues/%s/manage".formatted(id("v-osu")), "u-kwame",
 				minutesAgo(60 * 20), false);
 	}
 

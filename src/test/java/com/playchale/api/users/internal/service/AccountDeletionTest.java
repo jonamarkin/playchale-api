@@ -176,7 +176,7 @@ class AccountDeletionTest {
 			.hasMessage("You’re hosting a game that hasn’t happened yet. Call it off first, then delete your account.");
 
 		var owner = users.registerOrFind("+233244100200", "GH").id();
-		venues.create(owner, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null,
+		venues.create(owner, new VenueDetails("Halfway Line Turf", "Osu, Accra", null, null, null, null,
 				List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000)),
 				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of()));
 		assertThatThrownBy(() -> profiles.deleteAccount(owner)).hasMessageStartingWith("You run a venue on PlayChale.");

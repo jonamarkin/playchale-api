@@ -73,16 +73,16 @@ class CorporateAccessTest {
 		outsider = TestSignIn.as(mvc, "024 455 5103");
 
 		var workspace = body(mvc.perform(post("/organisations").cookie(operator).contentType(MediaType.APPLICATION_JSON).content("""
-				{"name":"Accra Corporate Games","slug":"accra-corporate-games","country":"GH","primaryColour":"#0c3a3a"}
+				{"name":"Overlap Corporate Sports","slug":"overlap-corporate-sports","country":"GH","primaryColour":"#0c3a3a"}
 				""")).andExpect(status().isCreated()));
 		organisationId = workspace.at("/organisation/id").asString();
 		mvc.perform(patch("/organisations/" + organisationId).cookie(operator).contentType(MediaType.APPLICATION_JSON).content("""
-				{"name":"Accra Corporate Games","primaryColour":"#0c3a3a","corporateEnabled":true}
+				{"name":"Overlap Corporate Sports","primaryColour":"#0c3a3a","corporateEnabled":true}
 				""")).andExpect(status().isOk());
 
 		var competition = body(mvc.perform(post("/competitions").cookie(operator).contentType(MediaType.APPLICATION_JSON).content("""
 				{"name":"Company Champions League","sport":"football","format":"5-a-side",
-				 "venue":{"kind":"unlisted","name":"Accra Sports Park"},"startsAt":"2030-06-01T09:00:00Z",
+				 "venue":{"kind":"unlisted","name":"Penalty Spot Park"},"startsAt":"2030-06-01T09:00:00Z",
 				 "durationMinutes":60,"playerLists":"optional","organisationId":"%s"}
 				""".formatted(organisationId))).andExpect(status().isCreated()));
 		competitionId = competition.get("id").asString();
@@ -172,7 +172,7 @@ class CorporateAccessTest {
 	void aCompetitionCannotBeStartedInSomeoneElsesWorkspace() throws Exception {
 		mvc.perform(post("/competitions").cookie(outsider).contentType(MediaType.APPLICATION_JSON).content("""
 				{"name":"Piggyback League","sport":"football","format":"5-a-side",
-				 "venue":{"kind":"unlisted","name":"Accra Sports Park"},"startsAt":"2030-06-01T09:00:00Z",
+				 "venue":{"kind":"unlisted","name":"Penalty Spot Park"},"startsAt":"2030-06-01T09:00:00Z",
 				 "durationMinutes":60,"organisationId":"%s"}
 				""".formatted(organisationId))).andExpect(status().isNotFound());
 	}
@@ -199,7 +199,7 @@ class CorporateAccessTest {
 
 		// Signed out, with the link: the brand and the fixtures, and nothing a company would mind.
 		var page = mvc.perform(get("/competitions/" + competitionId)).andExpect(status().isOk())
-			.andExpect(jsonPath("$.brand.name").value("Accra Corporate Games"))
+			.andExpect(jsonPath("$.brand.name").value("Overlap Corporate Sports"))
 			.andExpect(jsonPath("$.finance").doesNotExist())
 			.andExpect(jsonPath("$.audit").doesNotExist())
 			.andExpect(jsonPath("$.rosters").doesNotExist())

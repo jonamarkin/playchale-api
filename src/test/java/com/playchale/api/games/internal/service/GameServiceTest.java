@@ -155,20 +155,20 @@ class GameServiceTest {
 		// A partner venue: its own pin, looked up, so one the owner adds later reaches games already made.
 		var hours = Collections.nCopies(7, new DayHours("06:00", "23:00"));
 		var pitches = List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000));
-		var osu = venues.create(adwoa, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null, pitches, hours, List.of()));
+		var osu = venues.create(adwoa, new VenueDetails("Halfway Line Turf", "Osu, Accra", null, null, null, null, pitches, hours, List.of()));
 		var atOsu = games.create(new GameDetails("football", "5-a-side", null, KICKOFF, 60, "listed", osu.id(), null, null, null,
 				"https://maps.app.goo.gl/IgnoredForPartners", 10, 0, null, "public", null), kwame);
 		assertThat(atOsu.venue().mapUrl()).isNull();
 
 		var samePitches = List.of(new PitchDetails(osu.pitches().getFirst().id(), "Pitch A", "football", "5-a-side", "turf", 25_000));
-		venues.update(adwoa, osu.id(), new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, "5.5571, -0.1818", null, samePitches,
+		venues.update(adwoa, osu.id(), new VenueDetails("Halfway Line Turf", "Osu, Accra", null, null, "5.5571, -0.1818", null, samePitches,
 				hours, List.of()));
 		assertThat(games.get(atOsu.id(), kojo).venue().mapUrl()).isEqualTo("https://www.google.com/maps/search/?api=1&query=5.5571,-0.1818");
 	}
 
 	@Test
 	void theVenueMovesAGameAndEveryoneInItHears() {
-		var osu = venues.create(adwoa, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null,
+		var osu = venues.create(adwoa, new VenueDetails("Halfway Line Turf", "Osu, Accra", null, null, null, null,
 				List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000),
 						new PitchDetails(null, "Pitch B", "football", "5-a-side", "turf", 25_000),
 						new PitchDetails(null, "Court", "basketball", "5v5", "hard", 15_000)),
@@ -188,7 +188,7 @@ class GameServiceTest {
 		assertThat(moved.startsAt()).isEqualTo(later);
 		assertThat(titlesFor(kwame)).contains("Saturday 5s has moved");
 		assertThat(titlesFor(kojo)).containsExactly("Saturday 5s has moved");
-		assertThat(notifications.list(kojo).getFirst().body()).startsWith("Osu Astro Turf moved it to Pitch B, ");
+		assertThat(notifications.list(kojo).getFirst().body()).startsWith("Halfway Line Turf moved it to Pitch B, ");
 
 		// A game keeps its length and its sport, within opening hours.
 		assertThatThrownBy(() -> bookings.move(adwoa, booking, pitchB, later, later.plusSeconds(7200)))
@@ -202,7 +202,7 @@ class GameServiceTest {
 
 	@Test
 	void aGameOnAPartnerPitchBooksItAndCallingItOffReleasesIt() {
-		var osu = venues.create(adwoa, new VenueDetails("Osu Astro Turf", "Osu, Accra", null, null, null, null,
+		var osu = venues.create(adwoa, new VenueDetails("Halfway Line Turf", "Osu, Accra", null, null, null, null,
 				List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000)),
 				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of()));
 		var pitch = osu.pitches().getFirst().id();
@@ -212,7 +212,7 @@ class GameServiceTest {
 		var game = games.create(details, kwame);
 		assertThat(game.venue().pitchName()).isEqualTo("Pitch A");
 		assertThat(game.pricing()).as("a booked pitch's price is shared").isEqualTo("split");
-		assertThat(game.venue().name()).isEqualTo("Osu Astro Turf");
+		assertThat(game.venue().name()).isEqualTo("Halfway Line Turf");
 		assertThat(game.share()).isEqualTo(2_500);
 		assertThat(titlesFor(adwoa)).containsExactly("Kwame booked Pitch A");
 		assertThat(bookings.schedule(adwoa, osu.id(), KICKOFF, KICKOFF.plusSeconds(3600)).getFirst().gameTitle()).isEqualTo("5-a-side football");

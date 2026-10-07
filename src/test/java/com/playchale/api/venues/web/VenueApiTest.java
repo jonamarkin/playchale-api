@@ -35,7 +35,7 @@ class VenueApiTest {
 
 	/** What the web app's venue form sends: Sundays closed. */
 	private static final String OSU = """
-			{"name":"Osu Astro Turf","area":"Osu, Accra","description":"Two floodlit turfs","phone":"024 410 0200",
+			{"name":"Halfway Line Turf","area":"Osu, Accra","description":"Two floodlit turfs","phone":"024 410 0200",
 			 "pitches":[{"name":"Pitch A","sport":"football","format":"5-a-side","surface":"turf","pricePerHour":25000}],
 			 "hours":[null,{"open":"06:00","close":"23:00"},{"open":"06:00","close":"23:00"},{"open":"06:00","close":"23:00"},
 			          {"open":"06:00","close":"23:00"},{"open":"06:00","close":"23:00"},{"open":"06:00","close":"24:00"}],

@@ -21,7 +21,7 @@ class MapLinkTest {
 
 	@Test
 	void theLinkIsTakenFromWhatGoogleMapsSharesAndHttpIsUpgraded() {
-		assertThat(MapLink.normalise("Osu Astro Turf\nhttps://maps.app.goo.gl/Xy12AbCd")).isEqualTo("https://maps.app.goo.gl/Xy12AbCd");
+		assertThat(MapLink.normalise("Halfway Line Turf\nhttps://maps.app.goo.gl/Xy12AbCd")).isEqualTo("https://maps.app.goo.gl/Xy12AbCd");
 		assertThat(MapLink.normalise("http://maps.app.goo.gl/Xy12AbCd")).isEqualTo("https://maps.app.goo.gl/Xy12AbCd");
 	}
 
