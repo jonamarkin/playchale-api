@@ -11,9 +11,12 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -39,6 +42,35 @@ class RequestLimitsTest {
 		mvc.perform(post("/auth/codes").contentType(MediaType.APPLICATION_JSON).content(new byte[1024 * 1024 + 1]))
 			.andExpect(status().isPayloadTooLarge())
 			.andExpect(jsonPath("$.error.code").value("invalid"));
+	}
+
+	@Test
+	void oneAddressCanOnlyAskSoFastAndNobodyElseIsSlowed() throws Exception {
+		RequestPostProcessor flooding = r -> {
+			r.setRemoteAddr("203.0.113.50");
+			return r;
+		};
+		int allowed = 0;
+		for (int i = 0; i < 120; i++) {
+			var status = mvc.perform(get("/sports").with(flooding)).andReturn().getResponse().getStatus();
+			if (status == 200) {
+				allowed++;
+			}
+			else {
+				assertThat(status).isEqualTo(429);
+			}
+		}
+		assertThat(allowed).as("the burst, and a little refill while the loop ran").isBetween(60, 100);
+		mvc.perform(get("/sports").with(flooding))
+			.andExpect(status().isTooManyRequests())
+			.andExpect(header().string("Retry-After", "2"))
+			.andExpect(jsonPath("$.error.message").value("Too many requests at once. Wait a moment and try again."));
+
+		mvc.perform(get("/sports").with(r -> {
+			r.setRemoteAddr("203.0.113.51");
+			return r;
+		})).andExpect(status().isOk());
+		mvc.perform(get("/actuator/health").with(flooding)).andExpect(status().isOk());
 	}
 
 	@Test

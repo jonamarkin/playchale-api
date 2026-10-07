@@ -305,13 +305,16 @@ class CompetitionViews {
 	/** Teams in a league as fixtures show them: no squad links. */
 	Map<UUID, FixtureTeams.TeamCard> cards(UUID competitionId, Collection<UUID> teamIds) {
 		var cards = directory.findAll(teamIds);
+		// Every team's squad in one go, not a query (or two) per team: Discover can show a dozen.
+		var squads = entries.findAllById(teamIds.stream().map(t -> new EntryId(competitionId, t)).toList()).stream()
+			.collect(Collectors.toMap(Entry::getTeamId, Entry::playerIds));
 		var out = new LinkedHashMap<UUID, FixtureTeams.TeamCard>();
 		for (var teamId : teamIds) {
 			var t = cards.get(teamId);
 			if (t == null) {
 				continue;
 			}
-			var squad = entries.findById(new EntryId(competitionId, teamId)).map(Entry::playerIds).orElse(List.of());
+			var squad = squads.getOrDefault(teamId, List.of());
 			out.put(teamId, new FixtureTeams.TeamCard(t.id(), competitionId, t.name(), t.captainId(), squad, t.tint(), "", t.createdAt()));
 		}
 		return out;

@@ -2,6 +2,7 @@ package com.playchale.api.teams.internal.service;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -26,6 +27,7 @@ import com.playchale.api.users.api.UserDirectory;
 import com.playchale.api.users.api.UserSummary;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,8 +52,11 @@ public class TeamService implements TeamDirectory, TeamMemberships {
 
 	private final Clock clock;
 
+	private final JdbcClient jdbc;
+
 	TeamService(TeamRepository teams, JoinRequestRepository requests, UserDirectory users, ObjectProvider<TeamLeagues> leagues,
-			ObjectProvider<TeamGames> games, ApplicationEventPublisher events, Clock clock) {
+			ObjectProvider<TeamGames> games, ApplicationEventPublisher events, Clock clock, JdbcClient jdbc) {
+		this.jdbc = jdbc;
 		this.teams = teams;
 		this.requests = requests;
 		this.users = users;
@@ -116,7 +121,10 @@ public class TeamService implements TeamDirectory, TeamMemberships {
 	@Transactional
 	public TeamResponse setLogo(UUID id, byte[] image, String contentType, UUID me) {
 		var team = captained(id, me);
-		team.wearCrest(image, contentType, clock.instant());
+		var type = team.wearCrest(image, contentType, clock.instant());
+		// All three together: the table insists a crest is whole (teams_logo_whole).
+		jdbc.sql("UPDATE teams SET logo = :logo, logo_type = :type, logo_version = :version WHERE id = :id").param("logo", image)
+			.param("type", type).param("version", team.getLogoVersion().atOffset(ZoneOffset.UTC)).param("id", id).update();
 		return view(team, me);
 	}
 
@@ -125,14 +133,16 @@ public class TeamService implements TeamDirectory, TeamMemberships {
 	public TeamResponse removeLogo(UUID id, UUID me) {
 		var team = captained(id, me);
 		team.dropCrest();
+		jdbc.sql("UPDATE teams SET logo = NULL, logo_type = NULL, logo_version = NULL WHERE id = :id").param("id", id).update();
 		return view(team, me);
 	}
 
 	/** The crest itself, for showing: anyone can see it, as the team's name and colour are public. */
 	@Transactional(readOnly = true)
 	public Optional<Crest> logo(UUID id) {
-		return teams.findById(id).filter(t -> t.getLogo() != null)
-			.map(t -> new Crest(t.getLogo(), t.getLogoType(), t.getLogoVersion()));
+		return jdbc.sql("SELECT logo, logo_type, logo_version FROM teams WHERE id = :id AND logo IS NOT NULL").param("id", id)
+			.query((rs, n) -> new Crest(rs.getBytes(1), rs.getString(2), rs.getTimestamp(3) == null ? null : rs.getTimestamp(3).toInstant()))
+			.optional();
 	}
 
 	/** A team's crest as it's served: the bytes, what they are, and when they last changed. */

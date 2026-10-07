@@ -47,10 +47,12 @@ public class Team {
 	/** Goes in the join link. Only the captain ever sees it (and a league organiser running its squad). */
 	private String joinToken;
 
-	/** The team's crest, as uploaded: small, and only an image type the browser can show (a bytea column). */
-	private byte[] logo;
-
-	private String logoType;
+	/*
+	 * The crest's bytes (logo, logo_type) live in this table but not in this entity: a team is
+	 * loaded for every page that names it (a league, a fixture on Discover), and a hundred kilobytes
+	 * of image each time would make all of those slow and cost database traffic. TeamService reads
+	 * and writes them directly, only when a crest is served or changed.
+	 */
 
 	/** When the crest last changed, which the web app puts in its URL so a new one isn't cached over. */
 	private Instant logoVersion;
@@ -76,9 +78,10 @@ public class Team {
 
 	/**
 	 * Puts a crest on the team. The bytes have to be an image of the type they claim, so a file
-	 * renamed to .png can't be served back to someone's browser as one.
+	 * renamed to .png can't be served back to someone's browser as one. Returns the type to store
+	 * them as; storing them is the caller's (see the note on the fields).
 	 */
-	public void wearCrest(byte[] image, String contentType, Instant now) {
+	public String wearCrest(byte[] image, String contentType, Instant now) {
 		var type = contentType == null ? "" : contentType.split(";")[0].strip().toLowerCase(Locale.ROOT);
 		var magic = LOGO_TYPES.get(type);
 		if (magic == null) {
@@ -93,24 +96,13 @@ public class Team {
 		if (image.length < magic.length || !Arrays.equals(Arrays.copyOf(image, magic.length), magic)) {
 			throw BusinessException.invalid("That file isn’t the image it claims to be.");
 		}
-		this.logo = image.clone();
-		this.logoType = type;
 		this.logoVersion = now;
+		return type;
 	}
 
 	/** Back to the plain coloured crest. */
 	public void dropCrest() {
-		this.logo = null;
-		this.logoType = null;
 		this.logoVersion = null;
-	}
-
-	public byte[] getLogo() {
-		return logo == null ? null : logo.clone();
-	}
-
-	public String getLogoType() {
-		return logoType;
 	}
 
 	public Instant getLogoVersion() {
