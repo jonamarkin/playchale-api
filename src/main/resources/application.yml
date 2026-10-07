@@ -26,6 +26,12 @@ spring:
       enabled: true
   flyway:
     locations: classpath:db/migration
+  datasource:
+    hikari:
+      # How long a request waits for a free database connection before it gives up. The default, 30
+      # seconds, lets requests pile up for half a minute when the app is overloaded; failing sooner
+      # keeps it answering, and a 10-second wait is already far too long for a person.
+      connection-timeout: 10000 # milliseconds
   jpa:
     properties:
       # When a list of rows each needs a related row, load those in batches of 50 rather than one
