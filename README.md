@@ -33,7 +33,8 @@ and results already recorded; it exists only in the dev profile.
 ## Architecture
 
 A **modular monolith**: one Spring Boot service, split into modules by business capability
-(`auth`, `users`, `profiles`, `catalog`, `venues`, `games`, `notifications`, `payments`, `competitions`). Every
+(`auth`, `users`, `profiles`, `catalog`, `venues`, `games`, `notifications`, `payments`, `competitions`,
+`organisations`, `events`). Every
 module has the same shape:
 
 ```
@@ -49,7 +50,8 @@ module has the same shape:
 Plus the pieces every module shares:
 
 ```
-shared/        settings, the error shape, CORS, request IDs and logging, JPA base classes
+shared/        settings, the error shape, CORS, request IDs and logging, JPA base classes, and the
+               pure draw algorithms (shared/draws: round robin, knockout) competitions and events both use
 integration/   outside systems behind interfaces: SMS, email (Resend) and payments (each with a dev stand-in)
 market/        per-country rules: phone formats, currency, timezone
 devsupport/    /dev endpoints for the web app's end-to-end tests (dev profile only)
@@ -297,6 +299,42 @@ game's players (not guests, and not anyone who opted out). Nobody gets a spot wi
 - Changes apply from the next game opened; the one already open stays as players said yes to it.
 - Each series is locked while it opens and `games_series_once` refuses a second game on the same date,
   so any number of copies of the API can run the opener.
+
+## Events
+
+A church games day or a school's inter-house sports: many games at once (football and volleyball, but
+also table tennis, oware, ludo, draughts, races and quizzes), the people taking part, and the groups
+they compete for (fellowships, houses, classes). An event belongs to an organisation workspace and
+isn't gated by `corporate_enabled`.
+
+- **Who does what.** The workspace's owner and admins run it. A coordinator (any workspace member, an
+  official's seat being the usual one) runs only the games they're given: entries, draw and results.
+  Anyone else with a seat, and anyone who joined with their own account, can look. Everyone else gets
+  "not found".
+- **People** are mostly names an admin typed or pasted (`source = admin`); people with accounts join
+  through the event's link (`source = link`). The same name twice is allowed.
+- **Games** come from a ready-made list (`events/internal/domain/Disciplines`, mirrored in the web
+  app's `data/disciplines.ts`) or are custom. `GameSettings` fills in what the admin left out and
+  refuses settings a draw or result couldn't handle. How a game is played can't change after its draw.
+- **Entries**: a single game takes people straight in; a pair or team game takes their interest, and
+  a coordinator makes the pairs and teams ("one team per group" makes a team named after each group
+  from its interested people). The database holds a person to one entry per game.
+- **Account deletion** unlinks the account. A name typed by an admin stays; a self-joined name
+  becomes "Former participant".
+
+| Method and path | Does |
+|---|---|
+| `GET\|POST /organisations/{id}/events` | A workspace's events; create one (owner or admin) |
+| `GET /me/events` | Events you run, coordinate in or take part in |
+| `GET\|PATCH /events/{id}` | The whole event (groups, people, games, entries); change its details. Every change answers with the whole event |
+| `POST /events/{id}/cancel`, `/join-link`, `/board-link` | Call it off; replace the join or board link |
+| `POST /events/{id}/groups`, `PATCH\|DELETE …/groups/{groupId}` | Groups |
+| `POST /events/{id}/people` `{"people": [{"name", "groupId"?}]}`, `PATCH\|DELETE …/people/{personId}` | Names, one or a pasted list |
+| `GET\|POST /events/join/{code}` | The event behind a join link; join, or change your group and games |
+| `PUT\|DELETE /events/{id}/games/{gameId}/me` | The signed-in player into or out of one game |
+| `POST /events/{id}/games`, `PATCH\|DELETE …/games/{gameId}` | Games |
+| `PUT /events/{id}/games/{gameId}/coordinators` `{"userIds"}` | Who runs a game |
+| `POST …/games/{gameId}/entries`, `…/entries/by-group`, `PATCH\|DELETE …/entries/{entryId}` | Entries, and a team per group |
 
 ## Showing up
 
