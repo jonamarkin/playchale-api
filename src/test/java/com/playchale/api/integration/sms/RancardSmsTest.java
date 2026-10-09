@@ -50,6 +50,24 @@ class RancardSmsTest {
 	}
 
 	@Test
+	void anAnswerThatDoesntSayNoIsATextOnItsWay() {
+		// However Rancard words a success, a sent code must never be reported as a failure: people would ask for another, and another.
+		for (var sent : new String[] {
+				"{\"code\":202,\"message\":\"SMS request is being processed\",\"result\":{\"campaignId\":\"a04c4103\"}}",
+				"{\"code\":\"200\",\"success\":\"true\",\"message\":\"SMS request is being processed\"}",
+				"{\"status\":\"SUCCESS\",\"message\":\"SMS request is being processed\"}",
+				"SMS request is being processed" }) {
+			var builder = RestClient.builder();
+			var rancard = MockRestServiceServer.bindTo(builder).build();
+			var sender = new RancardSmsSender(builder, RANCARD, JsonMapper.builder().build());
+			rancard.expect(requestTo("https://bulkmessagingapi.rancard.com/api/v1/sms/public/sendMessage"))
+				.andRespond(withSuccess(sent, MediaType.APPLICATION_JSON));
+			sender.send("+233241234567", "Your PlayChale code is 123456");
+			rancard.verify();
+		}
+	}
+
+	@Test
 	void aRefusalTellsThePersonToTryAgainEvenWhenRancardAnswers200() {
 		var builder = RestClient.builder();
 		var rancard = MockRestServiceServer.bindTo(builder).build();

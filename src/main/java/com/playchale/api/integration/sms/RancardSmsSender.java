@@ -2,6 +2,7 @@ package com.playchale.api.integration.sms;
 
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 import com.playchale.api.shared.error.BusinessException;
@@ -10,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -70,11 +72,43 @@ class RancardSmsSender implements SmsSender {
 			log.error("Couldn't reach Rancard to text {}: {}", masked(msisdn), e.toString());
 			throw couldNotSend();
 		}
-		// Rancard can answer 200 and still refuse, with "success": false.
-		if (!json.readTree(answer == null ? "{}" : answer).path("success").asBoolean(false)) {
-			log.error("Rancard refused a text to {}: {}", masked(msisdn), reason(answer));
+		JsonNode said;
+		try {
+			said = json.readTree(answer == null ? "{}" : answer);
+		}
+		catch (RuntimeException notJson) {
+			// It answered 200: the text is on its way, whatever the words.
+			return;
+		}
+		if (refused(said)) {
+			log.error("Rancard refused a text to {}: code {}, success {}: {}", masked(msisdn), said.path("code"), said.path("success"),
+					reason(answer));
 			throw couldNotSend();
 		}
+	}
+
+	/**
+	 * Whether Rancard's answer says no. It answers 200 either way: a refusal says {@code "success":
+	 * false} or carries an error code (400 and up). Anything else is a text on its way, however it's
+	 * worded ("SMS request is being processed"): calling a sent code a failure would have people ask
+	 * for code after code.
+	 */
+	static boolean refused(JsonNode answer) {
+		var success = answer.path("success");
+		var saysNo = success.isBoolean() ? !success.booleanValue() : success.isString() && "false".equalsIgnoreCase(success.asString().strip());
+		var code = answer.path("code");
+		int number;
+		try {
+			number = code.isNumber() ? code.asInt() : code.isString() ? Integer.parseInt(code.asString().strip()) : 0;
+		}
+		catch (NumberFormatException notANumber) {
+			number = 0;
+		}
+		// Its own words for a text queued to go out outweigh the rest of the answer.
+		if (answer.path("message").asString("").toLowerCase(Locale.ROOT).contains("being processed")) {
+			return false;
+		}
+		return saysNo || number >= 400;
 	}
 
 	/** Rancard's own words about why, from its answer: never the text, which only a success echoes back. */
