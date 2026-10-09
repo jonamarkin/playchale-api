@@ -48,8 +48,8 @@ public record Pin(Double latitude, Double longitude, String placeId, @Column(nam
 
 	/**
 	 * The pin to keep for what the app sent: null for none. The same pin sent back (an edit that left
-	 * it alone) keeps its {@code pinnedAt}, so a place's coordinates aren't kept longer than allowed
-	 * by saving the form again.
+	 * it alone) keeps its {@code pinnedAt}, and so does a place's sent with its own (one found on
+	 * PlayChale), so a place's coordinates aren't kept longer than allowed by saving or copying them.
 	 *
 	 * @throws BusinessException (invalid) for coordinates off the map, a malformed place ID or an unknown source
 	 */
@@ -75,28 +75,13 @@ public record Pin(Double latitude, Double longitude, String placeId, @Column(nam
 				&& Objects.equals(current.placeId(), placeId) && current.source().equals(source)) {
 			return current;
 		}
-		return new Pin(latitude, longitude, placeId, source, now);
+		var looked = PLACE.equals(source) && sent.pinnedAt() != null && sent.pinnedAt().isBefore(now) ? sent.pinnedAt() : now;
+		return new Pin(latitude, longitude, placeId, source, looked);
 	}
 
-	/** A pin as the app sent it, not checked yet: {@link #settled} checks it when it's kept. */
-	public static Pin sent(MapPin sent) {
-		return sent == null ? null : new Pin(sent.lat(), sent.lng(), sent.placeId(), sent.source(), null);
-	}
-
-	/**
-	 * The pin to keep: one copied from where it was kept before (a repeating game's, last week's game)
-	 * as it is, so its age carries on; one just sent ({@link #sent}), checked and dated now.
-	 */
-	public static Pin settled(Pin pin, Instant now) {
-		if (pin == null || pin.pinnedAt() != null) {
-			return pin;
-		}
-		return from(new MapPin(pin.latitude(), pin.longitude(), pin.placeId(), pin.source()), null, now);
-	}
-
-	/** As the web app's MapPin, or null when there are no coordinates to show. */
+	/** As the web app's MapPin, or null when there are no coordinates to show. A place's says how old its coordinates are. */
 	public MapPin view() {
-		return located() ? new MapPin(latitude, longitude, placeId, source) : null;
+		return located() ? new MapPin(latitude, longitude, placeId, source, PLACE.equals(source) ? pinnedAt : null) : null;
 	}
 
 	/** Kilometres between two points, along the ground. */

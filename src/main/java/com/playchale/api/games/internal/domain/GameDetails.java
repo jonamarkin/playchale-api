@@ -14,8 +14,8 @@ import com.playchale.api.shared.maps.Pin;
  * @param totalCost the whole cost, minor units; 0 for a free game
  * @param pricing   "split" (the total shared by the spots) or "per-player" (the total is the price
  *                  times the spots); null means "split"
- * @param venuePin  where an unlisted venue is on the map: as the app sent it ({@link Pin#sent}), or
- *                  as it was kept on the game this one repeats
+ * @param venuePin  where an unlisted venue is on the map: as sent (checked and dated), or as it was
+ *                  kept on the game this one repeats
  */
 public record GameDetails(String sport, String format, String title, Instant startsAt, int durationMinutes,
 		String venueKind, UUID venueId, UUID pitchId, String venueName, String venueArea, String venueMapUrl, int capacity, long totalCost,

@@ -1,12 +1,15 @@
 package com.playchale.api.games.web;
 
+import java.time.Clock;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import com.playchale.api.games.internal.service.GameFilters;
 import com.playchale.api.games.api.GameResponse;
+import com.playchale.api.games.api.PlaceResponse;
 import com.playchale.api.games.internal.service.GameSeriesService;
+import com.playchale.api.games.internal.service.GamePlaces;
 import com.playchale.api.games.internal.service.GameService;
 import com.playchale.api.games.internal.service.ResultService;
 import com.playchale.api.games.api.GameMessageResponse;
@@ -54,11 +57,17 @@ class GameController {
 
 	private final GameSeriesService series;
 
-	GameController(GameService games, ResultService results, GameTalk talk, GameSeriesService series) {
+	private final Clock clock;
+
+	private final GamePlaces places;
+
+	GameController(GameService games, ResultService results, GameTalk talk, GameSeriesService series, Clock clock, GamePlaces places) {
 		this.games = games;
 		this.results = results;
 		this.talk = talk;
 		this.series = series;
+		this.clock = clock;
+		this.places = places;
 	}
 
 	/** games.list */
@@ -67,6 +76,12 @@ class GameController {
 			@RequestParam(required = false) String when, @RequestParam(required = false) String country,
 			@RequestParam(required = false) String zone, @RequestParam(required = false) String near, Optional<CurrentUser> me) {
 		return games.list(new GameFilters(query, sport, when, country, zone, near), me.map(CurrentUser::id).orElse(null));
+	}
+
+	/** games.places: places hosts have named and pinned before, to find before asking Google. */
+	@GetMapping("/places")
+	List<PlaceResponse> places(@RequestParam(required = false) String query, @RequestParam(required = false) String country) {
+		return places.search(query, country);
 	}
 
 	/** games.mine */
@@ -93,12 +108,12 @@ class GameController {
 	GameResponse create(CurrentUser me, @Valid @RequestBody NewGameRequest request) {
 		var repeats = request.repeats();
 		if (repeats == null || repeats.frequency() == null) {
-			return games.create(request.toDetails(), request.timezone(), request.homeTeamId(), request.awayTeamId(), me.id());
+			return games.create(request.toDetails(clock.instant()), request.timezone(), request.homeTeamId(), request.awayTeamId(), me.id());
 		}
 		if (request.homeTeamId() != null || request.awayTeamId() != null) {
 			throw BusinessException.invalid("A team game can’t repeat on its own. Set it up once, then use “Same again next week”.");
 		}
-		return series.start(request.toDetails(), request.timezone(), repeats.frequency(), repeats.weekOfMonth(), me.id());
+		return series.start(request.toDetails(clock.instant()), request.timezone(), repeats.frequency(), repeats.weekOfMonth(), me.id());
 	}
 
 	/** games.repeat */

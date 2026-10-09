@@ -315,9 +315,16 @@ small maps on pages are free), but Google needs a billing account on file.
 2. Turn on three APIs (APIs & Services → Library): **Maps JavaScript API**, **Places API (New)**
    and **Maps Embed API**.
 3. Create the browser key (APIs & Services → Credentials → Create credentials → API key). Restrict
-   it: Application restrictions → Websites → `https://playchale.com/*`; API restrictions → the three
-   APIs above. Put it in `.env.web` as `NUXT_PUBLIC_GOOGLE_MAPS_KEY`, then `docker compose up -d web`.
-   This key is meant to be seen by browsers; the website restriction is what protects it.
+   it: Application restrictions → Websites → add `https://playchale.com/*` (with `https://`; a
+   `*.playchale.com` entry doesn't cover playchale.com itself, so add `https://www.playchale.com/*`
+   separately if www is used); API restrictions → Maps JavaScript API and Places API (New). Put it
+   in `.env.web` as `NUXT_PUBLIC_GOOGLE_MAPS_KEY`, then `docker compose up -d web`. This key is meant
+   to be seen by browsers; the website restriction is what protects it. The browser's console says
+   `RefererNotAllowedMapError` when the address in it isn't on the list.
+   For the small maps on pages, Google recommends a key of its own: create a third key with the same
+   website restriction and only the Maps Embed API, and put it in `.env.web` as
+   `NUXT_PUBLIC_GOOGLE_MAPS_EMBED_KEY`. Without it, those maps use the browser key (then add the Maps
+   Embed API to that key's API restrictions).
 4. Create the server key the same way, restricted instead to the server's IP address and to the
    **Places API (New)** only. Put it in `.env.api` as `PLAYCHALE_GOOGLE_MAPS_KEY`, then
    `docker compose up -d api`. It looks places up again so their coordinates are never kept longer
@@ -326,8 +333,9 @@ small maps on pages are free), but Google needs a billing account on file.
    cap the requests per day at about 300 for Maps JavaScript API map loads and for Places API (New)
    autocomplete.
 
-Check: on the live site, listing a venue shows "Search Google Maps" under "On the map", and a
-venue's page shows its map.
+Check: on the live site, typing a place under "On the map" when listing a venue shows places from
+Google Maps (marked "Google Maps"), picking one shows a map to move under the pin, and the venue's
+page shows its map.
 
 ## Phone notifications
 

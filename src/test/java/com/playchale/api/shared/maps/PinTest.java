@@ -46,12 +46,16 @@ class PinTest {
 	}
 
 	@Test
-	void aPinCopiedFromAnotherGameKeepsItsAgeAndAFreshOneIsCheckedAndDated() {
-		var kept = Pin.from(new MapPin(5.564, -0.1691, LABONE, "place"), null, MONDAY);
-		assertThat(Pin.settled(kept, LATER)).isSameAs(kept);
-		var sent = Pin.settled(Pin.sent(new MapPin(5.564, -0.1691, null, "own")), LATER);
-		assertThat(sent.pinnedAt()).isEqualTo(LATER);
-		assertThatThrownBy(() -> Pin.settled(Pin.sent(new MapPin(95.0, 0.0, null, "own")), LATER)).isInstanceOf(BusinessException.class);
+	void aPlaceFoundOnPlayChaleKeepsTheAgeOfItsCoordinates() {
+		// Looked up with Google on Monday for one game, used for another later: still Monday's.
+		var reused = Pin.from(new MapPin(5.564, -0.1691, LABONE, "place", MONDAY), null, LATER);
+		assertThat(reused.pinnedAt()).isEqualTo(MONDAY);
+		assertThat(reused.view().pinnedAt()).isEqualTo(MONDAY);
+		// An age from the future, or on a spot of someone's own, counts for nothing.
+		assertThat(Pin.from(new MapPin(5.564, -0.1691, LABONE, "place", LATER.plusSeconds(60)), null, LATER).pinnedAt()).isEqualTo(LATER);
+		var own = Pin.from(new MapPin(5.564, -0.1691, null, "own", MONDAY), null, LATER);
+		assertThat(own.pinnedAt()).isEqualTo(LATER);
+		assertThat(own.view().pinnedAt()).isNull();
 	}
 
 	@Test

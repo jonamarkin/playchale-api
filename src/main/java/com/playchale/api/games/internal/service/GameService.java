@@ -631,7 +631,7 @@ public class GameService {
 		else {
 			game = new Game(details, host, Market.get(place.country()), clock.instant());
 			game.keepTime(place.timezone());
-			game.playAt(details.venueName(), details.venueArea(), details.venueMapUrl(), details.venuePin(), clock.instant());
+			game.playAt(details.venueName(), details.venueArea(), details.venueMapUrl(), details.venuePin());
 		}
 		game.belongTo(seriesId);
 		games.save(game);

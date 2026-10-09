@@ -358,14 +358,14 @@ public class Game extends AuditableEntity {
 	 * a Google Maps, Apple Maps or Waze link, or coordinates.
 	 */
 	public void playAt(String venueName, String venueArea, String mapUrl) {
-		playAt(venueName, venueArea, mapUrl, null, null);
+		playAt(venueName, venueArea, mapUrl, null);
 	}
 
 	/**
 	 * Anywhere the host types, with where it is on the map: a {@code pin} (as sent, or kept from the
 	 * game this one repeats) gives the directions link in place of {@code mapUrl}.
 	 */
-	public void playAt(String venueName, String venueArea, String mapUrl, Pin pin, Instant now) {
+	public void playAt(String venueName, String venueArea, String mapUrl, Pin pin) {
 		var name = venueName == null ? "" : venueName.strip();
 		if (name.isEmpty() || name.length() > 120) {
 			throw BusinessException.invalid("Say where you’re playing.");
@@ -374,7 +374,7 @@ public class Game extends AuditableEntity {
 		this.venueKind = UNLISTED;
 		this.venueName = name;
 		this.venueArea = area.isEmpty() ? null : area;
-		this.pin = Pin.settled(pin, now);
+		this.pin = pin;
 		this.mapUrl = this.pin != null && this.pin.located() ? this.pin.directions(area.isEmpty() ? name : name + ", " + area)
 				: MapLink.normalise(mapUrl);
 	}

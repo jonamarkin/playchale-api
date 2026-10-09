@@ -1,8 +1,10 @@
 package com.playchale.api.shared.maps;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.UUID;
 
@@ -176,6 +178,46 @@ class MapPinsApiTest {
 		send(patch("/events/" + id), """
 				{"name":"Hillview Games Day 2030","startsOn":"2030-06-01","venue":{"pin":{"lat":5.7068,"lng":-0.1665}}}
 				""").andExpect(status().isUnprocessableContent());
+	}
+
+	@Test
+	void placesHostsHavePinnedAreFoundBeforeAnyoneAsksGoogle() throws Exception {
+		game("After-work 7s", "Labone Astro", "{\"lat\":5.564,\"lng\":-0.1691,\"source\":\"own\"}");
+		game("Friday 5s", "labone astro ", "{\"lat\":5.56401,\"lng\":-0.16912,\"source\":\"own\"}");
+		game("Beach volley", "Labadi Beach", "{\"lat\":5.5606,\"lng\":-0.1497,\"placeId\":\"ChIJlabadiBeach000001\",\"source\":\"place\"}");
+		ok(send(post("/games"), GAME.formatted("Secret 5s", """
+				{"kind":"unlisted","name":"Labone private court","pin":{"lat":5.565,"lng":-0.17,"source":"own"}}""")
+			.replace("\"public\"", "\"private\"")), 201);
+		game("Nowhere yet", "Labone back field", null);
+
+		// The same place, typed two ways by two hosts: one place, two games. Not the private one, nor one with no pin.
+		var labone = ok(mvc.perform(get("/places").param("query", "labone").param("country", "GH")), 200);
+		assertThat(labone.size()).isEqualTo(1);
+		assertThat(labone.get(0).get("games").asInt()).isEqualTo(2);
+		assertThat(labone.get(0).at("/pin/source").asString()).isEqualTo("own");
+		assertThat(labone.get(0).at("/pin").has("pinnedAt")).isFalse();
+
+		// A place from Google's search says how old its coordinates are...
+		var labadi = ok(mvc.perform(get("/places").param("query", "lab beach")), 200);
+		assertThat(labadi.get(0).get("name").asString()).isEqualTo("Labadi Beach");
+		assertThat(labadi.get(0).at("/pin/pinnedAt").asString()).isNotBlank();
+		// ...and once they're cleared as too old to keep, only its place ID, for the app to look up.
+		jdbc.sql("UPDATE games SET latitude = NULL, longitude = NULL WHERE venue_name = 'Labadi Beach'").update();
+		var cleared = ok(mvc.perform(get("/places").param("query", "labadi")), 200);
+		assertThat(cleared.get(0).has("pin")).isFalse();
+		assertThat(cleared.get(0).get("placeId").asString()).isEqualTo("ChIJlabadiBeach000001");
+
+		assertThat(ok(mvc.perform(get("/places").param("query", "l")), 200).size()).isZero();
+		assertThat(ok(mvc.perform(get("/places").param("query", "100%")), 200).size()).isZero();
+	}
+
+	@Test
+	void aPlaceFoundOnPlayChaleKeepsTheAgeOfItsCoordinatesInTheNextGame() throws Exception {
+		var looked = Instant.now().minus(Duration.ofDays(20)).truncatedTo(ChronoUnit.SECONDS);
+		var created = ok(send(post("/games"), GAME.formatted("Beach volley", """
+				{"kind":"unlisted","name":"Labadi Beach","pin":{"lat":5.5606,"lng":-0.1497,"placeId":"ChIJlabadiBeach000001","source":"place","pinnedAt":"%s"}}"""
+			.formatted(looked))), 201);
+		assertThat(pinnedAt("games", UUID.fromString(created.get("id").asString()))).isEqualTo(looked);
 	}
 
 	private void game(String title, String place, String pin) throws Exception {

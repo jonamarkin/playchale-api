@@ -27,10 +27,11 @@ public record NewGameRequest(String sport, String format, String title, @NotNull
 	public record VenueRefRequest(String kind, UUID venueId, String name, String area, UUID pitchId, String pitchName, String mapUrl, MapPin pin) {
 	}
 
-	public GameDetails toDetails() {
+	/** @param now when it's sent, the age of a pin new with it */
+	public GameDetails toDetails(Instant now) {
 		return new GameDetails(sport, format, title, startsAt, durationMinutes, "listed".equals(venue.kind()) ? "listed" : "unlisted",
 				venue.venueId(), venue.pitchId(), venue.name(), venue.area(), venue.mapUrl(), capacity, totalCost, pricing, visibility, notes,
-				"listed".equals(venue.kind()) ? null : Pin.sent(venue.pin()));
+				"listed".equals(venue.kind()) ? null : Pin.from(venue.pin(), null, now));
 	}
 
 }
