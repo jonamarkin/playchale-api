@@ -73,6 +73,12 @@ class AdminController {
 		desk.removeMessage(me.id(), id, body == null ? null : body.get("why"));
 	}
 
+	/** admin.sms: the SMS bundle's credits, for topping it up before sign-in codes stop. */
+	@GetMapping("/sms")
+	AdminDesk.Sms sms(CurrentUser me) {
+		return desk.sms(me.id());
+	}
+
 	/** admin.health */
 	@GetMapping("/health")
 	AdminDesk.Health health(CurrentUser me, @RequestParam(defaultValue = "30") int days) {

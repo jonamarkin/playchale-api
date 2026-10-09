@@ -288,6 +288,18 @@ docker compose down               # stop PlayChale (the data is in Supabase; Pay
 docker stats                      # memory per container: the API is capped at 1 GB, the web app at 512 MB
 ```
 
+## Sign-in by SMS (Rancard)
+
+Optional, and can be done any time. Without it, people sign in by email (or Google).
+
+1. On unify.rancard.com, create the sender ID `PlayChale` and wait for Rancard Support to approve it.
+2. Generate an API key there, and buy an SMS bundle. Each sign-in code costs one credit.
+3. On the server, put the key in `.env.api` as `PLAYCHALE_RANCARD_API_KEY` (and the sender ID as
+   `PLAYCHALE_RANCARD_SENDER_ID`, if it isn't `PlayChale`), then `docker compose up -d api`.
+
+The sign-in page then offers phone numbers too. The admin desk's Overview shows the credits left,
+and the API logs "The SMS bundle is running low" once they drop below `PLAYCHALE_RANCARD_LOW_BALANCE`.
+
 ## Phone notifications
 
 Optional, and can be done any time. Without it, notifications stay in the app's list.
@@ -308,10 +320,12 @@ On iPhone that works once PlayChale is added to the Home Screen.
 | Symptom | Likely cause |
 |---|---|
 | API exits at startup, log says a `PLAYCHALE_...` setting "must be ..." | That setting is missing or still the template's value in `.env.api` |
-| API log: "No SMS or email provider is configured" | `PLAYCHALE_RESEND_API_KEY` is empty |
+| API log: "No SMS or email provider is configured" | Both `PLAYCHALE_RESEND_API_KEY` and `PLAYCHALE_RANCARD_API_KEY` are empty |
 | API log: `PLAYCHALE_RESEND_FROM must name the sender` | The sender line is missing from `.env.api` |
 | API log: connection refused / timeout to the database | Wrong host or port (use the **Session pooler**), or the Supabase project is paused |
 | `docker compose pull` says "denied" for `playchale-web` | The server isn't logged in to ghcr.io (step 4), or the token has expired or lacks `read:packages` |
+| Sign-in says "We couldn't send the text just now" | Rancard refused it: `docker compose logs api \| grep Rancard` shows why (often the sender ID isn't approved yet, the key is wrong, or the bundle is empty) |
+| API exits: `PLAYCHALE_RANCARD_SENDER_ID must be the sender ID approved` | The sender ID is missing or longer than 11 characters |
 | Sign-in says "We couldn't send the email just now" | Resend refused it: `docker compose logs api \| grep Resend` shows why (usually the domain isn't verified yet) |
 | Codes arrive in spam | Check the domain is verified in Resend and the `_dmarc` record exists. It improves as people open the emails |
 | Browser console: CORS error calling the API | `PLAYCHALE_CORS_ORIGINS` isn't exactly `https://playchale.com` |

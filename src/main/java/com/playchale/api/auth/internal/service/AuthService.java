@@ -207,7 +207,9 @@ public class AuthService {
 		var message = "Your PlayChale code is %s. It expires in 10 minutes. Don’t share it.".formatted(issued.code());
 		try {
 			if (to.bySms()) {
-				sms.getObject().send(to.address(), message);
+				// Plain ASCII: one character outside the SMS alphabet (a curly apostrophe, say) makes the
+				// whole text Unicode, where a part holds 70 characters, not 160, and this code would cost two.
+				sms.getObject().send(to.address(), "Your PlayChale code is %s. It expires in 10 minutes. Don't share it.".formatted(issued.code()));
 			}
 			else {
 				email.getObject().send(signInEmail(to.address(), issued.code(), message, adding));

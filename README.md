@@ -52,7 +52,9 @@ Plus the pieces every module shares:
 ```
 shared/        settings, the error shape, CORS, request IDs and logging, JPA base classes, and the
                pure draw algorithms (shared/draws: round robin, knockout) competitions and events both use
-integration/   outside systems behind interfaces: SMS, email (Resend) and payments (each with a dev stand-in)
+integration/   outside systems behind interfaces: SMS (Rancard), email (Resend) and payments (Paystack),
+               each with a dev stand-in. Only integration/ knows which provider is in use: swapping one
+               is a new adapter class and its beans in that package's config
 market/        per-country rules: phone formats, currency, timezone
 devsupport/    /dev endpoints for the web app's end-to-end tests (dev profile only)
 src/main/resources/db/migration/   the schema, as numbered SQL files applied by Flyway
@@ -112,6 +114,9 @@ Every value in `application.yml` can be set by an environment variable: `playcha
 | `PLAYCHALE_PAYMENTS_WEB_APP_URL` | `http://localhost:3000` | the web app's address: Paystack sends payers back there |
 | `PLAYCHALE_RESEND_API_KEY` | empty: emails go to the log | a Resend key with sending access; turns on signing in by email |
 | `PLAYCHALE_RESEND_FROM` | | the sender, on a domain verified in Resend: `PlayChale <alert@playchale.com>` |
+| `PLAYCHALE_RANCARD_API_KEY` | empty: texts go to the log | a key from unify.rancard.com; turns on signing in by phone (codes by SMS) |
+| `PLAYCHALE_RANCARD_SENDER_ID` | | the sender ID approved by Rancard, up to 11 characters: `PlayChale` |
+| `PLAYCHALE_RANCARD_LOW_BALANCE` | `500` | below this many SMS credits the API logs a warning, and the admin desk shows it |
 | `PLAYCHALE_PUSH_VAPID_PUBLIC_KEY`, `PLAYCHALE_PUSH_VAPID_PRIVATE_KEY` | empty: phone notifications are logged instead of sent | optional: a pair from `npx web-push generate-vapid-keys` turns on phone notifications; empty, they're off |
 | `PLAYCHALE_SIGN_IN_PER_CONNECTION_PER_HOUR` | 100000 | 20 (default) |
 | `PLAYCHALE_SIGN_IN_PER_DAY` | 100000 | 3000 (default); raise it as the service grows |

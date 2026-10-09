@@ -136,6 +136,8 @@ class AuthServiceTest {
 		assertThat(auth.requestCode("024 455 5123", null, CONNECTION)).as("no code handed back outside demo mode").isEmpty();
 		assertThat(sms.phone).isEqualTo("+233244555123");
 		assertThat(sms.code()).matches("\\d{6}");
+		// One SMS, not two: plain characters, so a part holds 160 of them rather than 70.
+		assertThat(sms.message).matches("[\\x20-\\x7E]{1,160}");
 
 		var first = auth.signIn("0244555123", null, sms.code());
 		assertThat(first.user().phone()).isEqualTo("+233244555123");

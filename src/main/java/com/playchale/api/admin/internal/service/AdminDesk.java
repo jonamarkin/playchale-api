@@ -8,8 +8,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.playchale.api.integration.sms.SmsBalance;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.shared.events.Happened;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,11 +40,36 @@ public class AdminDesk {
 
 	private final Clock clock;
 
-	AdminDesk(Staff staff, Happened happened, JdbcClient jdbc, Clock clock) {
+	private final ObjectProvider<SmsBalance> smsBalance;
+
+	AdminDesk(Staff staff, Happened happened, JdbcClient jdbc, Clock clock, ObjectProvider<SmsBalance> smsBalance) {
 		this.staff = staff;
 		this.happened = happened;
 		this.jdbc = jdbc;
 		this.clock = clock;
+		this.smsBalance = smsBalance;
+	}
+
+	/**
+	 * The SMS bundle, which sign-in codes by phone draw on.
+	 *
+	 * @param configured whether texts go out at all (an SMS provider is set up)
+	 * @param credits    texts left, or null when the provider couldn't be asked just now
+	 * @param low        below the point where it's time to top up
+	 */
+	public record Sms(boolean configured, Long credits, long lowAt, boolean low) {
+	}
+
+	/** How many texts are left. Asked of the provider each time: it's the provider's number, not ours. */
+	public Sms sms(UUID by) {
+		staff.require(by);
+		var balance = smsBalance.getIfAvailable();
+		if (balance == null) {
+			return new Sms(false, null, 0, false);
+		}
+		var credits = balance.credits();
+		return new Sms(true, credits.isPresent() ? credits.getAsLong() : null, balance.lowAt(),
+				credits.isPresent() && credits.getAsLong() < balance.lowAt());
 	}
 
 	/** Someone as the desk sees them: enough to recognise them, not their whole life. */
