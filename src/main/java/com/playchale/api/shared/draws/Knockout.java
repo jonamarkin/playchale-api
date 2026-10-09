@@ -1,4 +1,4 @@
-package com.playchale.api.competitions.internal.domain;
+package com.playchale.api.shared.draws;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

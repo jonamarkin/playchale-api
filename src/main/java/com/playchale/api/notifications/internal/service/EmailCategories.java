@@ -18,7 +18,7 @@ final class EmailCategories {
 			Map.entry("game-moved", "games"), Map.entry("series", "games"), Map.entry("invite-declined", "games"), Map.entry("game-reminder", "games"),
 			Map.entry("payment-reminder", "payments"), Map.entry("payment-received", "payments"), Map.entry("result-added", "results"),
 			Map.entry("result-disputed", "results"), Map.entry("squad-request", "teams"), Map.entry("squad-reply", "teams"),
-			Map.entry("booking", "bookings"), Map.entry("competition-announcement", "competitions"));
+			Map.entry("booking", "bookings"), Map.entry("competition-announcement", "competitions"), Map.entry("event", "competitions"));
 
 	private EmailCategories() {
 	}

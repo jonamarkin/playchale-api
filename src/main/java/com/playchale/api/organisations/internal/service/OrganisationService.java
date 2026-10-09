@@ -11,6 +11,7 @@ import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -207,6 +208,13 @@ public class OrganisationService implements OrganisationAccess {
 		if (organisationId == null || userId == null) return false;
 		return jdbc.sql("SELECT count(*) FROM organisation_memberships WHERE organisation_id=:organisation AND user_id=:user AND role IN (:roles)")
 			.param("organisation",organisationId).param("user",userId).param("roles",RUNS_IT).query(Integer.class).single()>0;
+	}
+
+	@Override
+	public Optional<String> roleOf(UUID organisationId, UUID userId) {
+		if (organisationId == null || userId == null) return Optional.empty();
+		return jdbc.sql("SELECT role FROM organisation_memberships WHERE organisation_id = :organisation AND user_id = :user")
+			.param("organisation", organisationId).param("user", userId).query(String.class).optional();
 	}
 
 	@Override

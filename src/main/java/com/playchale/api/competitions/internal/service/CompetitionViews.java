@@ -14,7 +14,7 @@ import java.util.stream.Stream;
 import com.playchale.api.competitions.internal.domain.Competition;
 import com.playchale.api.competitions.internal.domain.Entry;
 import com.playchale.api.competitions.internal.domain.EntryId;
-import com.playchale.api.competitions.internal.domain.Knockout;
+import com.playchale.api.shared.draws.Knockout;
 import com.playchale.api.competitions.internal.repository.EntryRepository;
 import com.playchale.api.games.api.FixtureTeams;
 import com.playchale.api.games.api.Fixtures;

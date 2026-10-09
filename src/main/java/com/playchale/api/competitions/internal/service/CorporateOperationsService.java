@@ -22,7 +22,7 @@ import java.util.UUID;
 
 import tools.jackson.databind.ObjectMapper;
 import com.playchale.api.competitions.api.CorporateEvents;
-import com.playchale.api.competitions.internal.domain.RoundRobin;
+import com.playchale.api.shared.draws.RoundRobin;
 import com.playchale.api.games.api.Fixtures;
 import com.playchale.api.games.api.OfficialResults;
 import com.playchale.api.organisations.api.OrganisationAccess;

@@ -54,6 +54,7 @@ class DemoSeed {
 
 	static final List<DemoAccount> DEMO_ACCOUNTS = List.of(
 			new DemoAccount("u-kojo", "Runs the Inter-Company League · workspace owner"),
+			new DemoAccount("u-ama", "Runs Hillview Chapel\u2019s games day"),
 			new DemoAccount("u-kwame", "Apex Ltd\u2019s manager · a roster to submit"),
 			new DemoAccount("u-yaw", "Match official · fixtures to referee"),
 			new DemoAccount("u-abena", "Three sports · owes a share"),
@@ -68,6 +69,7 @@ class DemoSeed {
 		series();
 		league();
 		corporateLeague();
+		new DemoEventDay(jdbc, now).load();
 		notifications();
 		mapPins();
 		staff();
