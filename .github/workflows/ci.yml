@@ -26,6 +26,11 @@ jobs:
           cache: maven
       - name: Tests
         run: ./mvnw -B verify
+        env:
+          # Testcontainers' clean-up container (Ryuk) comes from Docker Hub, whose anonymous pulls
+          # CI's shared machines run out of. The runner is thrown away after the job, so there's
+          # nothing for it to clean up. Postgres itself comes from AWS's mirror (TestcontainersConfiguration).
+          TESTCONTAINERS_RYUK_DISABLED: 'true'
       - name: Test reports
         if: failure()
         uses: actions/upload-artifact@v4
@@ -43,6 +48,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+        with:
+          # The builder's own image from Google's mirror of Docker Hub (mirror.gcr.io), not Docker
+          # Hub: anonymous pulls from CI's shared machines hit its rate limit (429) and its outages.
+          driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
