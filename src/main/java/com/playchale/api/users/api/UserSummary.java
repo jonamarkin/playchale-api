@@ -18,16 +18,19 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record UserSummary(UUID id, String phone, String name, String handle, String avatar, String avatarSeed, String tint, String area,
-		List<String> sports, Map<String, List<String>> roles, Instant createdAt, boolean onboarded, String payoutPhone,
+		List<String> areas, List<String> sports, Map<String, List<String>> roles, Instant createdAt, boolean onboarded, String payoutPhone,
 		String email, String signInEmail, String country, String termsVersion, Boolean google) {
 
 	/**
+	 * @param area         their main place, the first of {@code areas}
+	 * @param areas        where they usually play, main one first, up to 3
 	 * @param roles        positions (or athletics events) per sport, as catalogue ids, main one first:
 	 *                     {"football": ["forward", "midfielder"]}. Keyed in the order of their sports; public.
 	 * @param termsVersion the Terms they agreed to (a date), or null if they haven't yet; private
 	 * @param google       whether they can sign in with Google; private
 	 */
 	public UserSummary {
+		areas = areas == null ? List.of() : List.copyOf(areas);
 		sports = List.copyOf(sports);
 		roles = Collections.unmodifiableMap(new LinkedHashMap<>(roles));
 		// The web app's dates are JavaScript Dates, which only go to the millisecond.
@@ -39,7 +42,7 @@ public record UserSummary(UUID id, String phone, String name, String handle, Str
 	 * the web app only ever shows to the player themselves.
 	 */
 	public UserSummary toPublic() {
-		return new UserSummary(id, "", name, handle, avatar, avatarSeed, tint, area, sports, roles, createdAt, onboarded, null, null, null, country, null, null);
+		return new UserSummary(id, "", name, handle, avatar, avatarSeed, tint, area, areas, sports, roles, createdAt, onboarded, null, null, null, country, null, null);
 	}
 
 	/** Everything to the player themselves; the public view to anyone else. */

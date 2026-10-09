@@ -78,6 +78,21 @@ class GameNotifications {
 		}
 	}
 
+	/** A guest took a spot: the host is told, as for any player, and that they came without an account. */
+	@EventListener
+	void on(GameEvents.GuestJoined e) {
+		var game = e.game();
+		var link = "/games/%s".formatted(game.gameId());
+		if (e.filled() >= e.capacity()) {
+			notifications.send(game.hostId(), "game-full", "%s is full".formatted(game.title()),
+					"%s took the last spot, as a guest. All %d players are in.".formatted(e.guestName(), e.capacity()), link, null);
+		}
+		else {
+			notifications.send(game.hostId(), "player-joined", "%s joined %s as a guest".formatted(e.guestName(), game.title()),
+					"%d of %d spots filled · %s".formatted(e.filled(), e.capacity(), kickoff(game)), link, null);
+		}
+	}
+
 	@EventListener
 	void on(GameEvents.PlayerRemoved e) {
 		var game = e.game();

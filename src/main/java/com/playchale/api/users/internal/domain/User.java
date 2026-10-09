@@ -74,7 +74,12 @@ public class User extends AuditableEntity {
 	/** The face they picked with Shuffle; null for the one from their id. See {@link #pickFace}. */
 	private String avatarSeed;
 
+	/** Their main place: the first of {@link #areas}, kept for anything that reads one. */
 	private String area;
+
+	/** Where they usually play, main one first, up to three. A Postgres text[] column. */
+	@JdbcTypeCode(SqlTypes.ARRAY)
+	private List<String> areas = new ArrayList<>();
 
 	/** A Postgres text[] column, read and written whole. */
 	@JdbcTypeCode(SqlTypes.ARRAY)
@@ -151,7 +156,24 @@ public class User extends AuditableEntity {
 
 	/** Where they usually play, e.g. "East Legon". Blank clears it. */
 	public void moveTo(String area) {
-		this.area = optional(area, 80, "Keep the area under 80 characters.");
+		var place = optional(area, 80, "Keep the area under 80 characters.");
+		moveTo(place == null ? List.of() : List.of(place));
+	}
+
+	/** Up to three places they play, main one first. Blanks are dropped, and the same place twice is kept once. */
+	public void moveTo(List<String> places) {
+		var kept = new ArrayList<String>();
+		for (var place : places) {
+			var clean = optional(place == null ? null : place.replaceAll("\\s+", " "), 80, "Keep each place under 80 characters.");
+			if (clean != null && kept.stream().noneMatch(k -> k.equalsIgnoreCase(clean))) {
+				kept.add(clean);
+			}
+		}
+		if (kept.size() > 3) {
+			throw BusinessException.invalid("Pick up to 3 places.");
+		}
+		this.areas = kept;
+		this.area = kept.isEmpty() ? null : kept.getFirst();
 	}
 
 	/** Only sports PlayChale supports, each once, in the order picked. */
@@ -305,6 +327,7 @@ public class User extends AuditableEntity {
 		avatarUrl = null;
 		avatarSeed = null;
 		area = null;
+		areas = new ArrayList<>();
 		roles.clear();
 		sports = new ArrayList<>();
 		tint = "#d7ded9";
@@ -367,6 +390,10 @@ public class User extends AuditableEntity {
 
 	public String getArea() {
 		return area;
+	}
+
+	public List<String> getAreas() {
+		return areas;
 	}
 
 	public List<String> getSports() {

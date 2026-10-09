@@ -125,7 +125,10 @@ public class UserProfileService {
 		if (changes.name() != null) {
 			user.rename(changes.name());
 		}
-		if (changes.area() != null) {
+		if (changes.areas() != null) {
+			user.moveTo(changes.areas());
+		}
+		else if (changes.area() != null) {
 			user.moveTo(changes.area());
 		}
 		if (changes.sports() != null) {

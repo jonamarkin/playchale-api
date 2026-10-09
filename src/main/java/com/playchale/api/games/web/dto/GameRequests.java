@@ -47,8 +47,15 @@ public final class GameRequests {
 	public record GuestRequest(String name, String phone) {
 	}
 
-	/** {"game": {...}, "token": "..."}: the token goes in the claim link the host sends. */
-	public record GuestResponse(GameResponse game, String token) {
+	/**
+	 * {"game": {...}, "token": "...", "spot": "..."}: the token goes in the claim link the host sends,
+	 * or stays in the guest's browser; {@code spot} is the spot's ID as the game shows it (guest.token).
+	 */
+	public record GuestResponse(GameResponse game, String token, String spot) {
+	}
+
+	/** {"name", "phone", "email"?}: someone without an account taking a spot. */
+	public record GuestJoinRequest(String name, String phone, String email) {
 	}
 
 	/** {"token": "..."} from the claim link. */

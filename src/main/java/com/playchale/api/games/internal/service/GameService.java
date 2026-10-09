@@ -17,6 +17,7 @@ import java.util.Collection;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -31,6 +32,7 @@ import com.playchale.api.games.internal.domain.Participant;
 import com.playchale.api.games.internal.domain.SeriesRule;
 import com.playchale.api.games.internal.repository.GameInviteRepository;
 import com.playchale.api.games.internal.repository.GameRepository;
+import com.playchale.api.games.internal.repository.GameResultRepository;
 import com.playchale.api.games.internal.repository.GameSeriesRepository;
 import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
@@ -45,6 +47,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.domain.Limit;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -87,9 +90,11 @@ public class GameService {
 
 	private final RateLimiter limiter;
 
+	private final GameResultRepository results;
+
 	GameService(GameRepository games, GameInviteRepository invites, GameViews views, UserDirectory users, PitchBookings pitches,
 			TeamDirectory teams, ApplicationEventPublisher events, Clock clock, FixtureRunners runners, GameSeriesRepository series,
-			RateLimiter limiter) {
+			RateLimiter limiter, GameResultRepository results) {
 		this.games = games;
 		this.invites = invites;
 		this.views = views;
@@ -101,6 +106,7 @@ public class GameService {
 		this.runners = runners;
 		this.series = series;
 		this.limiter = limiter;
+		this.results = results;
 	}
 
 	/** games.list: upcoming games still on that the viewer may see, soonest first. */
@@ -371,8 +377,11 @@ public class GameService {
 		return views.of(game, me);
 	}
 
-	/** What the host gets back from holding a spot: the game, and the token for the claim link. */
-	public record GuestAdded(GameResponse game, String token) {
+	/**
+	 * What comes back from a guest spot: the game, the token that claims it (for the host's claim
+	 * link, or the guest's own browser to keep), and the spot's public ID, as the game shows it.
+	 */
+	public record GuestAdded(GameResponse game, String token, String spot) {
 	}
 
 	/** games.addGuest: host only. The claim token is returned once, here, and only its hash is kept. */
@@ -383,31 +392,141 @@ public class GameService {
 		if (phone != null && !phone.isBlank()) {
 			e164 = game.market().normalisePhone(phone)
 				.orElseThrow(() -> BusinessException.invalid("That number doesn’t look right. Leave it blank if you’re not sure."));
-			var number = e164;
-			var players = users.findAll(game.getParticipants().stream().map(Participant::getUserId).filter(Objects::nonNull).toList());
-			var taken = game.getParticipants().stream().anyMatch(p -> number.equals(p.isGuest() ? p.getGuestPhone()
-					: players.containsKey(p.getUserId()) ? players.get(p.getUserId()).phone() : null));
-			if (taken) {
-				throw BusinessException.conflict("Someone with that number already has a spot.");
-			}
+			requireFree(game, e164, null);
 		}
 		var token = newToken();
 		game.holdForGuest(name, e164, hash(token), host, clock.instant());
-		return new GuestAdded(views.of(games.saveAndFlush(game), host), token);
+		var saved = games.saveAndFlush(game);
+		return new GuestAdded(views.of(saved, host), token, spotId(saved, token));
 	}
 
-	/** games.claimSpot: the spot the host held becomes the signed-in player's. */
+	/** Joins from one connection in an hour without an account: a family on one phone, not a script filling games. */
+	static final int GUEST_JOINS_PER_HOUR = 10;
+
+	private static final Pattern EMAIL = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
+
+	/**
+	 * games.joinAsGuest: someone without an account taking a spot in a public game. A number is
+	 * needed, so the host can reach them and so the spot can become theirs when they sign in with it;
+	 * an email is optional, for the same. The token that makes the spot theirs is returned once, here,
+	 * for the browser they joined in to keep.
+	 */
+	@Transactional
+	public GuestAdded joinAsGuest(UUID gameId, String name, String phone, String email, String connection) {
+		if (!limiter.tryAcquire("guest-join:" + connection, Duration.ofHours(1), GUEST_JOINS_PER_HOUR)) {
+			throw BusinessException.conflict("Too many games joined from this connection. Try again in an hour, or sign in.");
+		}
+		var game = locked(gameId);
+		var e164 = game.market().normalisePhone(phone == null ? "" : phone)
+			.orElseThrow(() -> BusinessException.invalid(phone == null || phone.isBlank() ? "Add your phone number, so the host can reach you."
+					: "That number doesn’t look right. Check it and try again."));
+		String address = null;
+		if (email != null && !email.isBlank()) {
+			address = email.strip().toLowerCase(Locale.ROOT);
+			if (address.length() > 254 || !EMAIL.matcher(address).matches()) {
+				throw BusinessException.invalid("That email doesn’t look right. Leave it blank if you like.");
+			}
+		}
+		requireFree(game, e164, address);
+		var token = newToken();
+		var spot = game.joinAsGuest(name, e164, address, hash(token), clock.instant());
+		var saved = games.saveAndFlush(game);
+		events.publishEvent(new GameEvents.GuestJoined(info(saved), spot.getGuestName(), saved.getCapacity() - saved.spotsLeft(),
+				saved.getCapacity()));
+		return new GuestAdded(views.of(saved, null), token, spotId(saved, token));
+	}
+
+	/** A new spot's ID, once saved: the saved game holds the stored copy of it, found by its token. */
+	private static String spotId(Game saved, String token) {
+		return saved.guestSpotByClaimHash(hash(token)).map(p -> p.getId().toString()).orElseThrow();
+	}
+
+	/** games.leaveAsGuest: a guest giving up the spot they took, with the token their browser kept. */
+	@Transactional
+	public GameResponse leaveAsGuest(UUID gameId, String token) {
+		var game = locked(gameId);
+		var spot = game.guestSpotByClaimHash(hash(token == null ? "" : token)).filter(Participant::isGuestSelfJoined)
+			.orElseThrow(() -> BusinessException.notFound("That spot isn’t yours any more: the host may have taken you off."));
+		game.guestLeaves(spot, clock.instant());
+		return views.of(games.saveAndFlush(game), null);
+	}
+
+	/** Nobody else in the game has this number or address, as a player or as a guest. */
+	private void requireFree(Game game, String phone, String email) {
+		var players = users.findAll(game.getParticipants().stream().map(Participant::getUserId).filter(Objects::nonNull).toList());
+		for (var p : game.getParticipants()) {
+			var player = p.isGuest() ? null : players.get(p.getUserId());
+			var theirPhone = p.isGuest() ? p.getGuestPhone() : player == null ? null : player.phone();
+			if (phone != null && phone.equals(theirPhone)) {
+				throw BusinessException.conflict("Someone with that number already has a spot.");
+			}
+			var theirEmails = p.isGuest() ? java.util.Arrays.asList(p.getGuestEmail())
+					: player == null ? List.<String>of() : java.util.Arrays.asList(player.email(), player.signInEmail());
+			if (email != null && theirEmails.stream().anyMatch(e -> e != null && e.equalsIgnoreCase(email))) {
+				throw BusinessException.conflict("Someone with that email already has a spot.");
+			}
+		}
+	}
+
+	/** games.claimSpot: a guest spot becomes the signed-in player's, by its token. */
 	@Transactional
 	public GameResponse claimSpot(UUID gameId, String token, UUID me) {
 		var game = locked(gameId);
 		var spot = game.guestSpotByClaimHash(hash(token == null ? "" : token))
 			.orElseThrow(() -> BusinessException.notFound("That invite has already been used, or the host removed the spot."));
 		var phone = users.find(me).map(UserSummary::phone).orElse(null);
+		claimInto(game, spot, me, phone);
+		return views.of(game, me);
+	}
+
+	/**
+	 * Someone just proved they hold this number or address (they signed in with it): every guest spot
+	 * taken or held under it becomes theirs, games already played included, so their result counts.
+	 * Spots in games they're already in are left as they are. Returns how many were claimed.
+	 */
+	@Transactional(propagation = Propagation.REQUIRES_NEW)
+	public int claimHeldFor(UUID me, String phone, String email) {
+		var number = phone == null ? "" : phone;
+		var address = email == null ? "" : email.toLowerCase(Locale.ROOT);
+		if (number.isEmpty() && address.isEmpty()) {
+			return 0;
+		}
+		int claimed = 0;
+		for (var gameId : games.withGuestSpotFor(number, address)) {
+			var game = locked(gameId);
+			if (game.isCancelled() || game.spotOf(me).isPresent()) {
+				continue;
+			}
+			var spot = game.getParticipants().stream()
+				.filter(p -> p.isGuest() && (number.equals(p.getGuestPhone()) || address.equals(p.getGuestEmail()))).findFirst();
+			if (spot.isPresent()) {
+				claimInto(game, spot.get(), me, number.isEmpty() ? spot.get().getGuestPhone() : number);
+				claimed++;
+			}
+		}
+		return claimed;
+	}
+
+	/**
+	 * The spot becomes the player's. A game already played moves its result line from the guest to
+	 * them, so it counts on their profile; the host is only told about games still to come.
+	 */
+	private void claimInto(Game game, Participant spot, UUID me, String phone) {
+		var guestKey = spot.playerKey();
 		game.claim(spot, me, phone);
 		game.playFor(me, sideFor(game, me));
-		events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.getCapacity() - game.spotsLeft(), game.getCapacity(), true));
-		invites.findById(new InviteId(gameId, me)).filter(i -> !i.isAccepted()).ifPresent(i -> i.accept(clock.instant()));
-		return views.of(game, me);
+		var started = game.hasStarted(clock.instant());
+		var played = results.existsById(game.getId());
+		if (played) {
+			results.rekey(game.getId(), guestKey, me.toString(), me);
+		}
+		if (started) {
+			events.publishEvent(new GameEvents.GuestSpotClaimed(info(game), me, played));
+		}
+		else {
+			events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.getCapacity() - game.spotsLeft(), game.getCapacity(), true));
+		}
+		invites.findById(new InviteId(game.getId(), me)).filter(i -> !i.isAccepted()).ifPresent(i -> i.accept(clock.instant()));
 	}
 
 	/** games.remind: host only. Returns how many were reminded. */

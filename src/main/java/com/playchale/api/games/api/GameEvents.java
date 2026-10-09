@@ -55,6 +55,17 @@ public final class GameEvents {
 	public record PlayerJoined(GameInfo game, UUID playerId, int filled, int capacity, boolean claimedGuestSpot) {
 	}
 
+	/** Someone without an account took a spot themselves, as a guest. */
+	public record GuestJoined(GameInfo game, String guestName, int filled, int capacity) {
+	}
+
+	/**
+	 * Someone signed in with the number or address a guest spot was taken under, and the spot became
+	 * theirs. {@code played} when the game was already over: its result now counts for them.
+	 */
+	public record GuestSpotClaimed(GameInfo game, UUID playerId, boolean played) {
+	}
+
 	/** The host took a player off the roster. */
 	public record PlayerRemoved(GameInfo game, UUID playerId) {
 	}

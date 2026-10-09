@@ -14,14 +14,16 @@ import jakarta.validation.constraints.Size;
  * @param position the old free-text position. Accepted and ignored for one release, so a web app
  *                 that's a few minutes behind the API still saves; remove it after that release.
  * @param termsVersion the Terms they agreed to (onboarding only; required there)
+ * @param areas    where they usually play, main one first, up to 3; replaces {@code area}
  */
 public record ProfileUpdateRequest(String name, String handle, String area,
 		@Size(max = 10, message = "Pick sports from the list.") List<String> sports,
 		@Size(max = 10, message = "Pick sports from the list.") Map<String, List<String>> roles, @Deprecated String position,
-		String payoutPhone, String email, String avatarSeed, String country, String termsVersion) {
+		String payoutPhone, String email, String avatarSeed, String country, String termsVersion,
+		@Size(max = 10, message = "Pick up to 3 places.") List<String> areas) {
 
 	public ProfileChanges toChanges() {
-		return new ProfileChanges(name, handle, area, sports, roles, payoutPhone, email, avatarSeed, country);
+		return new ProfileChanges(name, handle, area, sports, roles, payoutPhone, email, avatarSeed, country, areas);
 	}
 
 }

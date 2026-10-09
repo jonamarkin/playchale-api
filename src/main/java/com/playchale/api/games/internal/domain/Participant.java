@@ -11,8 +11,9 @@ import jakarta.persistence.Table;
 import org.hibernate.annotations.UuidGenerator;
 
 /**
- * A spot in a game: a player, or a guest the host is holding it for until they claim it with their
- * own number. Part of its {@link Game}, and only changed through it.
+ * A spot in a game: a player, or a guest: someone the host is holding it for, or someone who took it
+ * without an account. A guest's spot becomes theirs when they claim it. Part of its {@link Game},
+ * and only changed through it.
  */
 @Entity
 @Table(name = "game_participants")
@@ -51,6 +52,12 @@ public class Participant {
 
 	private UUID guestAddedBy;
 
+	/** A guest's email, lower-case, if they gave one. Only shown to the host. */
+	private String guestEmail;
+
+	/** Whether the guest took the spot themselves, rather than the host holding it for them. */
+	private boolean guestSelfJoined;
+
 	/** The side they play for in a friendly: the home or away team. Null elsewhere. */
 	private UUID teamId;
 
@@ -74,13 +81,17 @@ public class Participant {
 		return p;
 	}
 
-	static Participant guest(Game game, String name, String phone, String claimHash, UUID addedBy, boolean paid, Instant now) {
+	static Participant guest(Game game, String name, String phone, String email, String claimHash, UUID addedBy, boolean paid,
+			Instant now) {
 		var p = new Participant();
 		p.game = game;
 		p.guestName = name;
 		p.guestPhone = phone;
+		p.guestEmail = email;
 		p.guestClaimHash = claimHash;
 		p.guestAddedBy = addedBy;
+		// Nobody held it for them: they took it.
+		p.guestSelfJoined = addedBy == null;
 		p.paid = paid;
 		p.joinedAt = now;
 		return p;
@@ -101,6 +112,8 @@ public class Participant {
 		this.guestPhone = null;
 		this.guestClaimHash = null;
 		this.guestAddedBy = null;
+		this.guestEmail = null;
+		this.guestSelfJoined = false;
 	}
 
 	void paidInApp(UUID paymentId) {
@@ -184,6 +197,14 @@ public class Participant {
 
 	String getGuestClaimHash() {
 		return guestClaimHash;
+	}
+
+	public String getGuestEmail() {
+		return guestEmail;
+	}
+
+	public boolean isGuestSelfJoined() {
+		return guestSelfJoined;
 	}
 
 	public UUID getGuestAddedBy() {

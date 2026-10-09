@@ -220,7 +220,8 @@ class GameViews {
 		if (!p.isGuest()) {
 			return null;
 		}
-		return new GameResponse.Guest(p.getGuestName(), hostView ? p.getGuestPhone() : null, p.getId().toString(), p.getGuestAddedBy());
+		return new GameResponse.Guest(p.getGuestName(), hostView ? p.getGuestPhone() : null, p.getId().toString(), p.getGuestAddedBy(),
+				hostView ? p.getGuestEmail() : null, p.isGuestSelfJoined() ? Boolean.TRUE : null);
 	}
 
 	private static GameResponse.PlayerResponse player(Participant p, UserSummary user, UUID viewer) {

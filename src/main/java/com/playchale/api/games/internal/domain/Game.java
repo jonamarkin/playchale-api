@@ -464,28 +464,66 @@ public class Game extends AuditableEntity {
 
 	/** The host holding a spot for someone who isn't on PlayChale yet. */
 	public Participant holdForGuest(String name, String phone, String claimHash, UUID host, Instant now) {
+		return takeGuestSpot(name, phone, null, claimHash, host, now, "Give the player a name so everyone knows who’s in.",
+				"The game is full. There’s no spot to hold.");
+	}
+
+	/**
+	 * Someone without an account taking a spot themselves. Only in a public game (a private one is
+	 * the host's to fill) and never a team's: a friendly is played by its two squads.
+	 */
+	public Participant joinAsGuest(String name, String phone, String email, String claimHash, Instant now) {
+		if (!isPublic()) {
+			throw BusinessException.conflict("This game is private. Ask the host to add you.");
+		}
+		if (isFriendly()) {
+			throw BusinessException.conflict("This game is between two teams. Ask a captain to add you.");
+		}
+		return takeGuestSpot(name, phone, email, claimHash, null, now, "Give your name so everyone knows who’s in.",
+				"The game is full.");
+	}
+
+	private Participant takeGuestSpot(String name, String phone, String email, String claimHash, UUID host, Instant now, String noName,
+			String full) {
 		var trimmed = name == null ? "" : name.strip();
 		if (trimmed.isEmpty() || trimmed.length() > 60) {
-			throw BusinessException.invalid("Give the player a name so everyone knows who’s in.");
+			throw BusinessException.invalid(noName);
 		}
 		requireNotPlayed(now);
 		requireOn("This game was called off.");
 		requireNotFixture();
 		if (isFull()) {
-			throw BusinessException.conflict("The game is full. There’s no spot to hold.");
+			throw BusinessException.conflict(full);
 		}
-		var spot = Participant.guest(this, trimmed, phone, claimHash, host, totalCost == 0, now);
+		var spot = Participant.guest(this, trimmed, phone, email, claimHash, host, totalCost == 0, now);
 		participants.add(spot);
 		syncStatus();
 		return spot;
 	}
 
-	/** Someone claiming the spot the host held for them. The number they signed in with must match, if the host gave one. */
+	/**
+	 * A guest who took their own spot giving it up, before kick-off. Once the host has their cash, it
+	 * goes through the host, as a player's paid spot does.
+	 */
+	public void guestLeaves(Participant spot, Instant now) {
+		requireNotPlayed(now);
+		if (spot.isPaid() && totalCost > 0) {
+			throw BusinessException.conflict("The host has your money for this one. Ask them to take you off.");
+		}
+		participants.remove(spot);
+		syncStatus();
+	}
+
+	/**
+	 * Someone claiming a guest spot. For a spot the host held, the number they signed in with must
+	 * match, if the host gave one. A spot they took themselves is theirs by its token, whatever they
+	 * sign in with.
+	 */
 	public void claim(Participant spot, UUID userId, String userPhone) {
 		if (spotOf(userId).isPresent()) {
 			throw BusinessException.conflict("You’re already in this game.");
 		}
-		if (spot.getGuestPhone() != null && !spot.getGuestPhone().equals(userPhone)) {
+		if (!spot.isGuestSelfJoined() && spot.getGuestPhone() != null && !spot.getGuestPhone().equals(userPhone)) {
 			throw BusinessException.conflict("This invite was sent to a different number. Ask the host to add yours.");
 		}
 		spot.claimFor(userId);

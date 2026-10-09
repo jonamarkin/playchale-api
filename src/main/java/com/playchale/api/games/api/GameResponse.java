@@ -107,9 +107,13 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 			Instant remindedAt, Guest guest, Boolean attended, Instant attendedAt) {
 	}
 
-	/** A guest spot as the web app's Guest type. The number is only shown to the host. */
+	/**
+	 * A guest spot as the web app's Guest type. The number and email are only shown to the host.
+	 * {@code selfJoined}: they took the spot themselves, without an account, rather than the host
+	 * holding it for them.
+	 */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	public record Guest(String name, String phone, String token, UUID addedBy) {
+	public record Guest(String name, String phone, String token, UUID addedBy, String email, Boolean selfJoined) {
 	}
 
 	/**

@@ -36,6 +36,17 @@ class GameEventLog {
 	}
 
 	@EventListener
+	void on(GameEvents.GuestJoined e) {
+		happened.record("game.guest-joined", GAME, e.game().gameId(), null,
+				Map.of("filled", e.filled(), "capacity", e.capacity(), "full", e.filled() >= e.capacity()));
+	}
+
+	@EventListener
+	void on(GameEvents.GuestSpotClaimed e) {
+		happened.record("game.guest-spot-claimed", GAME, e.game().gameId(), e.playerId(), Map.of("played", e.played()));
+	}
+
+	@EventListener
 	void on(GameEvents.PlayerJoined e) {
 		// filled and capacity are the whole point: with the time, they give how fast a game fills.
 		happened.record("game.joined", GAME, e.game().gameId(), e.playerId(),

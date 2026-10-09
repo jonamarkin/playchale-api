@@ -15,6 +15,7 @@ import java.util.regex.Pattern;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
+import com.playchale.api.auth.api.ContactVerified;
 import com.playchale.api.auth.internal.domain.Session;
 import com.playchale.api.auth.internal.domain.SessionToken;
 import com.playchale.api.auth.internal.domain.SignInCode;
@@ -34,6 +35,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -110,10 +112,13 @@ public class AuthService {
 
 	private final TransactionTemplate tx;
 
+	private final ApplicationEventPublisher events;
+
 	AuthService(SignInCodeRepository codes, SessionRepository sessions, UserDirectory users, ObjectProvider<SmsSender> sms,
 			ObjectProvider<EmailSender> email, RateLimiter limiter, SignInLimits limits, Clock clock, PlaychaleProperties properties,
-			GoogleSignInProperties google, GoogleIdTokens googleTokens, TransactionTemplate tx) {
+			GoogleSignInProperties google, GoogleIdTokens googleTokens, TransactionTemplate tx, ApplicationEventPublisher events) {
 		this.tx = tx;
+		this.events = events;
 		this.codes = codes;
 		this.sessions = sessions;
 		this.users = users;
@@ -164,7 +169,9 @@ public class AuthService {
 		var from = recipient(typedPhone, typedEmail);
 		check(from, code, clock.instant());
 		requireFree(userId, from);
-		return users.addSignInMethod(userId, from.bySms() ? "phone" : "email", from.address());
+		var user = users.addSignInMethod(userId, from.bySms() ? "phone" : "email", from.address());
+		verified(userId, from);
+		return user;
 	}
 
 	/** Stops the player signing in with their phone ("phone") or email ("email"), keeping the other. */
@@ -284,7 +291,13 @@ public class AuthService {
 				: users.registerOrFindByEmail(from.address(), Market.get(country).country());
 		var token = SessionToken.generate();
 		sessions.save(new Session(token, user.id(), now));
+		verified(user.id(), from);
 		return new SignedIn(user, token.value(), Session.LIFETIME);
+	}
+
+	/** They hold this number or address: anything held under it for them can be theirs now. */
+	private void verified(UUID userId, Recipient from) {
+		events.publishEvent(from.bySms() ? new ContactVerified(userId, from.address(), null) : new ContactVerified(userId, null, from.address()));
 	}
 
 	/**
@@ -322,6 +335,10 @@ public class AuthService {
 		var user = users.registerOrFindByGoogle(who.sub(), who.email(), Market.get(country).country());
 		var token = SessionToken.generate();
 		sessions.save(new Session(token, user.id(), clock.instant()));
+		// Google only hands over an email it has verified (GoogleIdTokens checks).
+		if (who.email() != null) {
+			events.publishEvent(new ContactVerified(user.id(), null, who.email().toLowerCase(Locale.ROOT)));
+		}
 		return new SignedIn(user, token.value(), Session.LIFETIME);
 	}
 

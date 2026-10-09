@@ -16,6 +16,7 @@ import com.playchale.api.games.web.dto.GameRequests.SayRequest;
 import com.playchale.api.games.web.dto.GameRequests.CancelRequest;
 import com.playchale.api.games.web.dto.GameRequests.ClaimRequest;
 import com.playchale.api.games.web.dto.GameRequests.DisputeRequest;
+import com.playchale.api.games.web.dto.GameRequests.GuestJoinRequest;
 import com.playchale.api.games.web.dto.GameRequests.GuestRequest;
 import com.playchale.api.games.web.dto.GameRequests.GuestResponse;
 import com.playchale.api.games.web.dto.GameRequests.InviteAnswer;
@@ -29,6 +30,7 @@ import com.playchale.api.games.web.dto.NewGameRequest;
 import com.playchale.api.games.web.dto.ResultRequest;
 import com.playchale.api.shared.security.CurrentUser;
 import jakarta.validation.Valid;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -162,7 +164,28 @@ class GameController {
 	@ResponseStatus(HttpStatus.CREATED)
 	GuestResponse addGuest(CurrentUser me, @PathVariable UUID id, @RequestBody GuestRequest request) {
 		var added = games.addGuest(id, request.name(), request.phone(), me.id());
-		return new GuestResponse(added.game(), added.token());
+		return new GuestResponse(added.game(), added.token(), added.spot());
+	}
+
+	/**
+	 * games.joinAsGuest: taking a spot without an account. Signed-in players join as themselves, so
+	 * their stats count. The token comes back once, for the browser to keep.
+	 */
+	@PostMapping("/games/{id}/guest-spots")
+	@ResponseStatus(HttpStatus.CREATED)
+	GuestResponse joinAsGuest(@PathVariable UUID id, @RequestBody GuestJoinRequest request, Optional<CurrentUser> me,
+			HttpServletRequest http) {
+		if (me.isPresent()) {
+			throw BusinessException.conflict("You’re signed in, so join as yourself.");
+		}
+		var joined = games.joinAsGuest(id, request.name(), request.phone(), request.email(), http.getRemoteAddr());
+		return new GuestResponse(joined.game(), joined.token(), joined.spot());
+	}
+
+	/** games.leaveAsGuest: a guest giving up their spot with the token their browser kept. */
+	@DeleteMapping("/games/{id}/guest-spots/{token}")
+	GameResponse leaveAsGuest(@PathVariable UUID id, @PathVariable String token) {
+		return games.leaveAsGuest(id, token);
 	}
 
 	/** games.claimSpot */

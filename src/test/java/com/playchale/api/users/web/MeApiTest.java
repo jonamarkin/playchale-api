@@ -75,6 +75,28 @@ class MeApiTest {
 	}
 
 	@Test
+	void aPlayerPlaysInMoreThanOnePlace() throws Exception {
+		var kwame = TestSignIn.as(mvc, "024 455 5123");
+		mvc.perform(patch("/me").cookie(kwame).contentType(MediaType.APPLICATION_JSON)
+			.content("{\"areas\":[\" Osu \",\"Tema\",\"osu\",\"\",\"East  Legon\"]}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.areas.length()").value(3))
+			.andExpect(jsonPath("$.areas[2]").value("East Legon"))
+			// The main one, for anything that reads a single place.
+			.andExpect(jsonPath("$.area").value("Osu"));
+		mvc.perform(patch("/me").cookie(kwame).contentType(MediaType.APPLICATION_JSON)
+			.content("{\"areas\":[\"Osu\",\"Tema\",\"Labone\",\"Madina\"]}"))
+			.andExpect(status().isUnprocessableEntity());
+		// An app from before several places still sends one: it replaces them all.
+		mvc.perform(patch("/me").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("{\"area\":\"Tema\"}"))
+			.andExpect(jsonPath("$.areas.length()").value(1))
+			.andExpect(jsonPath("$.area").value("Tema"));
+		mvc.perform(patch("/me").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content("{\"areas\":[]}"))
+			.andExpect(jsonPath("$.areas.length()").value(0))
+			.andExpect(jsonPath("$.area").doesNotExist());
+	}
+
+	@Test
 	void aShuffledFaceIsSavedAndPublic() throws Exception {
 		var kwame = TestSignIn.as(mvc, "024 455 5123");
 		mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON)

@@ -78,7 +78,7 @@ class CompetitionViews {
 		}
 		// Their roster record stands in for an account: an id to key the row on, the name their company
 		// gave, and the date that name was added. No handle, because there is no profile to open.
-		return new UserSummary(scorer.rosterMemberId(), null, scorer.displayName(), null, null, null, null, null,
+		return new UserSummary(scorer.rosterMemberId(), null, scorer.displayName(), null, null, null, null, null, List.of(),
 				List.of(), Map.of(), scorer.addedAt(), true, null, null, null, null, null, null);
 	}
 

@@ -133,7 +133,7 @@ production logs: the logging stand-ins exist only in the dev profile.
 | `GET /auth/session` | `auth.currentUser` | The signed-in user, or `null` |
 | `DELETE /auth/session` | `auth.signOut` | Ends the session → 204 |
 | `DELETE /me` | `profiles.deleteAccount` | Deletes your account (anonymised; see below) → 204 |
-| `PATCH /me` | `profiles.update` | Edits your profile; absent fields stay, blank optional ones clear. `roles` (positions per sport) replaces all of them; `avatarSeed` is the face picked with Shuffle (blank: back to the one from their id) |
+| `PATCH /me` | `profiles.update` | Edits your profile; absent fields stay, blank optional ones clear. `roles` (positions per sport) replaces all of them; `areas` (up to 3 places, main one first) replaces where they play, and `area` is kept as the first; `avatarSeed` is the face picked with Shuffle (blank: back to the one from their id) |
 | `POST /me/onboarding` | `profiles.completeOnboarding` | The same, then marks you onboarded (needs a name and a handle) |
 | `GET /handles/{handle}` | `profiles.isHandleAvailable` | `{"available"}`; your own handle counts as free |
 | `GET /users/{id}/profile` | `profiles.get` | A player's profile and record |
@@ -164,8 +164,10 @@ production logs: the logging stand-ins exist only in the dev profile.
 | `DELETE /games/{id}/players/{player}` | `games.removePlayer` | Host only: a player's id, or `guest:<token>` |
 | `POST /games/{id}/cancellation` | `games.cancel` | Host only: `{"reason"?}`; releases the pitch and tells everyone |
 | `POST /games/{id}/invites` | `games.invite` | Host only: `{"userIds"}` → `{"invited"}` |
-| `POST /games/{id}/guests` | `games.addGuest` | Host only: holds a spot → `{"game", "token"}` for the claim link |
-| `POST /games/{id}/claims` | `games.claimSpot` | `{"token"}` from the claim link |
+| `POST /games/{id}/guests` | `games.addGuest` | Host only: holds a spot → `{"game", "token", "spot"}`, the token for the claim link |
+| `POST /games/{id}/claims` | `games.claimSpot` | `{"token"}` from the claim link, or from the browser a guest joined in |
+| `POST /games/{id}/guest-spots` | `games.joinAsGuest` | Signed out only: `{"name", "phone", "email"?}` takes a spot in a public game as a guest → `{"game", "token", "spot"}` (10 an hour per connection) |
+| `DELETE /games/{id}/guest-spots/{token}` | `games.leaveAsGuest` | A guest gives up the spot they took, until the host has their cash |
 | `POST /games/{id}/reminders` | `games.remind` | Host only: `{"userIds"?}` → `{"reminded"}` |
 | `POST /games/{id}/players/{player}/cash` | `games.markPaidCash` | Host only: a share paid in cash |
 | `PUT /games/{id}/result` | `games.recordResult` | Host only, after kick-off: records the result, or corrects it (which clears checks) |
@@ -269,8 +271,13 @@ per competition. A squad link's token is only shown to the team's captain and th
 also names the team, so whoever opens it can see which one). A team set up without a named captain is
 run by the organiser, who isn't then in its squad.
 
-A guest spot's claim token is a secret: it's returned once, to the host, when they hold the spot,
-and only its hash is stored. In game data a guest is identified by the spot's public ID instead, so
+A guest spot's claim token is a secret: it's returned once (to the host who held the spot, or to the
+browser of the guest who took it), and only its hash is stored. Someone looking around without an
+account can take a spot in a public game as a guest, with their name and number (and an email if
+they like). When anyone signs in with a number or email (proved by the sign-in code, or by Google),
+`auth/api/ContactVerified` gives them every guest spot held under it, games already played included:
+their result line moves from the guest to them, so it counts on their profile. Guests' numbers and
+emails are only shown to the host, and are forgotten 90 days after the game. In game data a guest is identified by the spot's public ID instead, so
 nobody viewing a game can claim a spot meant for someone else.
 
 Phone and payout numbers are only ever sent to the player themselves: anyone else gets a blank

@@ -22,6 +22,15 @@ public interface GameRepository extends JpaRepository<Game, UUID> {
 	@Query("select g from Game g where g.id = :id")
 	Optional<Game> lockById(UUID id);
 
+	/** Games with a guest spot taken or held under this number or address ("" for neither), oldest first. */
+	@Query(value = """
+			SELECT g.id FROM games g WHERE EXISTS (
+			  SELECT 1 FROM game_participants p WHERE p.game_id = g.id AND p.user_id IS NULL
+			    AND ((:phone <> '' AND p.guest_phone = :phone) OR (:email <> '' AND p.guest_email = :email)))
+			ORDER BY g.starts_at
+			""", nativeQuery = true)
+	List<UUID> withGuestSpotFor(String phone, String email);
+
 	/**
 	 * Upcoming games still on, that the viewer may see, starting in [from, to). {@code sport} and
 	 * {@code country} are '' for any; {@code pattern} is a lower-case LIKE pattern over title, format and venue.
