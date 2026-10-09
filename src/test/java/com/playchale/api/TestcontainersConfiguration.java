@@ -13,10 +13,17 @@ import org.testcontainers.utility.DockerImageName;
 @TestConfiguration(proxyBeanMethods = false)
 public class TestcontainersConfiguration {
 
+	/**
+	 * Postgres 17, the official image, from AWS's public mirror of Docker's official images rather
+	 * than Docker Hub, whose few anonymous pulls an hour per IP address CI's shared machines run out of.
+	 */
+	public static final DockerImageName POSTGRES = DockerImageName.parse("public.ecr.aws/docker/library/postgres:17")
+		.asCompatibleSubstituteFor("postgres");
+
 	@Bean
 	@ServiceConnection
 	PostgreSQLContainer postgresContainer() {
-		return new PostgreSQLContainer(DockerImageName.parse("postgres:17"));
+		return new PostgreSQLContainer(POSTGRES);
 	}
 
 }
