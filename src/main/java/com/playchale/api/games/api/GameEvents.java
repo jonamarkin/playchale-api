@@ -33,6 +33,19 @@ public final class GameEvents {
 	public record GameMoved(GameInfo game, Instant from, String fromPitch, String pitchName, List<UUID> playerIds) {
 	}
 
+	/**
+	 * The host changed a game still to come in a way its players need to hear about.
+	 *
+	 * @param time          kick-off or length changed ({@code game.startsAt()} is the new kick-off)
+	 * @param place         it's somewhere else now ({@code game.venueName()})
+	 * @param money         what each player pays changed, to {@code share} (0: free)
+	 * @param playerIds     everyone in it with an account, but the host
+	 * @param venueOwnerId  the partner venue's owner when its booked pitch moved to the new time, else null
+	 */
+	public record GameChanged(GameInfo game, boolean time, boolean place, boolean money, long share, List<UUID> playerIds, UUID venueId,
+			UUID venueOwnerId, String pitchName) {
+	}
+
 	/** A game was created on a partner venue's pitch. */
 	public record PitchBooked(GameInfo game, UUID venueId, UUID venueOwnerId, String pitchName) {
 	}

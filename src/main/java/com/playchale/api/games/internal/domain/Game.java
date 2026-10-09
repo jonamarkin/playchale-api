@@ -230,6 +230,63 @@ public class Game extends AuditableEntity {
 		syncStatus();
 	}
 
+	/** What players in a game need to hear about after the host changed it. */
+	public record Changes(boolean time, boolean money) {
+	}
+
+	/**
+	 * The host changing a game still to come: its name, format, notes, kick-off, length, spots, cost
+	 * and who can join. {@code details} are checked as a new game's would be (where it is, for a place
+	 * that isn't a partner venue, is {@link #playAt}). Spots never go below the players already in.
+	 * Once anyone has paid, what each player pays can't change, since refunds aren't in the app; a
+	 * free game that starts costing asks everyone for their share, and one made free asks nobody.
+	 *
+	 * @param paidNames who has really paid (in the app or in cash), for the message if they're why it can't change
+	 * @return what the players need to hear about
+	 */
+	public Changes change(GameDetails details, List<String> paidNames, Instant now) {
+		if (competitionId != null) {
+			throw BusinessException.conflict("This is a competition fixture: change it from the competition.");
+		}
+		if (CANCELLED.equals(status)) {
+			throw BusinessException.conflict("This game was called off, so it can’t be changed.");
+		}
+		if (COMPLETED.equals(status) || !startsAt.isAfter(now)) {
+			throw BusinessException.conflict("This game has already started, so it can’t be changed.");
+		}
+		if (!sport.equals(details.sport())) {
+			throw BusinessException.invalid("A game keeps its sport. To play another, create a new game.");
+		}
+		// Every rule a new game is held to, and its tidying: a blank title, blank notes.
+		var checked = new Game(details, hostId, market(), now);
+		if (details.capacity() < participants.size()) {
+			throw BusinessException.invalid("%d players are in, so the game needs at least %d spots.".formatted(participants.size(), participants.size()));
+		}
+		var market = market();
+		var share = checked.totalCost == 0 ? 0
+				: PER_PLAYER.equals(checked.pricing) ? checked.totalCost / checked.capacity : market.shareOf(checked.totalCost, checked.capacity);
+		var money = share != share(market) || !checked.pricing.equals(pricing);
+		if (money && !paidNames.isEmpty()) {
+			throw BusinessException.conflict("%s %s already paid, so what each player pays can’t change. Refunds aren’t in the app yet."
+				.formatted(String.join(", ", paidNames), paidNames.size() == 1 ? "has" : "have"));
+		}
+		var time = !checked.startsAt.equals(startsAt) || checked.durationMinutes != durationMinutes;
+		this.format = checked.format;
+		this.title = checked.title;
+		this.notes = checked.notes;
+		this.startsAt = checked.startsAt;
+		this.durationMinutes = checked.durationMinutes;
+		this.capacity = checked.capacity;
+		this.totalCost = checked.totalCost;
+		this.pricing = checked.pricing;
+		this.visibility = checked.visibility;
+		if (money) {
+			participants.forEach(p -> p.costs(totalCost == 0));
+		}
+		syncStatus();
+		return new Changes(time, money);
+	}
+
 	/**
 	 * Checks {@code details} as creating a game from them would, without creating one: for a repeating
 	 * game's settings, which have to be right before its next game is due rather than when it fails to open.
@@ -716,6 +773,14 @@ public class Game extends AuditableEntity {
 	}
 
 	/** Spots taken by someone other than the host who has paid. */
+	/**
+	 * Other players' spots really paid for: in the app or in cash, or (from before the app said how)
+	 * marked paid in a game that costs. In a free game every spot says paid, and nobody has.
+	 */
+	public List<Participant> paidUp() {
+		return participants.stream().filter(p -> !p.isPlayer(hostId) && (p.getPaidVia() != null || p.isPaid() && totalCost > 0)).toList();
+	}
+
 	public List<Participant> paidByOthers() {
 		return participants.stream().filter(p -> p.isPaid() && !p.isPlayer(hostId)).toList();
 	}

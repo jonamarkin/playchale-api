@@ -127,6 +127,13 @@ public class Participant {
 		paidVia = PAID_IN_CASH;
 	}
 
+	/** The game became free (nothing to pay) or started costing (a share to pay). Someone who really paid stays paid. */
+	void costs(boolean free) {
+		if (paidVia == null) {
+			paid = free;
+		}
+	}
+
 	/** The host saying whether they turned up. Marking it again corrects it. */
 	void attended(boolean showedUp, Instant now) {
 		attended = showedUp;

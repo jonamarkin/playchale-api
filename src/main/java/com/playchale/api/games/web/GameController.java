@@ -29,6 +29,7 @@ import com.playchale.api.games.web.dto.GameRequests.InviteResponse;
 import com.playchale.api.games.web.dto.GameRequests.TeamInviteRequest;
 import com.playchale.api.games.web.dto.GameRequests.RemindRequest;
 import com.playchale.api.games.web.dto.GameRequests.RemindResponse;
+import com.playchale.api.games.web.dto.GameChangeRequest;
 import com.playchale.api.games.web.dto.NewGameRequest;
 import com.playchale.api.games.web.dto.ResultRequest;
 import com.playchale.api.shared.security.CurrentUser;
@@ -37,6 +38,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -82,6 +84,12 @@ class GameController {
 	@GetMapping("/places")
 	List<PlaceResponse> places(@RequestParam(required = false) String query, @RequestParam(required = false) String country) {
 		return places.search(query, country);
+	}
+
+	/** games.update: the host changes a game still to come. */
+	@PatchMapping("/games/{id}")
+	GameResponse update(@PathVariable UUID id, @Valid @RequestBody GameChangeRequest request, CurrentUser me) {
+		return games.change(id, request.toChange(), me.id());
 	}
 
 	/** games.mine */

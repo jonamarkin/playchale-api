@@ -38,6 +38,7 @@ import com.playchale.api.games.internal.repository.GameResultRepository;
 import com.playchale.api.games.internal.repository.GameSeriesRepository;
 import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
+import com.playchale.api.shared.maps.MapPin;
 import com.playchale.api.shared.maps.Pin;
 import com.playchale.api.shared.security.RateLimiter;
 import com.playchale.api.teams.api.TeamCard;
@@ -345,6 +346,70 @@ public class GameService {
 			.toList();
 		events.publishEvent(new GameEvents.GameCalledOff(info(game), players, game.getCancelReason(), game.getVenueId(), venueOwner,
 				game.getPitchName()));
+		return views.of(game, host);
+	}
+
+	/** What the host can change about a game (GameService.change). {@code venue} only counts for a place that isn't a partner venue. */
+	public record Change(String format, String title, String notes, Instant startsAt, int durationMinutes, int capacity, long totalCost,
+			String pricing, String visibility, VenueChange venue) {
+	}
+
+	/** Where a game at a typed-in place is now: its name, area, and a pin or a map link. */
+	public record VenueChange(String name, String area, String mapUrl, MapPin pin) {
+	}
+
+	/**
+	 * games.update: the host changes a game still to come ({@link Game#change} has the rules). A
+	 * typed-in place can be renamed, moved or pinned; a partner venue stays, though its booked pitch
+	 * moves with a new time when that's free there (its price is the cost, so a new length changes
+	 * it). Everyone in the game hears of a new time, place or cost; the venue, of its booking moving.
+	 */
+	@Transactional
+	public GameResponse change(UUID gameId, Change change, UUID host) {
+		var game = hosted(gameId, host);
+		var now = clock.instant();
+		var fromStart = game.getStartsAt();
+		var fromMinutes = game.getDurationMinutes();
+		var fromName = game.getVenueName();
+		var fromPin = game.getPin();
+		var totalCost = change.totalCost();
+		var pricing = change.pricing();
+		UUID venueOwner = null;
+		if (game.getPitchId() != null) {
+			pricing = Game.SPLIT;
+			totalCost = game.getTotalCost();
+			var moved = change.startsAt() != null && (!change.startsAt().equals(fromStart) || change.durationMinutes() != fromMinutes);
+			if (moved && change.startsAt().isAfter(now) && change.durationMinutes() >= 15 && change.durationMinutes() <= 480) {
+				var end = change.startsAt().plus(Duration.ofMinutes(change.durationMinutes()));
+				pitches.problemForGame(game.getVenueId(), game.getPitchId(), change.startsAt(), end, game.getId()).ifPresent(problem -> {
+					throw BusinessException.conflict(problem);
+				});
+				pitches.releaseForGame(game.getId());
+				var booked = pitches.bookForGame(game.getVenueId(), game.getPitchId(), change.startsAt(), end, game.getId(), host);
+				totalCost = booked.price();
+				venueOwner = booked.ownerId();
+			}
+		}
+		var details = new GameDetails(game.getSport(), change.format(), change.title(), change.startsAt(), change.durationMinutes(),
+				game.getVenueKind(), game.getVenueId(), game.getPitchId(), game.getVenueName(), game.getVenueArea(), game.getMapUrl(),
+				change.capacity(), totalCost, pricing, change.visibility(), change.notes());
+		var paidNames = game.paidUp().stream().map(p -> p.isGuest() ? p.getGuestName() : firstName(p.getUserId())).toList();
+		var changed = game.change(details, paidNames, now);
+		var place = false;
+		if (Game.UNLISTED.equals(game.getVenueKind()) && change.venue() != null) {
+			var to = change.venue();
+			game.playAt(to.name(), to.area(), to.mapUrl(), Pin.from(to.pin(), fromPin, now));
+			// Somewhere else: another name, or the pin moved off the pitch (adding one is no move).
+			var pin = game.getPin();
+			place = !game.getVenueName().equalsIgnoreCase(fromName.strip())
+					|| fromPin != null && fromPin.located() && pin != null && pin.located()
+						&& Pin.kmBetween(fromPin.latitude(), fromPin.longitude(), pin.latitude(), pin.longitude()) > 0.1;
+		}
+		if (changed.time() || changed.money() || place) {
+			var players = game.getParticipants().stream().map(Participant::getUserId).filter(id -> id != null && !id.equals(host)).toList();
+			events.publishEvent(new GameEvents.GameChanged(info(game), changed.time(), place, changed.money(), game.share(), players,
+					game.getVenueId(), venueOwner, game.getPitchName()));
+		}
 		return views.of(game, host);
 	}
 

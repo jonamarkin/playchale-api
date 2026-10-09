@@ -117,6 +117,28 @@ class GameNotifications {
 		}
 	}
 
+	/** The host changed a game: everyone in it hears what's new, and a venue whose pitch booking moved hears that. */
+	@EventListener
+	void on(GameEvents.GameChanged e) {
+		var game = e.game();
+		var host = firstName(game.hostId());
+		var moved = e.time() && e.place() ? "%s moved it to %s, %s.".formatted(host, game.venueName(), kickoff(game))
+				: e.time() ? "%s moved it to %s. Same place: %s.".formatted(host, kickoff(game), game.venueName())
+				: e.place() ? "%s moved it to %s. Same time: %s.".formatted(host, game.venueName(), kickoff(game))
+				: "";
+		var cost = !e.money() ? "" : e.share() == 0 ? "It’s free now." : "It’s %s each now.".formatted(money(game, e.share()));
+		var title = e.time() || e.place() ? "%s has moved".formatted(game.title()) : "%s: the cost changed".formatted(game.title());
+		var body = moved.isEmpty() ? "%s changed what each player pays. %s".formatted(host, cost) : (moved + " " + cost).strip();
+		for (var player : e.playerIds()) {
+			notifications.send(player, "game-moved", title, body, "/games/%s".formatted(game.gameId()), game.hostId());
+		}
+		if (e.venueOwnerId() != null && !e.venueOwnerId().equals(game.hostId())) {
+			notifications.send(e.venueOwnerId(), "booking", "%s moved their booking".formatted(host),
+					"%s · %s · %s".formatted(game.title(), e.pitchName() == null ? "a pitch" : e.pitchName(), kickoff(game)),
+					"/venues/%s/manage".formatted(e.venueId()), game.hostId());
+		}
+	}
+
 	/** The venue moved a game: everyone in it hears where and when it is now. */
 	@EventListener
 	void on(GameEvents.GameMoved e) {
