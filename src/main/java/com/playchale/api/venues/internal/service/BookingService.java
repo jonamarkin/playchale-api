@@ -16,6 +16,7 @@ import com.playchale.api.venues.api.BookedGames;
 import com.playchale.api.venues.api.GameBookingMoved;
 import com.playchale.api.venues.api.PitchBooking;
 import com.playchale.api.venues.api.PitchBookings;
+import com.playchale.api.venues.api.VenueLocation;
 import com.playchale.api.venues.api.VenueSummary;
 import com.playchale.api.venues.internal.domain.Booking;
 import com.playchale.api.venues.internal.domain.Pitch;
@@ -65,12 +66,12 @@ public class BookingService implements PitchBookings {
 
 	@Override
 	@Transactional(readOnly = true)
-	public Map<UUID, String> mapLinks(Collection<UUID> venueIds) {
+	public Map<UUID, VenueLocation> locations(Collection<UUID> venueIds) {
 		if (venueIds.isEmpty()) {
 			return Map.of();
 		}
-		return venues.findAllById(venueIds).stream().filter(v -> v.getMapUrl() != null)
-			.collect(Collectors.toMap(Venue::getId, Venue::getMapUrl));
+		return venues.findAllById(venueIds).stream().filter(v -> v.getMapUrl() != null || v.getPin() != null)
+			.collect(Collectors.toMap(Venue::getId, v -> new VenueLocation(v.getMapUrl(), v.getPin())));
 	}
 
 	@Override

@@ -14,6 +14,7 @@ import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -21,6 +22,7 @@ import java.util.regex.Pattern;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import com.playchale.api.games.api.GameEvents;
 import com.playchale.api.games.internal.domain.Game;
@@ -36,6 +38,7 @@ import com.playchale.api.games.internal.repository.GameResultRepository;
 import com.playchale.api.games.internal.repository.GameSeriesRepository;
 import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
+import com.playchale.api.shared.maps.Pin;
 import com.playchale.api.shared.security.RateLimiter;
 import com.playchale.api.teams.api.TeamCard;
 import com.playchale.api.teams.api.TeamDirectory;
@@ -60,6 +63,9 @@ public class GameService {
 
 	/** Discover and "my games" show at most this many. */
 	private static final int LIST_LIMIT = 100;
+
+	/** How many games to come Discover looks through for the nearest. */
+	private static final int NEAR_LOOK = 500;
 
 	/** Players a host can invite in one go, and in a day. */
 	static final int MAX_INVITES_AT_ONCE = 100;
@@ -136,8 +142,32 @@ public class GameService {
 			default -> {
 			}
 		}
-		var found = games.discover(now, viewer, sport, country, from, to, "%" + query + "%", Limit.of(LIST_LIMIT));
-		return views.of(found, viewer);
+		var near = point(filters.near());
+		if (near == null) {
+			return views.of(games.discover(now, viewer, sport, country, from, to, "%" + query + "%", Limit.of(LIST_LIMIT)), viewer);
+		}
+		// Nearest first: from a wider look, the closest; then those with no pin, soonest first.
+		var found = views.of(games.discover(now, viewer, sport, country, from, to, "%" + query + "%", Limit.of(NEAR_LOOK)), viewer);
+		var pinned = found.stream().filter(g -> g.venue().pin() != null)
+			.map(g -> g.withDistance(Pin.kmBetween(g.venue().pin().lat(), g.venue().pin().lng(), near[0], near[1])))
+			.sorted(Comparator.comparingDouble(GameResponse::distanceKm));
+		var unpinned = found.stream().filter(g -> g.venue().pin() == null);
+		return Stream.concat(pinned, unpinned).limit(LIST_LIMIT).toList();
+	}
+
+	/** "lat,lng" as two numbers on the map, or null for anything else. */
+	private static double[] point(String typed) {
+		if (typed == null) {
+			return null;
+		}
+		var parts = typed.split(",");
+		try {
+			var point = parts.length == 2 ? new double[] { Double.parseDouble(parts[0].strip()), Double.parseDouble(parts[1].strip()) } : null;
+			return point != null && Math.abs(point[0]) <= 90 && Math.abs(point[1]) <= 180 ? point : null;
+		}
+		catch (NumberFormatException e) {
+			return null;
+		}
 	}
 
 	/** The viewer's clock, for what "today" means: the zone their app sent, else Ghana's. */
@@ -601,7 +631,7 @@ public class GameService {
 		else {
 			game = new Game(details, host, Market.get(place.country()), clock.instant());
 			game.keepTime(place.timezone());
-			game.playAt(details.venueName(), details.venueArea(), details.venueMapUrl());
+			game.playAt(details.venueName(), details.venueArea(), details.venueMapUrl(), details.venuePin(), clock.instant());
 		}
 		game.belongTo(seriesId);
 		games.save(game);

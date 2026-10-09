@@ -117,6 +117,7 @@ Every value in `application.yml` can be set by an environment variable: `playcha
 | `PLAYCHALE_RANCARD_API_KEY` | empty: texts go to the log | a key from unify.rancard.com; turns on signing in by phone (codes by SMS) |
 | `PLAYCHALE_RANCARD_SENDER_ID` | | the sender ID approved by Rancard, up to 11 characters: `PlayChale` |
 | `PLAYCHALE_RANCARD_LOW_BALANCE` | `500` | below this many SMS credits the API logs a warning, and the admin desk shows it |
+| `PLAYCHALE_GOOGLE_MAPS_KEY` | empty: place coordinates are cleared at 29 days | a Google server key with only the Places API (New), restricted to the server's IP: places picked from the map search are looked up again before Google's 30-day limit |
 | `PLAYCHALE_PUSH_VAPID_PUBLIC_KEY`, `PLAYCHALE_PUSH_VAPID_PRIVATE_KEY` | empty: phone notifications are logged instead of sent | optional: a pair from `npx web-push generate-vapid-keys` turns on phone notifications; empty, they're off |
 | `PLAYCHALE_SIGN_IN_PER_CONNECTION_PER_HOUR` | 100000 | 20 (default) |
 | `PLAYCHALE_SIGN_IN_PER_DAY` | 100000 | 3000 (default); raise it as the service grows |

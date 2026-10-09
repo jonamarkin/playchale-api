@@ -15,9 +15,11 @@ import com.playchale.api.catalog.api.SportCatalog;
 import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.shared.maps.MapLink;
+import com.playchale.api.shared.maps.Pin;
 import com.playchale.api.shared.persistence.AuditableEntity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
@@ -84,10 +86,15 @@ public class Game extends AuditableEntity {
 	private String venueArea;
 
 	/**
-	 * A map link for directions, for a game anywhere but a partner venue (see MapLink). A partner
-	 * venue's own link is looked up instead, so this stays null for those.
+	 * A map link for directions, for a game anywhere but a partner venue (see MapLink): from its
+	 * {@link #pin} when it has one, else a link the host pasted. A partner venue's own link is looked
+	 * up instead, so this stays null for those.
 	 */
 	private String mapUrl;
+
+	/** Where a game anywhere but a partner venue is on the map. A partner venue's own is looked up instead. */
+	@Embedded
+	private Pin pin;
 
 	private UUID pitchId;
 
@@ -330,6 +337,7 @@ public class Game extends AuditableEntity {
 		this.pitchId = pitchId;
 		this.pitchName = pitchName;
 		this.mapUrl = null;
+		this.pin = null;
 	}
 
 	/**
@@ -350,6 +358,14 @@ public class Game extends AuditableEntity {
 	 * a Google Maps, Apple Maps or Waze link, or coordinates.
 	 */
 	public void playAt(String venueName, String venueArea, String mapUrl) {
+		playAt(venueName, venueArea, mapUrl, null, null);
+	}
+
+	/**
+	 * Anywhere the host types, with where it is on the map: a {@code pin} (as sent, or kept from the
+	 * game this one repeats) gives the directions link in place of {@code mapUrl}.
+	 */
+	public void playAt(String venueName, String venueArea, String mapUrl, Pin pin, Instant now) {
 		var name = venueName == null ? "" : venueName.strip();
 		if (name.isEmpty() || name.length() > 120) {
 			throw BusinessException.invalid("Say where you’re playing.");
@@ -358,7 +374,9 @@ public class Game extends AuditableEntity {
 		this.venueKind = UNLISTED;
 		this.venueName = name;
 		this.venueArea = area.isEmpty() ? null : area;
-		this.mapUrl = MapLink.normalise(mapUrl);
+		this.pin = Pin.settled(pin, now);
+		this.mapUrl = this.pin != null && this.pin.located() ? this.pin.directions(area.isEmpty() ? name : name + ", " + area)
+				: MapLink.normalise(mapUrl);
 	}
 
 	/** Joining is up to the player: allowed until kick-off, while there's a spot. */
@@ -832,6 +850,10 @@ public class Game extends AuditableEntity {
 		return mapUrl;
 	}
 
+	public Pin getPin() {
+		return pin;
+	}
+
 	public UUID getPitchId() {
 		return pitchId;
 	}
@@ -920,7 +942,7 @@ public class Game extends AuditableEntity {
 	/** Everything needed to set the same game up again. */
 	public GameDetails details() {
 		return new GameDetails(sport, format, title, startsAt, durationMinutes, venueKind, venueId, pitchId, venueName,
-				venueArea, mapUrl, capacity, totalCost, pricing, visibility, notes);
+				venueArea, mapUrl, capacity, totalCost, pricing, visibility, notes, pin);
 	}
 
 }

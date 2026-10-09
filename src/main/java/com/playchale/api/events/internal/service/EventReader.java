@@ -4,6 +4,7 @@ import java.sql.Array;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -15,6 +16,7 @@ import java.util.UUID;
 import com.playchale.api.events.internal.service.EventAccess.EventRow;
 import com.playchale.api.organisations.api.OrganisationAccess;
 import com.playchale.api.shared.error.BusinessException;
+import com.playchale.api.shared.maps.Pin;
 import com.playchale.api.users.api.UserDirectory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -277,7 +279,24 @@ class EventReader {
 
 	private static EventViews.Venue venue(ResultSet rs) throws SQLException {
 		var name = rs.getString("venue_name");
-		return name == null ? null : new EventViews.Venue(name, rs.getString("venue_area"), rs.getString("map_url"));
+		var pin = pin(rs);
+		return name == null ? null : new EventViews.Venue(name, rs.getString("venue_area"), rs.getString("map_url"), pin == null ? null : pin.view());
+	}
+
+	/** Where the event is on the map, as kept: an edit that leaves it alone keeps its age. */
+	Pin pin(UUID eventId) {
+		return jdbc.sql("SELECT latitude, longitude, place_id, pin_source, pinned_at FROM events WHERE id = :id").param("id", eventId)
+			.query((rs, n) -> pin(rs)).optional().orElse(null);
+	}
+
+	private static Pin pin(ResultSet rs) throws SQLException {
+		var source = rs.getString("pin_source");
+		if (source == null) {
+			return null;
+		}
+		var pinnedAt = rs.getObject("pinned_at", OffsetDateTime.class);
+		return new Pin(rs.getObject("latitude", Double.class), rs.getObject("longitude", Double.class), rs.getString("place_id"), source,
+				pinnedAt == null ? null : pinnedAt.toInstant());
 	}
 
 	private static List<Integer> points(Array array) throws SQLException {

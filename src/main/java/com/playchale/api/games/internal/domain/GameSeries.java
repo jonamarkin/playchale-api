@@ -9,8 +9,10 @@ import java.util.UUID;
 
 import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
+import com.playchale.api.shared.maps.Pin;
 import com.playchale.api.shared.persistence.AuditableEntity;
 import jakarta.persistence.Column;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
@@ -68,6 +70,10 @@ public class GameSeries extends AuditableEntity {
 	private String venueArea;
 
 	private String mapUrl;
+
+	/** Where it's played on the map, for a place that isn't a partner venue: copied to each game it opens. */
+	@Embedded
+	private Pin pin;
 
 	private int capacity;
 
@@ -139,6 +145,7 @@ public class GameSeries extends AuditableEntity {
 		this.venueName = details.venueName();
 		this.venueArea = details.venueArea();
 		this.mapUrl = details.venueMapUrl();
+		this.pin = details.venuePin();
 		this.capacity = details.capacity();
 		this.totalCost = details.totalCost();
 		this.pricing = details.pricing();
@@ -159,7 +166,7 @@ public class GameSeries extends AuditableEntity {
 	/** The game to open at {@code startsAt}, as the host set the series up. */
 	public GameDetails detailsAt(Instant startsAt) {
 		return new GameDetails(sport, format, title, startsAt, durationMinutes, venueKind, venueId, pitchId, venueName, venueArea, mapUrl,
-				capacity, totalCost, pricing, visibility, notes);
+				capacity, totalCost, pricing, visibility, notes, pin);
 	}
 
 	/** Whether it's time to open the next game. */
@@ -250,7 +257,7 @@ public class GameSeries extends AuditableEntity {
 				zone());
 		var details = new GameDetails(sport, format, change.title() == null || change.title().isBlank() ? title : change.title().strip(),
 				now.plus(LEAD).plus(Duration.ofDays(1)), change.durationMinutes(), venueKind, venueId, pitchId, venueName, venueArea, mapUrl,
-				change.capacity(), change.totalCost(), change.pricing(), change.visibility(), change.notes());
+				change.capacity(), change.totalCost(), change.pricing(), change.visibility(), change.notes(), pin);
 		Game.check(details, hostId, Market.get(country), now);
 		this.title = details.title();
 		this.durationMinutes = details.durationMinutes();

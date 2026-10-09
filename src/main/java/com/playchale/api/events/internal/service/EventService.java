@@ -8,6 +8,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -22,6 +23,8 @@ import com.playchale.api.organisations.api.OrganisationAccess;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.shared.events.Happened;
 import com.playchale.api.shared.maps.MapLink;
+import com.playchale.api.shared.maps.MapPin;
+import com.playchale.api.shared.maps.Pin;
 import com.playchale.api.users.api.UserDirectory;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -75,7 +78,8 @@ public class EventService {
 		this.happened = happened;
 	}
 
-	public record VenueInput(String name, String area, String mapUrl) {
+	/** Where it is. A {@code pin} gives the link for directions in place of {@code mapUrl}. */
+	public record VenueInput(String name, String area, String mapUrl, MapPin pin) {
 	}
 
 	public record GroupInput(String name, String colour) {
@@ -112,7 +116,7 @@ public class EventService {
 	@Transactional
 	public EventViews.Detail create(UUID organisationId, EventInput input, UUID userId) {
 		organisations.requireAdmin(organisationId, userId);
-		var details = details(input, true, new Integer[] { 5, 3, 1 });
+		var details = details(input, true, new Integer[] { 5, 3, 1 }, null);
 		var groups = input.groups() == null ? List.<GroupInput>of() : input.groups();
 		if (groups.size() > MAX_GROUPS) {
 			throw BusinessException.invalid("An event can have up to %d groups.".formatted(MAX_GROUPS));
@@ -121,10 +125,12 @@ public class EventService {
 		var now = now();
 		jdbc.sql("""
 				INSERT INTO events (id, organisation_id, name, starts_on, ends_on, timezone, country, venue_name, venue_area, map_url,
+				                    latitude, longitude, place_id, pin_source, pinned_at,
 				                    status, registration_open, join_code, board_token, placing_points, created_by, created_at, updated_at)
 				VALUES (:id, :organisation, :name, :startsOn, :endsOn, :timezone, :country, :venueName, :venueArea, :mapUrl,
+				        :lat, :lng, :placeId, :pinSource, :pinnedAt,
 				        'open', :registration, :code, :board, :points, :user, :now, :now)
-				""").param("id", id).param("organisation", organisationId).param("name", details.name())
+				""").params(pinParams(details.pin())).param("id", id).param("organisation", organisationId).param("name", details.name())
 			.param("startsOn", details.startsOn()).param("endsOn", details.endsOn()).param("timezone", details.timezone())
 			.param("country", details.country()).param("venueName", details.venueName()).param("venueArea", details.venueArea())
 			.param("mapUrl", details.mapUrl()).param("registration", details.registrationOpen()).param("code", code(9))
@@ -147,13 +153,14 @@ public class EventService {
 		// Whatever wasn't sent stays as it was.
 		var points = jdbc.sql("SELECT placing_points FROM events WHERE id = :id").param("id", eventId)
 			.query((rs, n) -> (Integer[]) rs.getArray(1).getArray()).single();
-		var details = details(input, event.registrationOpen(), points);
+		var details = details(input, event.registrationOpen(), points, reader.pin(eventId));
 		jdbc.sql("""
 				UPDATE events SET name = :name, starts_on = :startsOn, ends_on = :endsOn, timezone = :timezone, country = :country,
 				       venue_name = :venueName, venue_area = :venueArea, map_url = :mapUrl, registration_open = :registration,
+				       latitude = :lat, longitude = :lng, place_id = :placeId, pin_source = :pinSource, pinned_at = :pinnedAt,
 				       placing_points = :points, updated_at = :now
 				WHERE id = :id
-				""").param("name", details.name()).param("startsOn", details.startsOn()).param("endsOn", details.endsOn())
+				""").params(pinParams(details.pin())).param("name", details.name()).param("startsOn", details.startsOn()).param("endsOn", details.endsOn())
 			.param("timezone", details.timezone()).param("country", details.country()).param("venueName", details.venueName())
 			.param("venueArea", details.venueArea()).param("mapUrl", details.mapUrl()).param("registration", details.registrationOpen())
 			.param("points", details.points()).param("now", now()).param("id", eventId).update();
@@ -470,10 +477,22 @@ public class EventService {
 	/* ------------------------------------------------------------------ */
 
 	private record Details(String name, LocalDate startsOn, LocalDate endsOn, String timezone, String country, String venueName,
-			String venueArea, String mapUrl, boolean registrationOpen, Integer[] points) {
+			String venueArea, String mapUrl, Pin pin, boolean registrationOpen, Integer[] points) {
 	}
 
-	private Details details(EventInput input, boolean registrationOpen, Integer[] points) {
+	/** The pin's columns, all null for none. */
+	private static Map<String, Object> pinParams(Pin pin) {
+		var params = new HashMap<String, Object>();
+		params.put("lat", pin == null ? null : pin.latitude());
+		params.put("lng", pin == null ? null : pin.longitude());
+		params.put("placeId", pin == null ? null : pin.placeId());
+		params.put("pinSource", pin == null ? null : pin.source());
+		params.put("pinnedAt", pin == null || pin.pinnedAt() == null ? null : pin.pinnedAt().atOffset(ZoneOffset.UTC));
+		return params;
+	}
+
+	/** @param pin where it's on the map now, so the same pin sent back keeps its age */
+	private Details details(EventInput input, boolean registrationOpen, Integer[] points, Pin pin) {
 		var name = GameSettings.text(input.name(), 100);
 		if (name == null) {
 			throw BusinessException.invalid("Give the event a name.");
@@ -505,8 +524,17 @@ public class EventService {
 		if (placing.size() > 8 || placing.stream().anyMatch(p -> p == null || p < 0 || p > 100) || placing.stream().allMatch(p -> p == 0)) {
 			throw BusinessException.invalid("Give each place up to 100 points, for up to 8 places.");
 		}
-		return new Details(name, input.startsOn(), endsOn, timezone, country, venue == null ? null : GameSettings.text(venue.name(), 120),
-				venue == null ? null : GameSettings.text(venue.area(), 120), venue == null ? null : MapLink.normalise(venue.mapUrl()),
+		var venueName = venue == null ? null : GameSettings.text(venue.name(), 120);
+		var venueArea = venue == null ? null : GameSettings.text(venue.area(), 120);
+		var kept = venue == null ? null : Pin.from(venue.pin(), pin, clock.instant());
+		if (kept != null && venueName == null) {
+			throw BusinessException.invalid("Name the place too, so people know where they’re going.");
+		}
+		String mapUrl = null;
+		if (venue != null) {
+			mapUrl = kept != null ? kept.directions(venueArea == null ? venueName : venueName + ", " + venueArea) : MapLink.normalise(venue.mapUrl());
+		}
+		return new Details(name, input.startsOn(), endsOn, timezone, country, venueName, venueArea, mapUrl, kept,
 				input.registrationOpen() == null ? registrationOpen : input.registrationOpen(), placing.toArray(Integer[]::new));
 	}
 

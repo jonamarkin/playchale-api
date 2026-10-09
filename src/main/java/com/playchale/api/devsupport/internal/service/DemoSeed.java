@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.playchale.api.market.Market;
+import com.playchale.api.shared.maps.MapLink;
 import com.playchale.api.users.api.Terms;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -114,20 +115,31 @@ class DemoSeed {
 	/* ------------------------------------------------------------------ map pins */
 
 	/**
-	 * Directions for some places, as in the web app's seed: two partner venues and a beach a host
-	 * typed. The rest have none, so "Search in Google Maps" shows too. Approximate demo spots.
+	 * Where some places are on the map, as in the web app's seed: four partner venues, an astro and a
+	 * beach hosts typed. Crossbar Sports Club and the tennis courts have none, so "Search in Google
+	 * Maps" shows too. Approximate demo spots, set as if by hand, so they're kept.
 	 */
-	private static final Map<String, String> VENUE_PINS = Map.of(
-			"v-osu", "https://www.google.com/maps/search/?api=1&query=5.5602,-0.1818",
-			"v-legon", "https://www.google.com/maps/search/?api=1&query=5.6358,-0.1601");
+	private static final Map<String, double[]> VENUE_PINS = Map.of(
+			"v-osu", new double[] { 5.5602, -0.1818 },
+			"v-legon", new double[] { 5.6358, -0.1601 },
+			"v-tema", new double[] { 5.6698, -0.0166 });
 
-	private static final Map<String, String> GAME_PINS = Map.of(
-			"g-volley-next", "https://www.google.com/maps/search/?api=1&query=5.5606,-0.1497",
-			"g-labadi-last", "https://www.google.com/maps/search/?api=1&query=5.5606,-0.1497");
+	private static final Map<String, double[]> GAME_PINS = Map.of(
+			"g-labone-tonight", new double[] { 5.5640, -0.1691 },
+			"g-volley-next", new double[] { 5.5606, -0.1497 },
+			"g-labadi-last", new double[] { 5.5606, -0.1497 });
 
 	private void mapPins() {
-		VENUE_PINS.forEach((venue, url) -> jdbc.sql("UPDATE venues SET map_url = :url WHERE id = :id").param("url", url).param("id", id(venue)).update());
-		GAME_PINS.forEach((game, url) -> jdbc.sql("UPDATE games SET map_url = :url WHERE id = :id").param("url", url).param("id", id(game)).update());
+		VENUE_PINS.forEach((venue, at) -> pin("venues", id(venue), at));
+		GAME_PINS.forEach((game, at) -> pin("games", id(game), at));
+	}
+
+	private void pin(String table, UUID id, double[] at) {
+		jdbc.sql("""
+				UPDATE %s SET map_url = :url, latitude = :lat, longitude = :lng, pin_source = 'own', pinned_at = :now WHERE id = :id
+				""".formatted(table))
+			.param("url", MapLink.forCoordinates(at[0], at[1])).param("lat", at[0]).param("lng", at[1]).param("now", utc(now.toInstant()))
+			.param("id", id).update();
 	}
 
 	/* ------------------------------------------------------------------ times and ids */

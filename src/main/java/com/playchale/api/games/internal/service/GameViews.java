@@ -29,6 +29,7 @@ import com.playchale.api.teams.api.TeamDirectory;
 import com.playchale.api.users.api.UserDirectory;
 import com.playchale.api.users.api.UserSummary;
 import com.playchale.api.venues.api.PitchBookings;
+import com.playchale.api.venues.api.VenueLocation;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
@@ -107,11 +108,11 @@ class GameViews {
 				: fixtureOrganisers.stream().findFirst()
 					.map(o -> teamIdsByLeague.keySet().stream().filter(league -> o.organisedBy(league, viewer)).collect(Collectors.toSet()))
 					.orElse(Set.of());
-		// Partner venues' own map links, in one query: a pin the owner adds later reaches every game there.
-		var mapLinks = venues.mapLinks(games.stream().map(Game::getVenueId).filter(Objects::nonNull).distinct().toList());
+		// Partner venues' own links and pins, in one query: a pin the owner adds later reaches every game there.
+		var places = venues.locations(games.stream().map(Game::getVenueId).filter(Objects::nonNull).distinct().toList());
 		var seriesRefs = seriesRefs(games, viewer);
 		return games.stream().map(g -> view(g, viewer, people, resultsByGame.get(g.getId()),
-				g.getCompetitionId() == null ? Map.of() : teamsByLeague.getOrDefault(g.getCompetitionId(), Map.of()), mapLinks,
+				g.getCompetitionId() == null ? Map.of() : teamsByLeague.getOrDefault(g.getCompetitionId(), Map.of()), places,
 				invites(invitesByGame.get(g.getId()), people, teamNames, viewer), friendly(g, standingTeams),
 				g.getCompetitionId() != null && organised.contains(g.getCompetitionId()),
 				g.getSeriesId() == null ? null : seriesRefs.get(g.getSeriesId()))).toList();
@@ -162,12 +163,13 @@ class GameViews {
 	}
 
 	private GameResponse view(Game g, UUID viewer, Map<UUID, UserSummary> people, GameResult result,
-			Map<UUID, FixtureTeams.TeamCard> teams, Map<UUID, String> mapLinks, List<GameResponse.InviteResponse> invites,
+			Map<UUID, FixtureTeams.TeamCard> teams, Map<UUID, VenueLocation> places, List<GameResponse.InviteResponse> invites,
 			GameResponse.FriendlyResponse friendly, boolean organiser, GameResponse.SeriesRef series) {
 		var hostView = g.isHost(viewer);
-		var mapUrl = g.getVenueId() != null ? mapLinks.get(g.getVenueId()) : g.getMapUrl();
+		var place = g.getVenueId() != null ? places.get(g.getVenueId()) : new VenueLocation(g.getMapUrl(), g.getPin());
+		var pin = place == null || place.pin() == null ? null : place.pin().view();
 		var venue = new GameResponse.VenueRef(g.getVenueKind(), g.getVenueId(), g.getVenueName(), g.getVenueArea(), g.getPitchId(),
-				g.getPitchName(), mapUrl);
+				g.getPitchName(), place == null ? null : place.mapUrl(), pin);
 		var participants = g.getParticipants().stream()
 			.map(p -> new GameResponse.ParticipantResponse(p.isGuest() ? "" : p.getUserId().toString(), p.getJoinedAt(), p.isPaid(),
 					p.getPaymentId(), p.getPaidVia(), p.getRemindedAt(), guest(p, hostView), p.getAttended(), p.getAttendedAt()))
@@ -191,7 +193,7 @@ class GameViews {
 				g.getStatus(), result == null ? null : result(result), fixture, g.getCreatedAt(), g.getCancelledAt(), g.getCancelReason(),
 				host == null ? null : host.as(viewer), players, fixtureTeams, g.share(), g.spotsLeft(),
 				host != null && viewer != null && g.spotOf(viewer).isPresent() ? host.payoutPhone() : null, invites, friendly, g.getCountry(),
-				g.getTimezone(), series);
+				g.getTimezone(), series, null);
 	}
 
 	private static GameResponse.ResultResponse result(GameResult r) {

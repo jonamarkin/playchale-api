@@ -4,6 +4,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 import com.playchale.api.games.internal.domain.GameDetails;
+import com.playchale.api.shared.maps.MapPin;
+import com.playchale.api.shared.maps.Pin;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 
@@ -20,14 +22,15 @@ public record NewGameRequest(String sport, String format, String title, @NotNull
 
 	/**
 	 * The web app's VenueRef: {kind: "listed", venueId, name, area, pitchId?, pitchName?} or {kind: "unlisted", name, area?,
-	 * mapUrl?}. A listed venue's map link is its own, so one sent with it is ignored.
+	 * mapUrl?, pin?}. A listed venue's map link and pin are its own, so any sent with it are ignored.
 	 */
-	public record VenueRefRequest(String kind, UUID venueId, String name, String area, UUID pitchId, String pitchName, String mapUrl) {
+	public record VenueRefRequest(String kind, UUID venueId, String name, String area, UUID pitchId, String pitchName, String mapUrl, MapPin pin) {
 	}
 
 	public GameDetails toDetails() {
 		return new GameDetails(sport, format, title, startsAt, durationMinutes, "listed".equals(venue.kind()) ? "listed" : "unlisted",
-				venue.venueId(), venue.pitchId(), venue.name(), venue.area(), venue.mapUrl(), capacity, totalCost, pricing, visibility, notes);
+				venue.venueId(), venue.pitchId(), venue.name(), venue.area(), venue.mapUrl(), capacity, totalCost, pricing, visibility, notes,
+				"listed".equals(venue.kind()) ? null : Pin.sent(venue.pin()));
 	}
 
 }

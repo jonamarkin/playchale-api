@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.playchale.api.shared.maps.MapPin;
 
 /**
  * What the event screens get, as JSON. The same shapes as {@code webapp/app/types/domain.ts}.
@@ -26,7 +27,7 @@ public final class EventViews {
 	}
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	public record Venue(String name, String area, String mapUrl) {
+	public record Venue(String name, String area, String mapUrl, MapPin pin) {
 	}
 
 	public record Brand(UUID id, String name, String primaryColour, String logoUrl) {

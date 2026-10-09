@@ -3,6 +3,7 @@ package com.playchale.api.venues.web.dto;
 import java.util.List;
 import java.util.UUID;
 
+import com.playchale.api.shared.maps.MapPin;
 import com.playchale.api.venues.internal.domain.DayHours;
 import com.playchale.api.venues.internal.domain.PitchDetails;
 import com.playchale.api.venues.internal.domain.VenueDetails;
@@ -14,7 +15,7 @@ import jakarta.validation.constraints.NotNull;
  * {@code timezone} are where it is, and only count when the venue is listed: they're fixed after,
  * since its prices are in that country's money.
  */
-public record VenueRequest(String name, String area, String description, String address, String mapUrl, String phone,
+public record VenueRequest(String name, String area, String description, String address, String mapUrl, MapPin pin, String phone,
 		@NotNull(message = "Add at least one pitch or court.") List<@Valid PitchRequest> pitches,
 		@NotNull(message = "Add your opening hours.") List<HoursRequest> hours, List<String> amenities, String country, String timezone) {
 
@@ -26,7 +27,7 @@ public record VenueRequest(String name, String area, String description, String 
 	}
 
 	public VenueDetails toDetails() {
-		return new VenueDetails(name, area, description, address, mapUrl, phone,
+		return new VenueDetails(name, area, description, address, mapUrl, pin, phone,
 				pitches.stream().map(p -> new PitchDetails(p.id(), p.name(), p.sport(), p.format(), p.surface(), p.pricePerHour())).toList(),
 				hours.stream().map(h -> h == null ? null : new DayHours(h.open(), h.close())).toList(), amenities);
 	}

@@ -135,9 +135,11 @@ class CompetitionViews {
 		var requestViews = pending.stream().map(r -> new CompetitionResponse.RequestView(r.id(), c.getId(), r.teamId(), r.userId(), r.status(),
 				r.createdAt(), shown(people.get(r.userId()), viewer))).toList();
 
-		// A partner venue's own map link, so a pin its owner adds later shows here too.
-		var mapUrl = c.getVenueId() != null ? venues.mapLinks(List.of(c.getVenueId())).get(c.getVenueId()) : c.getMapUrl();
-		var venue = new GameResponse.VenueRef(c.getVenueKind(), c.getVenueId(), c.getVenueName(), c.getVenueArea(), null, null, mapUrl);
+		// A partner venue's own link and pin, so a pin its owner adds later shows here too.
+		var place = c.getVenueId() == null ? null : venues.locations(List.of(c.getVenueId())).get(c.getVenueId());
+		var mapUrl = c.getVenueId() != null ? (place == null ? null : place.mapUrl()) : c.getMapUrl();
+		var pin = place == null || place.pin() == null ? null : place.pin().view();
+		var venue = new GameResponse.VenueRef(c.getVenueKind(), c.getVenueId(), c.getVenueName(), c.getVenueArea(), null, null, mapUrl, pin);
 		return new CompetitionResponse(c.getId(), c.getName(), c.getSport(), c.getFormat(), c.getOrganiserId(), venue, c.getStartsAt(),
 				c.getDurationMinutes(), c.getStatus(), new CompetitionResponse.Points(c.getPointsWin(), c.getPointsDraw(), c.getPointsLoss()),
 				c.getCreatedAt(), shown(people.get(c.getOrganiserId()), viewer), teamViews, table(c, squads, cards, summaries, viewer), views, rounds,

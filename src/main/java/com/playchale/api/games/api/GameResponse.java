@@ -6,13 +6,15 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.playchale.api.shared.maps.MapPin;
 import com.playchale.api.users.api.UserSummary;
 
 /**
  * A game as the web app's GameView type: the game, with the people it mentions filled in, each
  * player's share and the spots left. {@code hostPayoutPhone} is where to send the host your share,
  * shown only to players in the game. {@code country} and {@code timezone} are where it's played: its
- * money is in that country's currency, and kick-off is in that local time.
+ * money is in that country's currency, and kick-off is in that local time. {@code distanceKm} is how
+ * far it is from where the viewer asked, when Discover is sorted nearest first.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record GameResponse(UUID id, String sport, String format, String title, Instant startsAt, int durationMinutes,
@@ -20,7 +22,14 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 		List<ParticipantResponse> participants, String status, ResultResponse result, FixtureRef fixture, Instant createdAt,
 		Instant cancelledAt, String cancelReason, UserSummary host, List<PlayerResponse> players, FixtureTeamsResponse fixtureTeams,
 		long share, int spotsLeft, String hostPayoutPhone, List<InviteResponse> invites, FriendlyResponse friendly, String country,
-		String timezone, SeriesRef series) {
+		String timezone, SeriesRef series, Double distanceKm) {
+
+	/** The same game, this far from the viewer. */
+	public GameResponse withDistance(double km) {
+		return new GameResponse(id, sport, format, title, startsAt, durationMinutes, venue, capacity, totalCost, pricing, currency, visibility,
+				hostId, notes, participants, status, result, fixture, createdAt, cancelledAt, cancelReason, host, players, fixtureTeams, share,
+				spotsLeft, hostPayoutPhone, invites, friendly, country, timezone, series, Math.round(km * 10) / 10.0);
+	}
 
 	/**
 	 * The repeating game this is one of. {@code weekday} is ISO (1 is Monday), {@code kickOff} is
@@ -92,10 +101,10 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 
 	/**
 	 * Where it's played: {kind: "listed", venueId, name, area, pitchId?, pitchName?} or {kind: "unlisted", name, area?}, each
-	 * with a {@code mapUrl} for directions when there is one (for a listed venue, the venue's own).
+	 * with a {@code mapUrl} for directions and a {@code pin} on the map when there are (for a listed venue, the venue's own).
 	 */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	public record VenueRef(String kind, UUID venueId, String name, String area, UUID pitchId, String pitchName, String mapUrl) {
+	public record VenueRef(String kind, UUID venueId, String name, String area, UUID pitchId, String pitchName, String mapUrl, MapPin pin) {
 	}
 
 	/**

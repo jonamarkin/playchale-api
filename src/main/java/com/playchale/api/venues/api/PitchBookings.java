@@ -12,10 +12,11 @@ public interface PitchBookings {
 	Optional<VenueSummary> findVenue(UUID venueId);
 
 	/**
-	 * The map links of these venues, for directions to games and leagues there. Venues without one
-	 * are left out. Looked up each time, so a pin the owner adds later reaches every game.
+	 * Where these venues are (link for directions, pin on the map), for games and leagues there.
+	 * Venues with neither are left out. Looked up each time, so a pin the owner adds later reaches
+	 * every game.
 	 */
-	Map<UUID, String> mapLinks(Collection<UUID> venueIds);
+	Map<UUID, VenueLocation> locations(Collection<UUID> venueIds);
 
 	/**
 	 * Holds a pitch for a game, within opening hours and clash-free. Refuses with a message for the

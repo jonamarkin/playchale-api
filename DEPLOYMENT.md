@@ -300,6 +300,35 @@ Optional, and can be done any time. Without it, people sign in by email (or Goog
 The sign-in page then offers phone numbers too. The admin desk's Overview shows the credits left,
 and the API logs "The SMS bundle is running low" once they drop below `PLAYCHALE_RANCARD_LOW_BALANCE`.
 
+## Maps (Google)
+
+Optional, and can be done any time. Without it there are no maps: people paste a map link or use
+their location for a place, as before, and Discover can still sort by distance for those.
+
+With it, hosts and venue owners search for a place and move the map until the pin is on the pitch;
+venue, game and event pages show a map; and Discover has a map view. Google's free monthly
+allowance covers this for a long while (10,000 place searches and 10,000 map loads a month; the
+small maps on pages are free), but Google needs a billing account on file.
+
+1. In the Google Cloud console, in the project already used for Google sign-in, link a billing
+   account (Billing). Then under **Budgets & alerts**, add a budget of $5 that emails you.
+2. Turn on three APIs (APIs & Services → Library): **Maps JavaScript API**, **Places API (New)**
+   and **Maps Embed API**.
+3. Create the browser key (APIs & Services → Credentials → Create credentials → API key). Restrict
+   it: Application restrictions → Websites → `https://playchale.com/*`; API restrictions → the three
+   APIs above. Put it in `.env.web` as `NUXT_PUBLIC_GOOGLE_MAPS_KEY`, then `docker compose up -d web`.
+   This key is meant to be seen by browsers; the website restriction is what protects it.
+4. Create the server key the same way, restricted instead to the server's IP address and to the
+   **Places API (New)** only. Put it in `.env.api` as `PLAYCHALE_GOOGLE_MAPS_KEY`, then
+   `docker compose up -d api`. It looks places up again so their coordinates are never kept longer
+   than the 30 days Google allows.
+5. So usage can never run past the free allowance: APIs & Services → each API → **Quotas**, and
+   cap the requests per day at about 300 for Maps JavaScript API map loads and for Places API (New)
+   autocomplete.
+
+Check: on the live site, listing a venue shows "Search Google Maps" under "On the map", and a
+venue's page shows its map.
+
 ## Phone notifications
 
 Optional, and can be done any time. Without it, notifications stay in the app's list.
@@ -325,6 +354,8 @@ On iPhone that works once PlayChale is added to the Home Screen.
 | API log: connection refused / timeout to the database | Wrong host or port (use the **Session pooler**), or the Supabase project is paused |
 | `docker compose pull` says "denied" for `playchale-web` | The server isn't logged in to ghcr.io (step 4), or the token has expired or lacks `read:packages` |
 | Sign-in says "We couldn't send the text just now" | Rancard refused it: `docker compose logs api \| grep Rancard` shows why (often the sender ID isn't approved yet, the key is wrong, or the bundle is empty) |
+| The map search or a map says Google Maps can't load, or stays blank | `NUXT_PUBLIC_GOOGLE_MAPS_KEY`'s website restriction doesn't include the address in the browser, an API isn't turned on, or there's no billing account |
+| API log: "Stopped looking places up for today" | `PLAYCHALE_GOOGLE_MAPS_KEY` is wrong, isn't allowed from the server's IP, or the Places API (New) isn't on for it |
 | API exits: `PLAYCHALE_RANCARD_SENDER_ID must be the sender ID approved` | The sender ID is missing or longer than 11 characters |
 | Sign-in says "We couldn't send the email just now" | Resend refused it: `docker compose logs api \| grep Resend` shows why (usually the domain isn't verified yet) |
 | Codes arrive in spam | Check the domain is verified in Resend and the `_dmarc` record exists. It improves as people open the emails |
