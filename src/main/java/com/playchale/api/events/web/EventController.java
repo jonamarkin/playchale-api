@@ -4,7 +4,9 @@ import java.util.List;
 import java.util.UUID;
 
 import com.playchale.api.events.internal.domain.GameSettings;
+import com.playchale.api.events.internal.domain.ResultRules;
 import com.playchale.api.events.internal.service.EventGameService;
+import com.playchale.api.events.internal.service.EventPlayService;
 import com.playchale.api.events.internal.service.EventService;
 import com.playchale.api.events.internal.service.EventViews;
 import com.playchale.api.shared.security.CurrentUser;
@@ -30,9 +32,15 @@ class EventController {
 
 	private final EventGameService games;
 
-	EventController(EventService events, EventGameService games) {
+	private final EventPlayService play;
+
+	EventController(EventService events, EventGameService games, EventPlayService play) {
 		this.events = events;
 		this.games = games;
+		this.play = play;
+	}
+
+	record PlacingsRequest(List<EventPlayService.Placing> placings) {
 	}
 
 	record PeopleRequest(List<EventService.PersonInput> people) {
@@ -169,7 +177,55 @@ class EventController {
 		return games.coordinators(id, gameId, request.userIds(), me.id());
 	}
 
-	/* Entries */
+	/* Playing */
+
+	@PostMapping("/events/{id}/games/{gameId}/draw")
+	EventViews.Detail draw(CurrentUser me, @PathVariable UUID id, @PathVariable UUID gameId) {
+		return play.draw(id, gameId, me.id());
+	}
+
+	@DeleteMapping("/events/{id}/games/{gameId}/draw")
+	EventViews.Detail undraw(CurrentUser me, @PathVariable UUID id, @PathVariable UUID gameId) {
+		return play.undraw(id, gameId, me.id());
+	}
+
+	@PutMapping("/events/{id}/matches/{matchId}/result")
+	EventViews.Detail recordMatch(CurrentUser me, @PathVariable UUID id, @PathVariable UUID matchId, @RequestBody ResultRules.Asked request) {
+		return play.recordMatch(id, matchId, request, me.id());
+	}
+
+	@DeleteMapping("/events/{id}/matches/{matchId}/result")
+	EventViews.Detail clearMatch(CurrentUser me, @PathVariable UUID id, @PathVariable UUID matchId) {
+		return play.clearMatch(id, matchId, me.id());
+	}
+
+	@PutMapping("/events/{id}/heats/{heatId}/placings")
+	EventViews.Detail recordHeat(CurrentUser me, @PathVariable UUID id, @PathVariable UUID heatId, @RequestBody PlacingsRequest request) {
+		return play.recordHeat(id, heatId, request.placings(), me.id());
+	}
+
+	@DeleteMapping("/events/{id}/heats/{heatId}/placings")
+	EventViews.Detail clearHeat(CurrentUser me, @PathVariable UUID id, @PathVariable UUID heatId) {
+		return play.clearHeat(id, heatId, me.id());
+	}
+
+	@PostMapping("/events/{id}/finish")
+	EventViews.Detail finish(CurrentUser me, @PathVariable UUID id) {
+		return play.finish(id, me.id());
+	}
+
+	@PostMapping("/events/{id}/reopen")
+	EventViews.Detail reopen(CurrentUser me, @PathVariable UUID id) {
+		return play.reopen(id, me.id());
+	}
+
+	/** The projector board: no sign-in, so anyone with the link can put it on a screen. */
+	@GetMapping("/boards/{token}")
+	EventViews.Board board(@PathVariable String token) {
+		return play.board(token);
+	}
+
+		/* Entries */
 
 	@PostMapping("/events/{id}/games/{gameId}/entries")
 	EventViews.Detail addEntry(CurrentUser me, @PathVariable UUID id, @PathVariable UUID gameId,

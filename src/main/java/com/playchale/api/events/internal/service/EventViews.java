@@ -68,7 +68,43 @@ public final class EventViews {
 	public record Game(UUID id, String discipline, String name, String category, String entryKind, Integer teamSize, String format,
 			String scoring, Integer bestOf, boolean drawsAllowed, boolean thirdPlace, Integer heatSize, Integer advancePerHeat,
 			String location, Instant startsAt, String status, int position, List<Coordinator> coordinators, List<Entry> entries,
-			List<UUID> interested) {
+			List<UUID> interested, List<Match> matches, List<Heat> heats, List<LeagueRow> table, List<UUID> places) {
+
+		Game withPlay(List<Match> matches, List<Heat> heats, List<LeagueRow> table, List<UUID> places) {
+			return new Game(id, discipline, name, category, entryKind, teamSize, format, scoring, bestOf, drawsAllowed, thirdPlace,
+					heatSize, advancePerHeat, location, startsAt, status, position, coordinators, entries, interested, matches, heats, table,
+					places);
+		}
+
+	}
+
+	public record SetScore(int home, int away) {
+	}
+
+	/**
+	 * A knockout tie or league match. An empty side is a bye (when the other side has won it without
+	 * playing) or someone still to come through.
+	 */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Match(UUID id, int round, int slot, boolean thirdPlace, UUID homeEntryId, UUID awayEntryId, Integer homeScore,
+			Integer awayScore, List<SetScore> sets, UUID winnerEntryId, String decidedBy, Integer homePenalties, Integer awayPenalties,
+			Instant startsAt, String location, Instant recordedAt) {
+	}
+
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Lane(UUID entryId, int lane, Integer place, String mark) {
+	}
+
+	/** A heat or the final of a placings game: who's in it, and where they finished once it's run. */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Heat(UUID id, String stage, int number, List<Lane> lanes, Instant recordedAt) {
+	}
+
+	public record LeagueRow(UUID entryId, int played, int won, int drawn, int lost, int scored, int conceded, int points) {
+	}
+
+	/** A group in the overall table. */
+	public record GroupRow(UUID groupId, int points, int gold, int silver, int bronze) {
 	}
 
 	/** The links only admins see: to join the event, and to put its board on a screen. */
@@ -77,7 +113,26 @@ public final class EventViews {
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record Detail(Info event, Brand organisation, Viewer viewer, List<Group> groups, List<Person> people, List<Game> games,
-			Links links) {
+			List<GroupRow> table, Links links) {
+	}
+
+	/** One game on the board: how it stands, and who's up next. */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record BoardGame(UUID id, String discipline, String name, String category, String status, String location, Instant startsAt,
+			List<String> places, List<String> next) {
+	}
+
+	/** A result just in, for the board. */
+	public record Latest(String game, String summary, Instant at) {
+	}
+
+	/**
+	 * The event on a big screen: the overall table, every game's standing and what's next, and the
+	 * latest results. Names only, as people put them in: nothing private.
+	 */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Board(String name, String timezone, Brand organisation, LocalDate startsOn, LocalDate endsOn, Venue venue, String status,
+			List<Group> groups, List<GroupRow> table, List<BoardGame> games, List<Latest> latest, Instant at) {
 	}
 
 	/** One game, as someone deciding whether to join sees it. */

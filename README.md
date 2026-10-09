@@ -326,6 +326,11 @@ isn't gated by `corporate_enabled`.
 - **Entries**: a single game takes people straight in; a pair or team game takes their interest, and
   a coordinator makes the pairs and teams ("one team per group" makes a team named after each group
   from its interested people). The database holds a person to one entry per game.
+- **Playing**: a knockout's later rounds are rebuilt from the winners whenever a result changes
+  (byes go straight through; a third-place match appears once both semi-finals have losers), and a
+  result can only change while the round after it hasn't been played. Placings games run heats,
+  then a final of the best of each. Each game's places, and the overall table of groups (the
+  event's points per place, ties broken on golds, then silvers), are worked out on every read.
 - **Account deletion** unlinks the account. A name typed by an admin stays; a self-joined name
   becomes "Former participant".
 
@@ -342,6 +347,11 @@ isn't gated by `corporate_enabled`.
 | `POST /events/{id}/games`, `PATCH\|DELETE …/games/{gameId}` | Games |
 | `PUT /events/{id}/games/{gameId}/coordinators` `{"userIds"}` | Who runs a game |
 | `POST …/games/{gameId}/entries`, `…/entries/by-group`, `PATCH\|DELETE …/entries/{entryId}` | Entries, and a team per group |
+| `POST\|DELETE /events/{id}/games/{gameId}/draw` | The draw at random (bracket, fixtures or heats); take it back before any result |
+| `PUT\|DELETE /events/{id}/matches/{matchId}/result` | A match's result as its game is scored (`homeScore`/`awayScore`, `sets`, `winner`, penalties, or a walkover); take it back |
+| `PUT\|DELETE /events/{id}/heats/{heatId}/placings` | A heat's or final's finishing order: `{"placings": [{"entryId", "place", "mark"?}]}` |
+| `POST /events/{id}/finish`, `/reopen` | It's over (everyone taking part hears who won), or back on |
+| `GET /boards/{token}` | No sign-in: the projector board (overall table, each game's places and what's next, latest results; names only) |
 
 ## Showing up
 

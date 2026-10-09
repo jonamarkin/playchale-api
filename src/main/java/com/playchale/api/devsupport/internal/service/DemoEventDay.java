@@ -1,11 +1,9 @@
 package com.playchale.api.devsupport.internal.service;
 
-import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -13,15 +11,17 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
+import com.playchale.api.shared.draws.RoundRobin;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 /**
  * The demo games day, as in the web app's seed (webapp/app/services/mock/seed-events.ts): Hillview
- * Chapel, an invented church, runs its fellowships' games day this Saturday. Ama owns the workspace,
- * Esi coordinates table tennis and ludo, and Kwame joined with the link. Everyone else is a name an
- * admin typed in, as most people at a games day are.
+ * Chapel, an invented church, runs its fellowships' games day today. Ama owns the workspace, Esi
+ * coordinates table tennis and ludo, and Kwame joined with the link. Everyone else is a name an admin
+ * typed in, as most people at a games day are. Oware has been played, ludo's heats are in and its
+ * final is next; everything else is still taking entries.
  *
- * <p>Entries are made in the same order as the web app's, so they get the same IDs.
+ * <p>Entries and matches are made in the same order as the web app's, so they get the same IDs.
  */
 final class DemoEventDay {
 
@@ -65,13 +65,13 @@ final class DemoEventDay {
 		member("u-ama", "owner", daysAgo(30));
 		member("u-esi", "official", daysAgo(20));
 
-		var saturday = now.toLocalDate().with(TemporalAdjusters.nextOrSame(DayOfWeek.SATURDAY));
+		var today = now.toLocalDate();
 		jdbc.sql("""
 				INSERT INTO events (id, organisation_id, name, starts_on, ends_on, timezone, country, venue_name, venue_area, status,
 				                    registration_open, join_code, board_token, placing_points, created_by, created_at, updated_at)
 				VALUES (:id, :organisation, 'Hillview Games Day', :day, :day, 'Africa/Accra', 'GH', 'Hillview Chapel grounds', 'Adenta',
 				        'open', true, 'hillview-demo', 'hillview-board-demo', '{5,3,1}', :owner, :created, :created)
-				""").param("id", id(EVENT)).param("organisation", id(ORGANISATION)).param("day", saturday).param("owner", id("u-ama"))
+				""").param("id", id(EVENT)).param("organisation", id(ORGANISATION)).param("day", today).param("owner", id("u-ama"))
 			.param("created", utc(daysAgo(7))).update();
 
 		for (int i = 0; i < GROUPS.size(); i++) {
@@ -119,10 +119,67 @@ final class DemoEventDay {
 		for (var g : GROUPS) {
 			entry("evgm-tug-of-war", g[1], g[0], List.of());
 		}
+		playOware();
+		runLudoHeats();
 		for (var game : List.of("evgm-table-tennis", "evgm-ludo")) {
 			jdbc.sql("INSERT INTO event_game_coordinators (game_id, user_id, added_by, created_at) VALUES (:game, :user, :by, :at)")
 				.param("game", id(game)).param("user", id("u-esi")).param("by", id("u-ama")).param("at", utc(daysAgo(5))).update();
 		}
+	}
+
+	/** Oware, everyone against everyone in entry order, all six played: a league with its places decided. */
+	private void playOware() {
+		var entries = List.of("eve-10", "eve-11", "eve-12", "eve-13");
+		var rounds = RoundRobin.rounds(entries.stream().map(DemoEventDay::id).toList());
+		var outcomes = List.of("home", "draw", "away", "home", "home", "draw");
+		int played = 0;
+		for (int r = 0; r < rounds.size(); r++) {
+			for (int s = 0; s < rounds.get(r).size(); s++) {
+				var pairing = rounds.get(r).get(s);
+				var outcome = outcomes.get(played++);
+				var winner = "home".equals(outcome) ? pairing.home() : "away".equals(outcome) ? pairing.away() : null;
+				jdbc.sql("""
+						INSERT INTO event_matches (id, game_id, round, slot, home_entry_id, away_entry_id, winner_entry_id, decided_by,
+						                           recorded_by, recorded_at)
+						VALUES (:id, :game, :round, :slot, :home, :away, :winner, 'score', :by, :at)
+						""").param("id", id("evm-oware-r%ds%d".formatted(r + 1, s))).param("game", id("evgm-oware")).param("round", r + 1)
+					.param("slot", s).param("home", pairing.home()).param("away", pairing.away()).param("winner", winner)
+					.param("by", id("u-ama")).param("at", utc(now.minusMinutes(150 - played * 15L).toInstant())).update();
+			}
+		}
+		jdbc.sql("UPDATE event_games SET status = 'finished' WHERE id = :id").param("id", id("evgm-oware")).update();
+	}
+
+	/** Ludo: two heats of four run, the final between their winners still to play. */
+	private void runLudoHeats() {
+		var entries = java.util.stream.IntStream.rangeClosed(18, 25).mapToObj(i -> id("eve-" + i)).toList();
+		// Dealt like cards into two heats of four, as the draw does it (events: Standings.heats).
+		var heats = List.of(List.of(entries.get(0), entries.get(2), entries.get(4), entries.get(6)),
+				List.of(entries.get(1), entries.get(3), entries.get(5), entries.get(7)));
+		var places = List.of(List.of(2, 1, 4, 3), List.of(1, 2, 3, 4));
+		var winners = new java.util.ArrayList<UUID>();
+		for (int h = 0; h < heats.size(); h++) {
+			var heatId = id("evh-ludo-heat-" + (h + 1));
+			jdbc.sql("INSERT INTO event_heats (id, game_id, stage, number, recorded_by, recorded_at) VALUES (:id, :game, 'heat', :n, :by, :at)")
+				.param("id", heatId).param("game", id("evgm-ludo")).param("n", h + 1).param("by", id("u-esi"))
+				.param("at", utc(now.minusMinutes(60 - h * 20L).toInstant())).update();
+			for (int lane = 0; lane < heats.get(h).size(); lane++) {
+				var place = places.get(h).get(lane);
+				jdbc.sql("INSERT INTO event_heat_entries (heat_id, entry_id, lane, place) VALUES (:heat, :entry, :lane, :place)")
+					.param("heat", heatId).param("entry", heats.get(h).get(lane)).param("lane", lane + 1).param("place", place).update();
+				if (place == 1) {
+					winners.add(heats.get(h).get(lane));
+				}
+			}
+		}
+		var finalId = id("evh-ludo-final-1");
+		jdbc.sql("INSERT INTO event_heats (id, game_id, stage, number) VALUES (:id, :game, 'final', 1)").param("id", finalId)
+			.param("game", id("evgm-ludo")).update();
+		for (int lane = 0; lane < winners.size(); lane++) {
+			jdbc.sql("INSERT INTO event_heat_entries (heat_id, entry_id, lane) VALUES (:heat, :entry, :lane)").param("heat", finalId)
+				.param("entry", winners.get(lane)).param("lane", lane + 1).update();
+		}
+		jdbc.sql("UPDATE event_games SET status = 'drawn' WHERE id = :id").param("id", id("evgm-ludo")).update();
 	}
 
 	private void member(String user, String role, Instant joined) {
