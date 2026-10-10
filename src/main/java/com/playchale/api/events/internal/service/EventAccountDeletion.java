@@ -30,6 +30,7 @@ class EventAccountDeletion {
 			.param("user", e.userId()).update();
 		jdbc.sql("UPDATE event_people SET user_id = NULL WHERE user_id = :user").param("user", e.userId()).update();
 		jdbc.sql("DELETE FROM event_game_coordinators WHERE user_id = :user").param("user", e.userId()).update();
+		jdbc.sql("DELETE FROM event_group_reps WHERE user_id = :user").param("user", e.userId()).update();
 	}
 
 }

@@ -9,9 +9,13 @@ import com.playchale.api.events.internal.domain.ResultRules;
 import com.playchale.api.events.internal.service.EventGameService;
 import com.playchale.api.events.internal.service.EventPlayService;
 import com.playchale.api.events.internal.service.EventService;
+import com.playchale.api.events.internal.service.EventSponsorService;
 import com.playchale.api.events.internal.service.EventViews;
 import com.playchale.api.shared.security.CurrentUser;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -19,6 +23,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -35,10 +40,13 @@ class EventController {
 
 	private final EventPlayService play;
 
-	EventController(EventService events, EventGameService games, EventPlayService play) {
+	private final EventSponsorService sponsors;
+
+	EventController(EventService events, EventGameService games, EventPlayService play, EventSponsorService sponsors) {
 		this.events = events;
 		this.games = games;
 		this.play = play;
+		this.sponsors = sponsors;
 	}
 
 	record PlacingsRequest(List<EventPlayService.Placing> placings) {
@@ -121,6 +129,67 @@ class EventController {
 	@DeleteMapping("/events/{id}/groups/{groupId}")
 	EventViews.Detail removeGroup(CurrentUser me, @PathVariable UUID id, @PathVariable UUID groupId) {
 		return events.removeGroup(id, groupId, me.id());
+	}
+
+	/** {"via": "cash" | "momo" | "bank"} marks the group's fee paid; {"via": null} takes that back. */
+	@PutMapping("/events/{id}/groups/{groupId}/fee")
+	EventViews.Detail markGroupFee(CurrentUser me, @PathVariable UUID id, @PathVariable UUID groupId, @RequestBody FeeRequest request) {
+		return events.markGroupFee(id, groupId, request.via(), me.id());
+	}
+
+	/* Reps: someone from a group registers its people */
+
+	@PostMapping("/events/{id}/groups/{groupId}/rep-link")
+	EventViews.Detail newRepLink(CurrentUser me, @PathVariable UUID id, @PathVariable UUID groupId) {
+		return events.newRepLink(id, groupId, me.id());
+	}
+
+	@DeleteMapping("/events/{id}/groups/{groupId}/reps/{repId}")
+	EventViews.Detail removeRep(CurrentUser me, @PathVariable UUID id, @PathVariable UUID groupId, @PathVariable UUID repId) {
+		return events.removeRep(id, groupId, repId, me.id());
+	}
+
+	/** Open without signing in: the page says what the link is for, then asks them to sign in. */
+	@GetMapping("/events/reps/{code}")
+	EventViews.RepPreview repPreview(Optional<CurrentUser> me, @PathVariable String code) {
+		return events.repPreview(code, me.map(CurrentUser::id).orElse(null));
+	}
+
+	@PostMapping("/events/reps/{code}")
+	EventViews.Detail becomeRep(CurrentUser me, @PathVariable String code) {
+		return events.becomeRep(code, me.id());
+	}
+
+	/* Sponsors */
+
+	@PostMapping("/events/{id}/sponsors")
+	EventViews.Detail addSponsor(CurrentUser me, @PathVariable UUID id, @RequestBody EventSponsorService.SponsorInput request) {
+		return sponsors.add(id, request, me.id());
+	}
+
+	@PatchMapping("/events/{id}/sponsors/{sponsorId}")
+	EventViews.Detail updateSponsor(CurrentUser me, @PathVariable UUID id, @PathVariable UUID sponsorId,
+			@RequestBody EventSponsorService.SponsorInput request) {
+		return sponsors.update(id, sponsorId, request, me.id());
+	}
+
+	@DeleteMapping("/events/{id}/sponsors/{sponsorId}")
+	EventViews.Detail removeSponsor(CurrentUser me, @PathVariable UUID id, @PathVariable UUID sponsorId) {
+		return sponsors.remove(id, sponsorId, me.id());
+	}
+
+	@PutMapping(value = "/events/{id}/sponsors/{sponsorId}/logo", consumes = { "image/png", "image/jpeg", "image/webp" })
+	EventViews.Detail sponsorLogo(CurrentUser me, @PathVariable UUID id, @PathVariable UUID sponsorId,
+			@RequestHeader(HttpHeaders.CONTENT_TYPE) String contentType, @RequestBody byte[] image) {
+		return sponsors.logo(id, sponsorId, image, contentType, me.id());
+	}
+
+	/** A sponsor's logo, for the public page and the board: no sign-in. Its address changes with it, so it's cached for good. */
+	@GetMapping("/events/sponsors/{sponsorId}/logo")
+	ResponseEntity<byte[]> sponsorLogo(@PathVariable UUID sponsorId) {
+		var logo = sponsors.logo(sponsorId);
+		return ResponseEntity.ok().contentType(MediaType.parseMediaType(logo.contentType()))
+			.header(HttpHeaders.CACHE_CONTROL, "public, max-age=31536000, immutable").body(logo.bytes());
 	}
 
 	/* People */

@@ -100,7 +100,7 @@ class EventReader {
 		var announcement = announcements(eventId, 1).stream().filter(a -> a.postedAt().isAfter(java.time.Instant.now().minus(java.time.Duration.ofHours(12))))
 			.findFirst().orElse(null);
 		return new EventViews.Board(info.name(), info.timezone(), detail.organisation(), info.startsOn(), info.endsOn(), info.venue(), info.status(),
-				detail.groups(), detail.table(), games, latest.stream().limit(8).toList(), java.time.Instant.now(), announcement);
+				detail.groups(), detail.table(), games, latest.stream().limit(8).toList(), java.time.Instant.now(), announcement, detail.sponsors());
 	}
 
 	/**
@@ -118,7 +118,7 @@ class EventReader {
 			.filter(a -> a.postedAt().isAfter(java.time.Instant.now().minus(java.time.Duration.ofHours(12))))
 			.map(a -> new EventViews.Announcement(a.id(), a.body(), a.postedAt(), null)).toList();
 		return new EventViews.Detail(detail.event().forPublic(), detail.organisation(), null, detail.groups(), List.of(),
-				detail.games().stream().map(EventViews.Game::forPublic).toList(), detail.table(), null, latest);
+				detail.games().stream().map(EventViews.Game::forPublic).toList(), detail.table(), null, latest, detail.sponsors());
 	}
 
 	/** The whole event. {@code role} null for the board, which shows no viewer and no links. */
@@ -205,15 +205,67 @@ class EventReader {
 		var table = standings.groupTable(groups, info.placingPoints(), played);
 
 		var admin = "admin".equals(role);
-		var links = admin ? jdbc.sql("SELECT join_code, board_token FROM events WHERE id = :id").param("id", eventId)
-			.query((rs, n) -> new EventViews.Links("/events/join?code=" + rs.getString(1), "/events/board/" + rs.getString(2))).single()
-				: null;
-		var viewer = role == null ? null : new EventViews.Viewer(role, access.personOf(eventId, viewerId), List.copyOf(mine));
-		// The board shows names only: no accounts, no faces. Who has paid is the admins' and each person's own.
+		var represents = role == null ? List.<UUID>of() : access.represented(eventId, viewerId);
+		var links = admin ? links(eventId) : null;
+		var viewer = role == null ? null
+				: new EventViews.Viewer(role, access.personOf(eventId, viewerId), List.copyOf(mine), represents.isEmpty() ? null : represents);
+		// The board shows names only: no accounts, no faces. Who has paid is the admins' and each person's
+		// own; a rep sees their own group's.
 		var ownPerson = viewer == null ? null : viewer.personId();
 		var shownPeople = role == null ? List.<EventViews.Person>of()
-				: admin ? people : people.stream().map(p -> p.id().equals(ownPerson) ? p : p.withoutFee()).toList();
-		return new EventViews.Detail(info, brand(row), viewer, groups, shownPeople, played, table, links, announcements(eventId, 20));
+				: admin ? people
+						: people.stream().map(p -> p.id().equals(ownPerson) || represents.contains(p.groupId()) ? p : p.withoutFee()).toList();
+		// A group's fee and reps are the admins' and its own reps' business.
+		var fullGroups = admin || !represents.isEmpty() ? groupsInFull(eventId) : List.<EventViews.Group>of();
+		var shownGroups = admin ? fullGroups
+				: groups.stream().map(g -> represents.contains(g.id())
+						? fullGroups.stream().filter(f -> f.id().equals(g.id())).findFirst().orElse(g) : g).toList();
+		return new EventViews.Detail(info, brand(row), viewer, shownGroups, shownPeople, played, table, links, announcements(eventId, 20),
+				sponsors(eventId));
+	}
+
+	/** The admins' links: to join, to the board, and each group's rep link. */
+	private EventViews.Links links(UUID eventId) {
+		var reps = jdbc.sql("SELECT id, rep_code FROM event_groups WHERE event_id = :event ORDER BY position, name").param("event", eventId)
+			.query((rs, n) -> new EventViews.RepLink((UUID) rs.getObject(1), "/events/rep?code=" + rs.getString(2))).list();
+		return jdbc.sql("SELECT join_code, board_token FROM events WHERE id = :id").param("id", eventId)
+			.query((rs, n) -> new EventViews.Links("/events/join?code=" + rs.getString(1), "/events/board/" + rs.getString(2), reps))
+			.single();
+	}
+
+	/** The groups with whether each paid its fee, and its reps. */
+	List<EventViews.Group> groupsInFull(UUID eventId) {
+		var repRows = jdbc.sql("""
+				SELECT r.group_id, r.user_id FROM event_group_reps r JOIN event_groups g ON g.id = r.group_id
+				WHERE g.event_id = :event ORDER BY r.added_at
+				""").param("event", eventId).query((rs, n) -> new UUID[] { (UUID) rs.getObject(1), (UUID) rs.getObject(2) }).list();
+		var accounts = users.findAll(repRows.stream().map(r -> r[1]).collect(java.util.stream.Collectors.toSet()));
+		var reps = new HashMap<UUID, List<EventViews.Rep>>();
+		for (var r : repRows) {
+			var account = accounts.get(r[1]);
+			reps.computeIfAbsent(r[0], k -> new ArrayList<>()).add(new EventViews.Rep(r[1], account == null ? "Former member" : account.name(),
+					account == null ? null : account.avatar()));
+		}
+		return jdbc.sql("""
+				SELECT id, name, colour, position, fee_paid_via, fee_paid_at FROM event_groups WHERE event_id = :event ORDER BY position, name
+				""").param("event", eventId).query((rs, n) -> {
+				var id = (UUID) rs.getObject("id");
+				var paidAt = rs.getObject("fee_paid_at", OffsetDateTime.class);
+				return new EventViews.Group(id, rs.getString("name"), rs.getString("colour"), rs.getInt("position"), rs.getString("fee_paid_via"),
+						paidAt == null ? null : paidAt.toInstant(), reps.getOrDefault(id, List.of()));
+			}).list();
+	}
+
+	/** The event's sponsors, the headline sponsor first. */
+	List<EventViews.Sponsor> sponsors(UUID eventId) {
+		return jdbc.sql("""
+				SELECT id, name, headline, logo_version, logo IS NOT NULL AS has_logo FROM event_sponsors
+				WHERE event_id = :event ORDER BY headline DESC, position, created_at
+				""").param("event", eventId).query((rs, n) -> {
+				var id = (UUID) rs.getObject("id");
+				return new EventViews.Sponsor(id, rs.getString("name"), rs.getBoolean("headline"),
+						rs.getBoolean("has_logo") ? "/events/sponsors/%s/logo?v=%d".formatted(id, rs.getInt("logo_version")) : null);
+			}).list();
 	}
 
 	EventViews.Info info(UUID eventId) {
@@ -223,7 +275,7 @@ class EventReader {
 				rs.getString("timezone"), rs.getString("country").strip(), venue(rs), rs.getString("status"),
 				rs.getBoolean("registration_open"), points(rs.getArray("placing_points")), instant(rs, "created_at"),
 				rs.getObject("entry_fee", Long.class), com.playchale.api.market.Market.get(rs.getString("country").strip()).currency(),
-				rs.getString("public_slug") == null ? null : "/e/" + rs.getString("public_slug")))
+				rs.getString("public_slug") == null ? null : "/e/" + rs.getString("public_slug"), rs.getObject("group_fee", Long.class)))
 			.optional().orElseThrow(() -> BusinessException.notFound(EventAccess.GONE));
 	}
 

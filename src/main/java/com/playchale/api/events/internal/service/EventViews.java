@@ -37,12 +37,12 @@ public final class EventViews {
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record Info(UUID id, UUID organisationId, String name, LocalDate startsOn, LocalDate endsOn, String timezone, String country,
 			Venue venue, String status, boolean registrationOpen, List<Integer> placingPoints, Instant createdAt, Long entryFee, String currency,
-			String publicPath) {
+			String publicPath, Long groupFee) {
 
 		/** As the public page shows it: nothing about money. */
 		Info forPublic() {
 			return new Info(id, organisationId, name, startsOn, endsOn, timezone, country, venue, status, registrationOpen, placingPoints,
-					createdAt, null, null, publicPath);
+					createdAt, null, null, publicPath, null);
 		}
 
 	}
@@ -55,10 +55,35 @@ public final class EventViews {
 	 * @param coordinates the games they coordinate
 	 */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	public record Viewer(String role, UUID personId, List<UUID> coordinates) {
+	public record Viewer(String role, UUID personId, List<UUID> coordinates, List<UUID> represents) {
 	}
 
-	public record Group(UUID id, String name, String colour, int position) {
+	/**
+	 * A group: a fellowship, a house, a company. Whether it has paid the group fee, and who its reps
+	 * are, only for admins and its own reps.
+	 */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Group(UUID id, String name, String colour, int position, String feePaidVia, Instant feePaidAt, List<Rep> reps) {
+
+		Group(UUID id, String name, String colour, int position) {
+			this(id, name, colour, position, null, null, null);
+		}
+
+		/** The group as everyone sees it: its name and colour. */
+		Group plain() {
+			return new Group(id, name, colour, position);
+		}
+
+	}
+
+	/** Someone from a group who registers its people and enters them in games. */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Rep(UUID userId, String name, String avatar) {
+	}
+
+	/** A sponsor of the event. {@code logoUrl} is an address on the API, when it has a logo. */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Sponsor(UUID id, String name, boolean headline, String logoUrl) {
 	}
 
 	/** Someone taking part. {@code userId} only when they joined with their own account. */
@@ -141,13 +166,17 @@ public final class EventViews {
 	public record GroupRow(UUID groupId, int points, int gold, int silver, int bronze) {
 	}
 
-	/** The links only admins see: to join the event, and to put its board on a screen. */
-	public record Links(String joinUrl, String boardUrl) {
+	/** The links only admins see: to join the event, to put its board on a screen, and each group's rep link. */
+	public record Links(String joinUrl, String boardUrl, List<RepLink> reps) {
+	}
+
+	/** The link a group's rep signs up with. */
+	public record RepLink(UUID groupId, String url) {
 	}
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record Detail(Info event, Brand organisation, Viewer viewer, List<Group> groups, List<Person> people, List<Game> games,
-			List<GroupRow> table, Links links, List<Announcement> announcements) {
+			List<GroupRow> table, Links links, List<Announcement> announcements, List<Sponsor> sponsors) {
 	}
 
 	/** Something the organisers told everyone, newest first. */
@@ -176,7 +205,17 @@ public final class EventViews {
 	 */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record Board(String name, String timezone, Brand organisation, LocalDate startsOn, LocalDate endsOn, Venue venue, String status,
-			List<Group> groups, List<GroupRow> table, List<BoardGame> games, List<Latest> latest, Instant at, Announcement announcement) {
+			List<Group> groups, List<GroupRow> table, List<BoardGame> games, List<Latest> latest, Instant at, Announcement announcement,
+			List<Sponsor> sponsors) {
+	}
+
+	/**
+	 * What a rep link is for, before it's used: the event and the group. {@code mine} says the viewer
+	 * already represents it; {@code full} that it has as many reps as it can.
+	 */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record RepPreview(UUID eventId, String eventName, Brand organisation, LocalDate startsOn, LocalDate endsOn, Group group,
+			boolean registrationOpen, String status, Boolean mine, boolean full) {
 	}
 
 	/** One game, as someone deciding whether to join sees it. */

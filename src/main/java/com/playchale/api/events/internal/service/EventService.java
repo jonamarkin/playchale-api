@@ -52,7 +52,11 @@ public class EventService {
 	static final List<String> PALETTE = List.of("#1f6feb", "#d1342f", "#2f9e44", "#e8a400", "#7c3aed", "#f2701d", "#0f9db5",
 			"#d6336c");
 
-	private static final int MAX_GROUPS = 24;
+	/** Enough for a corporate games day: thirty-odd companies, with room to spare. */
+	private static final int MAX_GROUPS = 64;
+
+	/** How many reps a group can have: someone, and a couple to cover for them. */
+	private static final int MAX_REPS = 5;
 
 	private static final int MAX_PEOPLE = 3000;
 
@@ -97,10 +101,11 @@ public class EventService {
 	/** An event's details. Groups are only read when it's created; after that they have their own calls. */
 	/**
 	 * An event's details. {@code entryFee}: what each person pays the organisers, in the event's money,
-	 * minor units; left out it stays as it was, and 0 takes it off.
+	 * minor units; {@code groupFee}: what each group (a company, say) pays. Either left out stays as it
+	 * was, and 0 takes it off.
 	 */
 	public record EventInput(String name, LocalDate startsOn, LocalDate endsOn, String timezone, String country, VenueInput venue,
-			List<GroupInput> groups, List<Integer> placingPoints, Boolean registrationOpen, Long entryFee) {
+			List<GroupInput> groups, List<Integer> placingPoints, Boolean registrationOpen, Long entryFee, Long groupFee) {
 	}
 
 	public record PersonInput(String name, UUID groupId) {
@@ -142,12 +147,13 @@ public class EventService {
 		var now = now();
 		jdbc.sql("""
 				INSERT INTO events (id, organisation_id, name, starts_on, ends_on, timezone, country, venue_name, venue_area, map_url,
-				                    latitude, longitude, place_id, pin_source, pinned_at, entry_fee,
+				                    latitude, longitude, place_id, pin_source, pinned_at, entry_fee, group_fee,
 				                    status, registration_open, join_code, board_token, placing_points, created_by, created_at, updated_at)
 				VALUES (:id, :organisation, :name, :startsOn, :endsOn, :timezone, :country, :venueName, :venueArea, :mapUrl,
-				        :lat, :lng, :placeId, :pinSource, :pinnedAt, :fee,
+				        :lat, :lng, :placeId, :pinSource, :pinnedAt, :fee, :groupFee,
 				        'open', :registration, :code, :board, :points, :user, :now, :now)
-				""").params(pinParams(details.pin())).param("id", id).param("organisation", organisationId).param("name", details.name())
+				""").params(pinParams(details.pin())).param("groupFee", groupFee(input.groupFee(), null)).param("id", id)
+			.param("organisation", organisationId).param("name", details.name())
 			.param("startsOn", details.startsOn()).param("endsOn", details.endsOn()).param("timezone", details.timezone())
 			.param("country", details.country()).param("venueName", details.venueName()).param("venueArea", details.venueArea())
 			.param("mapUrl", details.mapUrl()).param("registration", details.registrationOpen()).param("code", code(9))
@@ -200,10 +206,10 @@ public class EventService {
 		var now = now();
 		jdbc.sql("""
 				INSERT INTO events (id, organisation_id, name, starts_on, ends_on, timezone, country, venue_name, venue_area, map_url,
-				                    latitude, longitude, place_id, pin_source, pinned_at, entry_fee,
+				                    latitude, longitude, place_id, pin_source, pinned_at, entry_fee, group_fee,
 				                    status, registration_open, join_code, board_token, placing_points, created_by, created_at, updated_at)
 				SELECT :id, organisation_id, :name, :startsOn, :endsOn, timezone, country, venue_name, venue_area, map_url,
-				       latitude, longitude, place_id, pin_source, pinned_at, entry_fee,
+				       latitude, longitude, place_id, pin_source, pinned_at, entry_fee, group_fee,
 				       'open', true, :code, :board, placing_points, :user, :now, :now
 				FROM events WHERE id = :source
 				""").param("id", id).param("name", name).param("startsOn", input.startsOn()).param("endsOn", endsOn).param("code", code(9))
@@ -212,10 +218,17 @@ public class EventService {
 		var groups = new HashMap<UUID, UUID>();
 		jdbc.sql("SELECT id FROM event_groups WHERE event_id = :event").param("event", eventId).query(UUID.class).list()
 			.forEach(g -> groups.put(g, UUID.randomUUID()));
+		// Each group gets its own new rep link, and nobody's a rep yet: who registers a company changes year to year.
 		groups.forEach((old, copy) -> jdbc.sql("""
-				INSERT INTO event_groups (id, event_id, name, colour, position, created_at)
-				SELECT :copy, :event, name, colour, position, :now FROM event_groups WHERE id = :old
-				""").param("copy", copy).param("event", id).param("now", now).param("old", old).update());
+				INSERT INTO event_groups (id, event_id, name, colour, position, rep_code, created_at)
+				SELECT :copy, :event, name, colour, position, :rep, :now FROM event_groups WHERE id = :old
+				""").param("copy", copy).param("event", id).param("rep", code(9)).param("now", now).param("old", old).update());
+		// The sponsors come too, logos and all; take off any who don't come back.
+		jdbc.sql("""
+				INSERT INTO event_sponsors (id, event_id, name, headline, position, logo, logo_content_type, logo_version, created_at)
+				SELECT gen_random_uuid(), :event, name, headline, position, logo, logo_content_type, logo_version, :now
+				FROM event_sponsors WHERE event_id = :source
+				""").param("event", id).param("now", now).param("source", eventId).update();
 
 		var games = jdbc.sql("SELECT id FROM event_games WHERE event_id = :event ORDER BY position").param("event", eventId)
 			.query(UUID.class).list();
@@ -271,9 +284,10 @@ public class EventService {
 				UPDATE events SET name = :name, starts_on = :startsOn, ends_on = :endsOn, timezone = :timezone, country = :country,
 				       venue_name = :venueName, venue_area = :venueArea, map_url = :mapUrl, registration_open = :registration,
 				       latitude = :lat, longitude = :lng, place_id = :placeId, pin_source = :pinSource, pinned_at = :pinnedAt,
-				       placing_points = :points, entry_fee = :fee, updated_at = :now
+				       placing_points = :points, entry_fee = :fee, group_fee = :groupFee, updated_at = :now
 				WHERE id = :id
-				""").params(pinParams(details.pin())).param("fee", fee(input.entryFee(), fee)).param("name", details.name()).param("startsOn", details.startsOn()).param("endsOn", details.endsOn())
+				""").params(pinParams(details.pin())).param("fee", fee(input.entryFee(), fee))
+			.param("groupFee", groupFee(input.groupFee(), groupFeeOf(eventId))).param("name", details.name()).param("startsOn", details.startsOn()).param("endsOn", details.endsOn())
 			.param("timezone", details.timezone()).param("country", details.country()).param("venueName", details.venueName())
 			.param("venueArea", details.venueArea()).param("mapUrl", details.mapUrl()).param("registration", details.registrationOpen())
 			.param("points", details.points()).param("now", now()).param("id", eventId).update();
@@ -395,10 +409,10 @@ public class EventService {
 	private void insertGroup(UUID eventId, String name, String colour, int position) {
 		try {
 			jdbc.sql("""
-					INSERT INTO event_groups (id, event_id, name, colour, position, created_at)
-					VALUES (:id, :event, :name, :colour, :position, :now)
+					INSERT INTO event_groups (id, event_id, name, colour, position, rep_code, created_at)
+					VALUES (:id, :event, :name, :colour, :position, :rep, :now)
 					""").param("id", UUID.randomUUID()).param("event", eventId).param("name", name).param("colour", colour)
-				.param("position", position).param("now", now()).update();
+				.param("position", position).param("rep", code(9)).param("now", now()).update();
 		}
 		catch (DuplicateKeyException taken) {
 			throw BusinessException.conflict("There’s already a group called %s.".formatted(name));
@@ -415,10 +429,13 @@ public class EventService {
 	 */
 	@Transactional
 	public EventViews.Detail addPeople(UUID eventId, List<PersonInput> people, UUID userId) {
-		var event = access.requireAdmin(eventId, userId);
+		var event = access.event(eventId);
 		if (people == null || people.isEmpty()) {
+			access.requireAdmin(eventId, userId);
 			throw BusinessException.invalid("Add at least one name.");
 		}
+		// A group's rep adds their own group's people; the organisers anyone.
+		var asAdmin = access.requireAdminOrRep(event, userId, people.stream().map(PersonInput::groupId).toList());
 		if (people.size() > 500) {
 			throw BusinessException.invalid("Add up to 500 names at a time.");
 		}
@@ -436,9 +453,9 @@ public class EventService {
 			}
 			jdbc.sql("""
 					INSERT INTO event_people (id, event_id, display_name, group_id, source, added_by, created_at, updated_at)
-					VALUES (:id, :event, :name, :group, 'admin', :user, :now, :now)
+					VALUES (:id, :event, :name, :group, :source, :user, :now, :now)
 					""").param("id", UUID.randomUUID()).param("event", eventId).param("name", name).param("group", person.groupId())
-				.param("user", userId).param("now", now).update();
+				.param("source", asAdmin ? "admin" : "rep").param("user", userId).param("now", now).update();
 		}
 		happened.record("event.people-added", "event", eventId, userId, event.organisationId(), null, Map.of("count", people.size()));
 		return reader.detail(eventId, userId);
@@ -450,7 +467,8 @@ public class EventService {
 	 */
 	@Transactional
 	public EventViews.Detail updatePerson(UUID eventId, UUID personId, PersonInput input, UUID userId) {
-		access.requireAdmin(eventId, userId);
+		// A rep can rename their group's people, and move them only between groups they represent.
+		access.requireAdminOrRep(access.event(eventId), userId, java.util.Arrays.asList(groupOf(eventId, personId), input.groupId()));
 		var name = personName(input.name());
 		if (input.groupId() != null && !groupIds(eventId).contains(input.groupId())) {
 			throw BusinessException.invalid("That group isn’t in this event any more.");
@@ -469,7 +487,8 @@ public class EventService {
 	/** Takes someone out of the event, and out of every game they were in. Not once a draw counts on them. */
 	@Transactional
 	public EventViews.Detail removePerson(UUID eventId, UUID personId, UUID userId) {
-		var event = access.requireAdmin(eventId, userId);
+		var event = access.event(eventId);
+		access.requireAdminOrRep(event, userId, java.util.Arrays.asList(groupOf(eventId, personId)));
 		var drawn = jdbc.sql("""
 				SELECT g.name FROM event_entry_people ep JOIN event_games g ON g.id = ep.game_id
 				WHERE ep.person_id = :person AND g.status <> 'open' AND g.entry_kind = 'single' LIMIT 1
@@ -563,6 +582,106 @@ public class EventService {
 		}
 		happened.record(via == null ? "event.fee-unmarked" : "event.fee-paid", "event", eventId, userId, event.organisationId(), null,
 				via == null ? Map.of() : Map.of("via", via));
+		return reader.detail(eventId, userId);
+	}
+
+	/**
+	 * Admins mark a group's fee paid (cash, MoMo or a bank transfer, to the organisers: PlayChale never
+	 * holds the money), or take that back with null.
+	 */
+	@Transactional
+	public EventViews.Detail markGroupFee(UUID eventId, UUID groupId, String via, UUID userId) {
+		var event = access.requireAdmin(eventId, userId);
+		if (via != null && !"cash".equals(via) && !"momo".equals(via) && !"bank".equals(via)) {
+			throw BusinessException.invalid("Say how they paid: cash, MoMo or a bank transfer.");
+		}
+		if (groupFeeOf(eventId) == null && via != null) {
+			throw BusinessException.conflict("This event has no fee per group. Set one in Settings first.");
+		}
+		var marked = jdbc.sql("""
+				UPDATE event_groups SET fee_paid_via = :via, fee_paid_at = :at, fee_marked_by = :by WHERE id = :id AND event_id = :event
+				""").param("via", via).param("at", via == null ? null : now()).param("by", via == null ? null : userId).param("id", groupId)
+			.param("event", eventId).update();
+		if (marked == 0) {
+			throw BusinessException.notFound("That group isn’t in this event any more.");
+		}
+		happened.record(via == null ? "event.group-fee-unmarked" : "event.group-fee-paid", "event", eventId, userId, event.organisationId(),
+				null, via == null ? Map.of("group", groupId.toString()) : Map.of("group", groupId.toString(), "via", via));
+		return reader.detail(eventId, userId);
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Reps: someone from a group registers its people                      */
+	/* ------------------------------------------------------------------ */
+
+	private record RepGroup(UUID eventId, UUID groupId) {
+	}
+
+	private RepGroup byRepCode(String code) {
+		return jdbc.sql("SELECT event_id, id FROM event_groups WHERE rep_code = :code").param("code", code == null ? "" : code.strip())
+			.query((rs, n) -> new RepGroup((UUID) rs.getObject(1), (UUID) rs.getObject(2))).optional()
+			.orElseThrow(() -> BusinessException.notFound("That rep link doesn’t work any more. Ask the organisers for a new one."));
+	}
+
+	/** What a rep link is for, before it's used. Open without signing in. */
+	public EventViews.RepPreview repPreview(String code, UUID viewerId) {
+		var link = byRepCode(code);
+		var event = access.event(link.eventId());
+		var info = reader.info(link.eventId());
+		var group = reader.groups(link.eventId()).stream().filter(g -> g.id().equals(link.groupId())).findFirst().orElseThrow();
+		var reps = jdbc.sql("SELECT user_id FROM event_group_reps WHERE group_id = :group").param("group", link.groupId())
+			.query(UUID.class).list();
+		return new EventViews.RepPreview(event.id(), event.name(), reader.brand(event), info.startsOn(), info.endsOn(), group,
+				event.registrationOpen(), event.status(), viewerId == null ? null : reps.contains(viewerId), reps.size() >= MAX_REPS);
+	}
+
+	/** The signed-in player becomes a rep for the group the link is for. */
+	@Transactional
+	public EventViews.Detail becomeRep(String code, UUID userId) {
+		var link = byRepCode(code);
+		var event = access.event(link.eventId());
+		if (!event.open()) {
+			throw BusinessException.conflict("%s is over, so it doesn’t need reps now.".formatted(event.name()));
+		}
+		var reps = jdbc.sql("SELECT user_id FROM event_group_reps WHERE group_id = :group").param("group", link.groupId())
+			.query(UUID.class).list();
+		if (!reps.contains(userId)) {
+			if (reps.size() >= MAX_REPS) {
+				throw BusinessException.conflict("This group already has %d reps. Ask the organisers to take one off.".formatted(MAX_REPS));
+			}
+			jdbc.sql("INSERT INTO event_group_reps (group_id, user_id, added_at) VALUES (:group, :user, :now)").param("group", link.groupId())
+				.param("user", userId).param("now", now()).update();
+			happened.record("event.rep-joined", "event", event.id(), userId, event.organisationId(), null,
+					Map.of("group", link.groupId().toString()));
+		}
+		return reader.detail(event.id(), userId);
+	}
+
+	/** A new rep link for a group; the old one stops working. Its reps stay. */
+	@Transactional
+	public EventViews.Detail newRepLink(UUID eventId, UUID groupId, UUID userId) {
+		var event = access.requireAdmin(eventId, userId);
+		var changed = jdbc.sql("UPDATE event_groups SET rep_code = :code WHERE id = :id AND event_id = :event").param("code", code(9))
+			.param("id", groupId).param("event", eventId).update();
+		if (changed == 0) {
+			throw BusinessException.notFound("That group isn’t in this event any more.");
+		}
+		happened.record("event.rep-link-changed", "event", eventId, userId, event.organisationId(), null, Map.of("group", groupId.toString()));
+		return reader.detail(eventId, userId);
+	}
+
+	/** Takes someone off as a group's rep. The people and entries they made stay. */
+	@Transactional
+	public EventViews.Detail removeRep(UUID eventId, UUID groupId, UUID repId, UUID userId) {
+		var event = access.requireAdmin(eventId, userId);
+		var removed = jdbc.sql("""
+				DELETE FROM event_group_reps r USING event_groups g
+				WHERE r.group_id = g.id AND g.id = :group AND g.event_id = :event AND r.user_id = :rep
+				""").param("group", groupId).param("event", eventId).param("rep", repId).update();
+		if (removed == 0) {
+			throw BusinessException.notFound("They’re not a rep for that group any more.");
+		}
+		happened.record("event.rep-removed", "event", eventId, userId, event.organisationId(), null, Map.of("group", groupId.toString()));
 		return reader.detail(eventId, userId);
 	}
 
@@ -774,6 +893,16 @@ public class EventService {
 		return jdbc.sql("SELECT id FROM event_groups WHERE event_id = :event").param("event", eventId).query(UUID.class).list();
 	}
 
+	/** Someone's group (null for none); not found when they've gone. */
+	private UUID groupOf(UUID eventId, UUID personId) {
+		var rows = jdbc.sql("SELECT group_id FROM event_people WHERE id = :id AND event_id = :event").param("id", personId)
+			.param("event", eventId).query((rs, n) -> java.util.Optional.ofNullable((UUID) rs.getObject(1))).list();
+		if (rows.isEmpty()) {
+			throw BusinessException.notFound("That person isn’t in this event any more.");
+		}
+		return rows.getFirst().orElse(null);
+	}
+
 	/* ------------------------------------------------------------------ */
 	/* Checking what was typed                                              */
 	/* ------------------------------------------------------------------ */
@@ -786,6 +915,22 @@ public class EventService {
 	private Long entryFee(UUID eventId) {
 		return jdbc.sql("SELECT entry_fee FROM events WHERE id = :id").param("id", eventId).query((rs, n) -> rs.getObject(1, Long.class)).list()
 			.stream().filter(java.util.Objects::nonNull).findFirst().orElse(null);
+	}
+
+	private Long groupFeeOf(UUID eventId) {
+		return jdbc.sql("SELECT group_fee FROM events WHERE id = :id").param("id", eventId).query((rs, n) -> rs.getObject(1, Long.class)).list()
+			.stream().filter(java.util.Objects::nonNull).findFirst().orElse(null);
+	}
+
+	/** A fee per group as sent: left out, {@code current}; 0, none. Up to a million in the event's money. */
+	private static Long groupFee(Long sent, Long current) {
+		if (sent == null) {
+			return current;
+		}
+		if (sent < 0 || sent > 100_000_000) {
+			throw BusinessException.invalid("Set a fee per group of up to 1,000,000, or none.");
+		}
+		return sent == 0 ? null : sent;
 	}
 
 	/** An entry fee as sent: left out, {@code current}; 0, none. Up to a hundred thousand in the event's money. */

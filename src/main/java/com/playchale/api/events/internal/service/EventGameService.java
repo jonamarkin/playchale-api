@@ -175,8 +175,9 @@ public class EventGameService {
 
 	@Transactional
 	public EventViews.Detail addEntry(UUID eventId, UUID gameId, EntryInput input, UUID userId) {
-		var game = access.requireRunner(eventId, gameId, userId);
 		var people = entries.people(eventId, input.personIds() == null ? List.of() : input.personIds());
+		// A rep enters their own group's people: the coordinator and organisers anyone.
+		var game = access.requireEntrant(eventId, gameId, userId, groupsOf(people, input.groupId(), List.of()));
 		var shape = shape(eventId, game, input, people);
 		var entryId = entries.create(game, shape.name(), shape.groupId(), people);
 		tell(eventId, game, entryId, shape.name(), userId);
@@ -186,9 +187,9 @@ public class EventGameService {
 	/** Renames an entry, changes its group, or who's in it. A team's players can change after the draw; a single entry's person can't. */
 	@Transactional
 	public EventViews.Detail updateEntry(UUID eventId, UUID gameId, UUID entryId, EntryInput input, UUID userId) {
-		var game = access.requireRunner(eventId, gameId, userId);
 		requireEntry(gameId, entryId);
 		var people = entries.people(eventId, input.personIds() == null ? List.of() : input.personIds());
+		var game = access.requireEntrant(eventId, gameId, userId, groupsOf(people, input.groupId(), groupsIn(entryId)));
 		var shape = shape(eventId, game, input, people);
 		var before = jdbc.sql("SELECT person_id FROM event_entry_people WHERE entry_id = :entry").param("entry", entryId)
 			.query(UUID.class).list();
@@ -214,8 +215,8 @@ public class EventGameService {
 	/** Takes an entry out, before the draw. Its people go back to being interested, so they aren't lost. */
 	@Transactional
 	public EventViews.Detail removeEntry(UUID eventId, UUID gameId, UUID entryId, UUID userId) {
-		var game = access.requireRunner(eventId, gameId, userId);
 		requireEntry(gameId, entryId);
+		var game = access.requireEntrant(eventId, gameId, userId, groupsIn(entryId));
 		EventEntries.requireOpen(game);
 		if (!"single".equals(game.entryKind())) {
 			jdbc.sql("""
@@ -313,6 +314,26 @@ public class EventGameService {
 			events.publishEvent(new EventActivity.EntryMade(eventId, event.name(), game.id(), game.name(),
 					"single".equals(game.entryKind()) ? null : entryName, recipients, actorId));
 		}
+	}
+
+	/** Every group an entry touches: its people's, and the group it's for. */
+	private static List<UUID> groupsOf(List<PersonRow> people, UUID groupId, List<UUID> before) {
+		var groups = new ArrayList<UUID>(before);
+		people.forEach(p -> groups.add(p.groupId()));
+		if (groupId != null) {
+			groups.add(groupId);
+		}
+		return groups;
+	}
+
+	/** The groups an entry already touches: the one it's for, and its people's. */
+	private List<UUID> groupsIn(UUID entryId) {
+		var groups = new ArrayList<UUID>();
+		jdbc.sql("""
+				SELECT e.group_id FROM event_entries e WHERE e.id = :entry AND e.group_id IS NOT NULL
+				UNION ALL SELECT p.group_id FROM event_entry_people ep JOIN event_people p ON p.id = ep.person_id WHERE ep.entry_id = :entry
+				""").param("entry", entryId).query((rs, n) -> (UUID) rs.getObject(1)).list().forEach(groups::add);
+		return groups;
 	}
 
 	private void requireEntry(UUID gameId, UUID entryId) {
