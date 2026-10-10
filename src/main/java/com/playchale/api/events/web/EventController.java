@@ -47,6 +47,9 @@ class EventController {
 	record PeopleRequest(List<EventService.PersonInput> people) {
 	}
 
+	record PublicPageRequest(Boolean on) {
+	}
+
 	record JoinRequest(UUID groupId, List<UUID> gameIds) {
 	}
 
@@ -290,6 +293,17 @@ class EventController {
 	}
 
 	/** The projector board: no sign-in, so anyone with the link can put it on a screen. */
+	/** An event's public page: open to anyone with the link, while its admins keep it on. */
+	@GetMapping("/public/events/{slug}")
+	EventViews.Detail publicView(@PathVariable String slug) {
+		return events.publicView(slug);
+	}
+
+	@PutMapping("/events/{id}/public-page")
+	EventViews.Detail publicPage(CurrentUser me, @PathVariable UUID id, @RequestBody PublicPageRequest request) {
+		return events.publicPage(id, Boolean.TRUE.equals(request.on()), me.id());
+	}
+
 	@GetMapping("/boards/{token}")
 	EventViews.Board board(@PathVariable String token) {
 		return play.board(token);

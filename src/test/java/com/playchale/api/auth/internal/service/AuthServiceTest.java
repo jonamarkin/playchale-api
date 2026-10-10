@@ -244,11 +244,10 @@ class AuthServiceTest {
 	}
 
 	@Test
-	void peopleSignUpFromAnyCountry() {
-		auth.requestCode("+44 7400 123456", null, CONNECTION);
-		var fromLondon = auth.signIn("+447400123456", null, sms.code());
-		assertThat(fromLondon.user().phone()).isEqualTo("+447400123456");
-		assertThat(fromLondon.user().country()).as("a phone number carries its country").isEqualTo("GB");
+	void peopleSignUpFromAnyCountryByEmailAndByTextFromGhana() {
+		// Texts go to Ghanaian numbers only, for now: elsewhere it's email (or Google).
+		assertRefused(() -> auth.requestCode("+44 7400 123456", null, CONNECTION), ErrorCode.INVALID,
+				"Texts go to Ghanaian numbers only for now. Use your email address or Google instead.");
 
 		auth.requestCode(null, "chidi@example.com", CONNECTION);
 		assertThat(auth.signIn(null, "chidi@example.com", mail.code(), "ng").user().country()).as("by email, where the app thinks they are").isEqualTo("NG");
@@ -258,7 +257,7 @@ class AuthServiceTest {
 
 	@Test
 	void invalidNumbersAreRefused() {
-		assertRefused(() -> auth.requestCode("12345", null, CONNECTION), ErrorCode.INVALID, "Enter a valid mobile number, like 024 123 4567, or with its country code (+44 7400 123456).");
+		assertRefused(() -> auth.requestCode("12345", null, CONNECTION), ErrorCode.INVALID, "Enter a valid mobile number, like 024 123 4567.");
 	}
 
 	@Test

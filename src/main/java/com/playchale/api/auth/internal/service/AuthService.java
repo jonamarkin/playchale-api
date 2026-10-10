@@ -146,7 +146,7 @@ public class AuthService {
 	 * @param connection the client's address, for the per-connection limit
 	 */
 	public Optional<String> requestCode(String typedPhone, String typedEmail, String connection) {
-		return send(recipient(typedPhone, typedEmail), connection, false);
+		return send(textable(recipient(typedPhone, typedEmail)), connection, false);
 	}
 
 	/**
@@ -154,7 +154,7 @@ public class AuthService {
 	 * when it's already theirs, or someone else's: two accounts can't share a way in.
 	 */
 	public Optional<String> requestCodeToAdd(UUID userId, String typedPhone, String typedEmail, String connection) {
-		var to = recipient(typedPhone, typedEmail);
+		var to = textable(recipient(typedPhone, typedEmail));
 		requireFree(userId, to);
 		return send(to, connection, true);
 	}
@@ -371,6 +371,19 @@ public class AuthService {
 	}
 
 	/**
+	 * Codes go by text to Ghanaian numbers only, for now: the SMS provider sends within Ghana. Checked
+	 * where a code is sent, not where one is checked, so nothing changes for a number already in use.
+	 */
+	private static final java.util.Set<String> TEXTABLE = java.util.Set.of("GH");
+
+	private Recipient textable(Recipient to) {
+		if ("sms".equals(to.channel()) && !TEXTABLE.contains(to.country())) {
+			throw BusinessException.invalid("Texts go to Ghanaian numbers only for now. Use your email address or Google instead.");
+		}
+		return to;
+	}
+
+	/**
 	 * Where a code goes, as it's stored: a phone in E.164 or an email in lower case. Refused with a
 	 * message saying what's wrong, including when that way of signing in isn't set up here.
 	 */
@@ -385,7 +398,7 @@ public class AuthService {
 				throw BusinessException.conflict("Signing in with a phone number isn’t available yet. Use your email address.");
 			}
 			var phone = Market.get(Market.DEFAULT).normaliseAnyPhone(typedPhone)
-				.orElseThrow(() -> BusinessException.invalid("Enter a valid mobile number, like 024 123 4567, or with its country code (+44 7400 123456)."));
+				.orElseThrow(() -> BusinessException.invalid("Enter a valid mobile number, like 024 123 4567."));
 			return new Recipient("sms", phone.e164(), phone.country());
 		}
 		if (email.getIfAvailable() == null) {

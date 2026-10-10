@@ -294,6 +294,36 @@ public class EventService {
 		return reader.detail(eventId, userId);
 	}
 
+	/**
+	 * Turns the event's public page on (a new link, if it had none) or off (the link stops working).
+	 * Its address reads as the event: "hillview-games-day-k7q2".
+	 */
+	@Transactional
+	public EventViews.Detail publicPage(UUID eventId, boolean on, UUID userId) {
+		var event = access.requireAdmin(eventId, userId);
+		var current = jdbc.sql("SELECT public_slug FROM events WHERE id = :id").param("id", eventId).query(String.class).list().stream()
+			.filter(java.util.Objects::nonNull).findFirst().orElse(null);
+		if (on == (current != null)) {
+			return reader.detail(eventId, userId);
+		}
+		String slug = null;
+		if (on) {
+			var base = java.text.Normalizer.normalize(event.name(), java.text.Normalizer.Form.NFKD).replaceAll("\\p{M}", "")
+				.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
+			base = base.length() > 50 ? base.substring(0, 50).replaceAll("-$", "") : base;
+			slug = (base.isEmpty() ? "event" : base) + "-" + code(4).toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "x");
+		}
+		jdbc.sql("UPDATE events SET public_slug = :slug, updated_at = :now WHERE id = :id").param("slug", slug).param("now", now())
+			.param("id", eventId).update();
+		happened.record(on ? "event.public-page-on" : "event.public-page-off", "event", eventId, userId, event.organisationId(), null,
+				Map.of());
+		return reader.detail(eventId, userId);
+	}
+
+	public EventViews.Detail publicView(String slug) {
+		return reader.publicView(slug);
+	}
+
 	/** A new join link. The old one stops working at once. */
 	@Transactional
 	public EventViews.Detail newJoinLink(UUID eventId, UUID userId) {

@@ -18,8 +18,9 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * The demo games day, as in the web app's seed (webapp/app/services/mock/seed-events.ts): Hillview
  * Chapel, an invented church, runs its fellowships' games day today. Ama owns the workspace, Esi
  * coordinates table tennis and ludo, and Kwame joined with the link. Everyone else is a name an admin
- * typed in, as most people at a games day are. Oware has been played, ludo's heats are in and its
- * final is next; everything else is still taking entries.
+ * typed in, as most people at a games day are. The day runs to a plan: oware was played first thing,
+ * ludo's heats are in and its final is next, the football semi-finals are under way on the main
+ * pitch, and the Bible quiz final is late morning; everything else is still taking entries.
  *
  * <p>Entries and matches are made in the same order as the web app's, so they get the same IDs.
  */
@@ -121,6 +122,12 @@ final class DemoEventDay {
 		}
 		playOware();
 		runLudoHeats();
+		footballDay();
+		quizFinal();
+		plan("evgm-oware", "08:00", 15, "Hall");
+		plan("evgm-ludo", "09:00", 20, "Sunday school room");
+		plan("evgm-football", "10:00", 30, "Main pitch");
+		plan("evgm-quiz", "11:00", 30, "Main auditorium");
 		for (var game : List.of("evgm-table-tennis", "evgm-ludo")) {
 			jdbc.sql("INSERT INTO event_game_coordinators (game_id, user_id, added_by, created_at) VALUES (:game, :user, :by, :at)")
 				.param("game", id(game)).param("user", id("u-esi")).param("by", id("u-ama")).param("at", utc(daysAgo(5))).update();
@@ -138,13 +145,16 @@ final class DemoEventDay {
 				var pairing = rounds.get(r).get(s);
 				var outcome = outcomes.get(played++);
 				var winner = "home".equals(outcome) ? pairing.home() : "away".equals(outcome) ? pairing.away() : null;
+				// Planned from 8:00 in the hall, a quarter of an hour each.
+				var turn = r * 2 + s;
 				jdbc.sql("""
 						INSERT INTO event_matches (id, game_id, round, slot, home_entry_id, away_entry_id, winner_entry_id, decided_by,
-						                           recorded_by, recorded_at)
-						VALUES (:id, :game, :round, :slot, :home, :away, :winner, 'score', :by, :at)
+						                           recorded_by, recorded_at, starts_at, location)
+						VALUES (:id, :game, :round, :slot, :home, :away, :winner, 'score', :by, :at, :startsAt, 'Hall')
 						""").param("id", id("evm-oware-r%ds%d".formatted(r + 1, s))).param("game", id("evgm-oware")).param("round", r + 1)
 					.param("slot", s).param("home", pairing.home()).param("away", pairing.away()).param("winner", winner)
-					.param("by", id("u-ama")).param("at", utc(now.minusMinutes(150 - played * 15L).toInstant())).update();
+					.param("by", id("u-ama")).param("at", utc(now.minusMinutes(150 - played * 15L).toInstant()))
+					.param("startsAt", onTheDay(8 + turn / 4, (turn % 4) * 15)).update();
 			}
 		}
 		jdbc.sql("UPDATE event_games SET status = 'finished' WHERE id = :id").param("id", id("evgm-oware")).update();
@@ -160,9 +170,11 @@ final class DemoEventDay {
 		var winners = new java.util.ArrayList<UUID>();
 		for (int h = 0; h < heats.size(); h++) {
 			var heatId = id("evh-ludo-heat-" + (h + 1));
-			jdbc.sql("INSERT INTO event_heats (id, game_id, stage, number, recorded_by, recorded_at) VALUES (:id, :game, 'heat', :n, :by, :at)")
-				.param("id", heatId).param("game", id("evgm-ludo")).param("n", h + 1).param("by", id("u-esi"))
-				.param("at", utc(now.minusMinutes(60 - h * 20L).toInstant())).update();
+			jdbc.sql("""
+					INSERT INTO event_heats (id, game_id, stage, number, recorded_by, recorded_at, starts_at, location)
+					VALUES (:id, :game, 'heat', :n, :by, :at, :startsAt, 'Sunday school room')
+					""").param("id", heatId).param("game", id("evgm-ludo")).param("n", h + 1).param("by", id("u-esi"))
+				.param("at", utc(now.minusMinutes(60 - h * 20L).toInstant())).param("startsAt", onTheDay(9, h * 20)).update();
 			for (int lane = 0; lane < heats.get(h).size(); lane++) {
 				var place = places.get(h).get(lane);
 				jdbc.sql("INSERT INTO event_heat_entries (heat_id, entry_id, lane, place) VALUES (:heat, :entry, :lane, :place)")
@@ -173,13 +185,69 @@ final class DemoEventDay {
 			}
 		}
 		var finalId = id("evh-ludo-final-1");
-		jdbc.sql("INSERT INTO event_heats (id, game_id, stage, number) VALUES (:id, :game, 'final', 1)").param("id", finalId)
-			.param("game", id("evgm-ludo")).update();
+		jdbc.sql("""
+				INSERT INTO event_heats (id, game_id, stage, number, starts_at, location)
+				VALUES (:id, :game, 'final', 1, :startsAt, 'Sunday school room')
+				""").param("id", finalId).param("game", id("evgm-ludo")).param("startsAt", onTheDay(9, 40)).update();
 		for (int lane = 0; lane < winners.size(); lane++) {
 			jdbc.sql("INSERT INTO event_heat_entries (heat_id, entry_id, lane) VALUES (:heat, :entry, :lane)").param("heat", finalId)
 				.param("entry", winners.get(lane)).param("lane", lane + 1).update();
 		}
 		jdbc.sql("UPDATE event_games SET status = 'drawn' WHERE id = :id").param("id", id("evgm-ludo")).update();
+	}
+
+	/**
+	 * Football: the four fellowships' teams drawn in entry order, on the main pitch from 10:00, half
+	 * an hour a match. Joy beat Grace in the first semi-final; the second is next, then third place and
+	 * the final.
+	 */
+	private void footballDay() {
+		footballMatch("evm-football-r1s0", 1, 0, false, "eve-1", "eve-4", onTheDay(10, 0));
+		jdbc.sql("""
+				UPDATE event_matches SET home_score = 2, away_score = 1, winner_entry_id = :winner, decided_by = 'score', recorded_by = :by,
+				       recorded_at = :at
+				WHERE id = :id
+				""").param("winner", id("eve-1")).param("by", id("u-ama")).param("at", utc(now.minusMinutes(25).toInstant()))
+			.param("id", id("evm-football-r1s0")).update();
+		footballMatch("evm-football-r1s1", 1, 1, false, "eve-2", "eve-3", onTheDay(10, 30));
+		footballMatch("evm-football-third", 2, 0, true, "eve-4", null, onTheDay(11, 0));
+		footballMatch("evm-football-final", 2, 0, false, "eve-1", null, onTheDay(11, 30));
+		jdbc.sql("UPDATE event_games SET status = 'drawn' WHERE id = :id").param("id", id("evgm-football")).update();
+	}
+
+	private void footballMatch(String mockId, int round, int slot, boolean third, String home, String away, OffsetDateTime at) {
+		jdbc.sql("""
+				INSERT INTO event_matches (id, game_id, round, slot, third_place, home_entry_id, away_entry_id, starts_at, location)
+				VALUES (:id, :game, :round, :slot, :third, :home, :away, :at, 'Main pitch')
+				""").param("id", id(mockId)).param("game", id("evgm-football")).param("round", round).param("slot", slot)
+			.param("third", third).param("home", id(home)).param("away", away == null ? null : id(away)).param("at", at).update();
+	}
+
+	/** The Bible quiz: four teams fit one heat, so the draw makes it the final, at 11:00 in the main auditorium. */
+	private void quizFinal() {
+		var finalId = id("evh-quiz-final-1");
+		jdbc.sql("""
+				INSERT INTO event_heats (id, game_id, stage, number, starts_at, location)
+				VALUES (:id, :game, 'final', 1, :at, 'Main auditorium')
+				""").param("id", finalId).param("game", id("evgm-quiz")).param("at", onTheDay(11, 0)).update();
+		for (int lane = 0; lane < 4; lane++) {
+			jdbc.sql("INSERT INTO event_heat_entries (heat_id, entry_id, lane) VALUES (:heat, :entry, :lane)").param("heat", finalId)
+				.param("entry", id("eve-" + (26 + lane))).param("lane", lane + 1).update();
+		}
+		jdbc.sql("UPDATE event_games SET status = 'drawn' WHERE id = :id").param("id", id("evgm-quiz")).update();
+	}
+
+	/** A game's plan for the day: from {@code clock}, {@code minutes} a match, at {@code location}. */
+	private void plan(String game, String clock, int minutes, String location) {
+		var parts = clock.split(":");
+		jdbc.sql("UPDATE event_games SET starts_at = :at, match_minutes = :minutes, locations = :locations WHERE id = :id")
+			.param("at", onTheDay(Integer.parseInt(parts[0]), Integer.parseInt(parts[1]))).param("minutes", minutes)
+			.param("locations", new String[] { location }).param("id", id(game)).update();
+	}
+
+	/** A time on the day of the games, by Accra's clock (which is UTC). */
+	private OffsetDateTime onTheDay(int hour, int minute) {
+		return now.toLocalDate().atTime(hour, minute).atOffset(ZoneOffset.UTC);
 	}
 
 	private void member(String user, String role, Instant joined) {

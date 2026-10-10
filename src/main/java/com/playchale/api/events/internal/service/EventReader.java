@@ -103,6 +103,24 @@ class EventReader {
 				detail.groups(), detail.table(), games, latest.stream().limit(8).toList(), java.time.Instant.now(), announcement);
 	}
 
+	/**
+	 * The event's public page, when its admins turned one on: the games, results and table as the
+	 * board shows them (names only, nobody's account, no money, no links), with today's latest word
+	 * from the organisers. Open to anyone with the link.
+	 */
+	@Transactional(readOnly = true)
+	EventViews.Detail publicView(String slug) {
+		var eventId = jdbc.sql("SELECT id FROM events WHERE public_slug = :slug")
+			.param("slug", slug == null ? "" : slug.strip().toLowerCase(java.util.Locale.ROOT)).query(UUID.class).optional()
+			.orElseThrow(() -> BusinessException.notFound("This page isn’t public any more. Ask the organisers for the link."));
+		var detail = build(access.event(eventId), null, null);
+		var latest = announcements(eventId, 1).stream()
+			.filter(a -> a.postedAt().isAfter(java.time.Instant.now().minus(java.time.Duration.ofHours(12))))
+			.map(a -> new EventViews.Announcement(a.id(), a.body(), a.postedAt(), null)).toList();
+		return new EventViews.Detail(detail.event().forPublic(), detail.organisation(), null, detail.groups(), List.of(),
+				detail.games().stream().map(EventViews.Game::forPublic).toList(), detail.table(), null, latest);
+	}
+
 	/** The whole event. {@code role} null for the board, which shows no viewer and no links. */
 	private EventViews.Detail build(EventRow row, UUID viewerId, String role) {
 		var eventId = row.id();
@@ -204,7 +222,8 @@ class EventReader {
 				rs.getObject("starts_on", java.time.LocalDate.class), rs.getObject("ends_on", java.time.LocalDate.class),
 				rs.getString("timezone"), rs.getString("country").strip(), venue(rs), rs.getString("status"),
 				rs.getBoolean("registration_open"), points(rs.getArray("placing_points")), instant(rs, "created_at"),
-				rs.getObject("entry_fee", Long.class), com.playchale.api.market.Market.get(rs.getString("country").strip()).currency()))
+				rs.getObject("entry_fee", Long.class), com.playchale.api.market.Market.get(rs.getString("country").strip()).currency(),
+				rs.getString("public_slug") == null ? null : "/e/" + rs.getString("public_slug")))
 			.optional().orElseThrow(() -> BusinessException.notFound(EventAccess.GONE));
 	}
 

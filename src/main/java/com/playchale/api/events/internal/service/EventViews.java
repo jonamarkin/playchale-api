@@ -33,9 +33,18 @@ public final class EventViews {
 	public record Brand(UUID id, String name, String primaryColour, String logoUrl) {
 	}
 
+	/** The event itself. {@code publicPath} is its public page ("/e/hillview-games-day-k7q2"), when its admins turned one on. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record Info(UUID id, UUID organisationId, String name, LocalDate startsOn, LocalDate endsOn, String timezone, String country,
-			Venue venue, String status, boolean registrationOpen, List<Integer> placingPoints, Instant createdAt, Long entryFee, String currency) {
+			Venue venue, String status, boolean registrationOpen, List<Integer> placingPoints, Instant createdAt, Long entryFee, String currency,
+			String publicPath) {
+
+		/** As the public page shows it: nothing about money. */
+		Info forPublic() {
+			return new Info(id, organisationId, name, startsOn, endsOn, timezone, country, venue, status, registrationOpen, placingPoints,
+					createdAt, null, null, publicPath);
+		}
+
 	}
 
 	/**
@@ -82,6 +91,14 @@ public final class EventViews {
 			Integer poolSize, Integer advancePerPool, String location, Instant startsAt, Integer matchMinutes, List<String> locations,
 			String status, int position, List<Coordinator> coordinators, List<Entry> entries, List<UUID> interested, List<Match> matches,
 			List<Heat> heats, List<LeagueRow> table, List<Pool> pools, List<UUID> places) {
+
+		/** As the public page shows it: entries by name, with nobody's place in the event and no staff. */
+		Game forPublic() {
+			var named = entries.stream().map(e -> new Entry(e.id(), e.name(), e.groupId(), List.of(), e.seed(), e.status(), e.pool())).toList();
+			return new Game(id, discipline, name, category, entryKind, teamSize, format, scoring, bestOf, drawsAllowed, thirdPlace, heatSize,
+					advancePerHeat, poolSize, advancePerPool, location, startsAt, matchMinutes, locations, status, position, List.of(), named,
+					List.of(), matches, heats, table, pools, places);
+		}
 
 		Game withPlay(List<Match> matches, List<Heat> heats, List<LeagueRow> table, List<Pool> pools, List<UUID> places) {
 			return new Game(id, discipline, name, category, entryKind, teamSize, format, scoring, bestOf, drawsAllowed, thirdPlace,

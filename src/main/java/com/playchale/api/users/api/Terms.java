@@ -8,7 +8,7 @@ package com.playchale.api.users.api;
 public final class Terms {
 
 	/** When the current text took effect. */
-	public static final String CURRENT = "2026-10-01";
+	public static final String CURRENT = "2026-10-10";
 
 	private Terms() {
 	}
