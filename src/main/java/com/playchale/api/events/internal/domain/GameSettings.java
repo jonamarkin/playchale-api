@@ -13,14 +13,14 @@ import com.playchale.api.shared.error.BusinessException;
  */
 public record GameSettings(String discipline, String name, String category, String entryKind, Integer teamSize, String format,
 		String scoring, Integer bestOf, boolean drawsAllowed, boolean thirdPlace, Integer heatSize, Integer advancePerHeat,
-		String location, Instant startsAt) {
+		String location, Instant startsAt, Integer poolSize, Integer advancePerPool) {
 
 	private static final List<Integer> BEST_OF = List.of(1, 3, 5);
 
 	/** What the admin asked for. Any of it may be left out. */
 	public record Asked(String discipline, String name, String category, String entryKind, Integer teamSize, String format,
 			String scoring, Integer bestOf, Boolean drawsAllowed, Boolean thirdPlace, Integer heatSize, Integer advancePerHeat,
-			String location, Instant startsAt) {
+			String location, Instant startsAt, Integer poolSize, Integer advancePerPool) {
 	}
 
 	public static GameSettings of(Asked asked) {
@@ -46,10 +46,23 @@ public record GameSettings(String discipline, String name, String category, Stri
 				throw BusinessException.invalid("Play best of 1, 3 or 5 sets.");
 			}
 		}
-		// Only a league can end level: a knockout needs someone to go through.
-		var draws = "league".equals(format) && !"sets".equals(scoring)
+		// Only a league (or a pool) can end level: a knockout needs someone to go through.
+		var draws = ("league".equals(format) || "pools".equals(format)) && !"sets".equals(scoring)
 				&& (asked.drawsAllowed() != null ? asked.drawsAllowed() : discipline.draws());
-		var thirdPlace = "knockout".equals(format) && Boolean.TRUE.equals(asked.thirdPlace());
+		var thirdPlace = ("knockout".equals(format) || "pools".equals(format)) && Boolean.TRUE.equals(asked.thirdPlace());
+
+		Integer poolSize = null;
+		Integer advancePerPool = null;
+		if ("pools".equals(format)) {
+			poolSize = asked.poolSize() != null ? asked.poolSize() : 4;
+			if (poolSize < 2 || poolSize > 16) {
+				throw BusinessException.invalid("A pool holds between 2 and 16.");
+			}
+			advancePerPool = asked.advancePerPool() != null ? asked.advancePerPool() : Math.min(2, poolSize - 1);
+			if (advancePerPool < 1 || advancePerPool >= poolSize || advancePerPool > 8) {
+				throw BusinessException.invalid("Fewer go through from a pool than are in it.");
+			}
+		}
 
 		Integer heatSize = null;
 		Integer advance = null;
@@ -75,7 +88,7 @@ public record GameSettings(String discipline, String name, String category, Stri
 			teamSize = 2;
 		}
 		return new GameSettings(discipline.key(), name, category, entryKind, teamSize, format, scoring, bestOf, draws, thirdPlace,
-				heatSize, advance, text(asked.location(), 60), asked.startsAt());
+				heatSize, advance, text(asked.location(), 60), asked.startsAt(), poolSize, advancePerPool);
 	}
 
 	/** A ready-made game is scored its own way; a custom one the way the admin picked. */

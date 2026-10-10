@@ -23,6 +23,7 @@ import java.util.stream.Collectors;
 import com.playchale.api.events.api.EventActivity;
 import com.playchale.api.events.internal.domain.ResultRules;
 import com.playchale.api.events.internal.domain.GameSettings;
+import com.playchale.api.events.internal.domain.Pools;
 import com.playchale.api.events.internal.domain.Standings;
 import com.playchale.api.events.internal.domain.Timetable;
 import com.playchale.api.events.internal.service.EventAccess.GameRow;
@@ -86,11 +87,12 @@ public class EventPlayService {
 
 	/** What a game is played with, beyond what the rules turn on. */
 	private record Settings(Integer bestOf, boolean drawsAllowed, boolean thirdPlace, Integer heatSize, Integer advance, String location,
-			Instant startsAt) {
+			Instant startsAt, Integer poolSize, Integer advancePerPool) {
 	}
 
+	/** A match; {@code pool} set for a pool match, null for a knockout's or a league's. */
 	private record MatchRow(UUID id, UUID gameId, int round, int slot, boolean thirdPlace, UUID home, UUID away, UUID winner,
-			boolean recorded) {
+			boolean recorded, Integer pool) {
 
 		UUID loser() {
 			return winner == null || home == null || away == null ? null : winner.equals(home) ? away : home;
@@ -142,6 +144,28 @@ public class EventPlayService {
 					}
 				}
 			}
+			case "pools" -> {
+				var pools = Pools.deal(order, settings.poolSize());
+				if (pools.stream().anyMatch(p -> p.size() < 2)) {
+					throw BusinessException.invalid("Pools of %d would leave someone in a pool on their own. Make the pools smaller."
+						.formatted(settings.poolSize()));
+				}
+				if (pools.stream().mapToInt(p -> Math.min(p.size(), settings.advancePerPool())).sum() < 2) {
+					throw BusinessException.invalid("Only one would go through to the knockout. Let more through, or make the pools smaller.");
+				}
+				for (int p = 0; p < pools.size(); p++) {
+					for (var entry : pools.get(p)) {
+						jdbc.sql("UPDATE event_entries SET pool = :pool WHERE id = :id").param("pool", p + 1).param("id", entry).update();
+					}
+					var rounds = RoundRobin.rounds(pools.get(p));
+					for (int r = 0; r < rounds.size(); r++) {
+						for (int s = 0; s < rounds.get(r).size(); s++) {
+							var pairing = rounds.get(r).get(s);
+							insertMatch(gameId, p + 1, r + 1, s, false, pairing.home(), pairing.away(), null);
+						}
+					}
+				}
+			}
 			default -> {
 				var heats = Standings.heats(order, settings.heatSize());
 				var stage = heats.size() == 1 ? "final" : "heat";
@@ -155,7 +179,7 @@ public class EventPlayService {
 		var event = access.event(eventId);
 		happened.record("event.game-drawn", "event", eventId, userId, event.organisationId(), null,
 				Map.of("format", game.format(), "entries", entries.size()));
-		tellFirstUp(eventId, gameId, userId, false);
+		tellFirstUp(eventId, gameId, userId, "draw", null);
 		return reader.detail(eventId, userId);
 	}
 
@@ -176,6 +200,7 @@ public class EventPlayService {
 		}
 		jdbc.sql("DELETE FROM event_matches WHERE game_id = :game").param("game", gameId).update();
 		jdbc.sql("DELETE FROM event_heats WHERE game_id = :game").param("game", gameId).update();
+		jdbc.sql("UPDATE event_entries SET pool = NULL WHERE game_id = :game").param("game", gameId).update();
 		jdbc.sql("UPDATE event_games SET status = 'open', updated_at = :now WHERE id = :id").param("now", now()).param("id", gameId).update();
 		return reader.detail(eventId, userId);
 	}
@@ -225,7 +250,7 @@ public class EventPlayService {
 		happened.record("event.game-planned", "event", eventId, userId, access.event(eventId).organisationId(), null,
 				Map.of("minutes", plan.minutes(), "locations", locations.size()));
 		if (!game.open()) {
-			tellFirstUp(eventId, gameId, userId, true);
+			tellFirstUp(eventId, gameId, userId, "times", null);
 		}
 		return reader.detail(eventId, userId);
 	}
@@ -295,6 +320,10 @@ public class EventPlayService {
 			return;
 		}
 		var plan = new Timetable.Plan(planned.startsAt(), planned.minutes(), List.of(planned.locations()));
+		if ("pools".equals(planned.format())) {
+			fillPools(gameId, plan, planned.thirdPlace(), all);
+			return;
+		}
 		if (!"placings".equals(planned.format())) {
 			fillMatches(gameId, plan, "knockout".equals(planned.format()), planned.thirdPlace(), all);
 			return;
@@ -316,12 +345,72 @@ public class EventPlayService {
 		}
 	}
 
+	/**
+	 * A game in pools: each round of the pools is a wave (every pool's matches of that round), then
+	 * the knockout's rounds, shaped by how many will come through before anyone has.
+	 */
+	private void fillPools(UUID gameId, Timetable.Plan plan, boolean thirdPlace, boolean all) {
+		record Timed(UUID id, Integer pool, int round, int slot, boolean thirdPlace, UUID away, boolean recorded, boolean timeless) {
+		}
+		var matches = jdbc.sql("""
+				SELECT id, pool, round, slot, third_place, away_entry_id, recorded_at IS NOT NULL, starts_at IS NULL
+				FROM event_matches WHERE game_id = :game ORDER BY pool NULLS LAST, round, slot
+				""").param("game", gameId).query((rs, n) -> new Timed((UUID) rs.getObject(1), number(rs.getObject(2)), rs.getInt(3), rs.getInt(4),
+					rs.getBoolean(5), (UUID) rs.getObject(6), rs.getBoolean(7), rs.getBoolean(8))).list();
+		var pooled = matches.stream().filter(m -> m.pool() != null).toList();
+		var poolRounds = pooled.stream().mapToInt(Timed::round).max().orElse(0);
+		var waves = new ArrayList<Integer>();
+		for (int round = 1; round <= poolRounds; round++) {
+			var r = round;
+			waves.add((int) pooled.stream().filter(m -> m.round() == r).count());
+		}
+		var knockout = matches.stream().filter(m -> m.pool() == null).toList();
+		var firstRound = knockout.stream().filter(m -> m.round() == 1 && !m.thirdPlace()).toList();
+		var ties = firstRound.stream().filter(m -> m.away() != null).map(Timed::id).toList();
+		int slots;
+		int tieCount;
+		if (!firstRound.isEmpty()) {
+			slots = firstRound.size();
+			tieCount = ties.size();
+		}
+		else {
+			// Not made yet: as many as will come through, from each pool's size.
+			var advance = jdbc.sql("SELECT advance_per_pool FROM event_games WHERE id = :id").param("id", gameId).query(Integer.class).single();
+			var through = jdbc.sql("SELECT count(*) FROM event_entries WHERE game_id = :game AND status = 'entered' AND pool IS NOT NULL GROUP BY pool")
+				.param("game", gameId).query(Integer.class).list().stream().mapToInt(size -> Math.min(size, advance)).sum();
+			slots = through < 2 ? 0 : Knockout.size(through) / 2;
+			tieCount = through < 2 ? 0 : through - slots;
+		}
+		var rounds = Knockout.rounds(slots * 2);
+		if (slots > 0) {
+			waves.addAll(Timetable.knockoutWaves(slots, tieCount, thirdPlace));
+		}
+		var withThird = thirdPlace && rounds >= 2;
+		for (var m : matches) {
+			var bye = m.pool() == null && m.round() == 1 && m.away() == null;
+			if (bye || m.recorded() || !(all || m.timeless())) {
+				continue;
+			}
+			Timetable.Slot slot;
+			if (m.pool() != null) {
+				var sameRound = pooled.stream().filter(x -> x.round() == m.round()).map(Timed::id).toList();
+				slot = Timetable.slot(plan, waves, m.round() - 1, sameRound.indexOf(m.id()));
+			}
+			else {
+				var index = Timetable.knockoutIndex(m.round(), m.slot(), m.thirdPlace(), rounds, withThird, ties.indexOf(m.id()));
+				slot = Timetable.slot(plan, waves, poolRounds + m.round() - 1, index);
+			}
+			jdbc.sql("UPDATE event_matches SET starts_at = :at, location = :location WHERE id = :id")
+				.param("at", slot.startsAt().atOffset(ZoneOffset.UTC)).param("location", slot.location()).param("id", m.id()).update();
+		}
+	}
+
 	private void fillMatches(UUID gameId, Timetable.Plan plan, boolean knockout, boolean thirdPlace, boolean all) {
 		record Timed(UUID id, int round, int slot, boolean thirdPlace, UUID away, boolean recorded, boolean timeless) {
 		}
 		var matches = jdbc.sql("""
 				SELECT id, round, slot, third_place, away_entry_id, recorded_at IS NOT NULL, starts_at IS NULL
-				FROM event_matches WHERE game_id = :game ORDER BY third_place, round, slot
+				FROM event_matches WHERE game_id = :game AND pool IS NULL ORDER BY third_place, round, slot
 				""").param("game", gameId).query((rs, n) -> new Timed((UUID) rs.getObject(1), rs.getInt(2), rs.getInt(3), rs.getBoolean(4),
 					(UUID) rs.getObject(5), rs.getBoolean(6), rs.getBoolean(7))).list();
 		var firstRound = matches.stream().filter(m -> m.round() == 1 && !m.thirdPlace()).toList();
@@ -385,10 +474,15 @@ public class EventPlayService {
 			throw BusinessException.conflict("Both sides need to be known first.");
 		}
 		var settings = settings(game.id());
-		if (match.recorded()) {
+		var pooled = match.pool() != null;
+		if (pooled) {
+			requirePoolsOpen(game);
+		}
+		else if (match.recorded()) {
 			requireCorrectable(game, match);
 		}
-		var knockout = "knockout".equals(game.format());
+		// A knockout's match (a game in pools has one after them) needs someone to go through.
+		var knockout = !pooled && ("knockout".equals(game.format()) || "pools".equals(game.format()));
 		var result = ResultRules.settle(game.scoring(), settings.bestOf(), knockout, settings.drawsAllowed(), asked);
 		var winner = result.winner() == null ? null : result.winner() == ResultRules.Side.HOME ? match.home() : match.away();
 		jdbc.sql("""
@@ -404,7 +498,10 @@ public class EventPlayService {
 			jdbc.sql("INSERT INTO event_match_sets (match_id, set_no, home, away) VALUES (:id, :no, :home, :away)").param("id", matchId)
 				.param("no", i + 1).param("home", set.home()).param("away", set.away()).update();
 		}
-		if (knockout) {
+		if (pooled) {
+			remakeKnockout(game, settings, userId);
+		}
+		else if (knockout) {
 			rebuild(game, settings);
 		}
 		settle(game);
@@ -422,14 +519,23 @@ public class EventPlayService {
 		if (!match.recorded()) {
 			return reader.detail(eventId, userId);
 		}
-		requireCorrectable(game, match);
+		var pooled = match.pool() != null;
+		if (pooled) {
+			requirePoolsOpen(game);
+		}
+		else {
+			requireCorrectable(game, match);
+		}
 		jdbc.sql("""
 				UPDATE event_matches SET home_score = NULL, away_score = NULL, winner_entry_id = NULL, decided_by = NULL,
 				       home_penalties = NULL, away_penalties = NULL, recorded_by = NULL, recorded_at = NULL
 				WHERE id = :id
 				""").param("id", matchId).update();
 		jdbc.sql("DELETE FROM event_match_sets WHERE match_id = :id").param("id", matchId).update();
-		if ("knockout".equals(game.format())) {
+		if (pooled) {
+			remakeKnockout(game, settings(game.id()), userId);
+		}
+		else if ("knockout".equals(game.format()) || "pools".equals(game.format())) {
 			rebuild(game, settings(game.id()));
 		}
 		settle(game);
@@ -609,7 +715,7 @@ public class EventPlayService {
 	 * (or the third-place match, from a semi-final) mustn't have been played. Leagues have no such tie.
 	 */
 	private void requireCorrectable(GameRow game, MatchRow match) {
-		if (!"knockout".equals(game.format()) || match.thirdPlace()) {
+		if (!("knockout".equals(game.format()) || "pools".equals(game.format())) || match.thirdPlace()) {
 			return;
 		}
 		var matches = matches(game.id());
@@ -624,6 +730,54 @@ public class EventPlayService {
 			throw BusinessException.conflict("The match for third place has been played, so this result stands.");
 		}
 	}
+
+	/* ------------------------------------------------------------------ */
+	/* Pools                                                                */
+	/* ------------------------------------------------------------------ */
+
+	/** A pool's results stand once its knockout has started: they decided who's in it. */
+	private void requirePoolsOpen(GameRow game) {
+		var started = jdbc.sql("SELECT count(*) FROM event_matches WHERE game_id = :game AND pool IS NULL AND recorded_at IS NOT NULL")
+			.param("game", game.id()).query(Integer.class).single();
+		if (started > 0) {
+			throw BusinessException.conflict("The knockout has started, so the pool results stand.");
+		}
+	}
+
+	/**
+	 * The knockout after the pools, made again from the pool tables whenever a pool result changes:
+	 * none until every pool match is in, then the best of each pool, a winner against another pool's
+	 * runner-up. Whoever's in it with an account hears who they meet, unless it came out the same.
+	 */
+	private void remakeKnockout(GameRow game, Settings settings, UUID actorId) {
+		var before = jdbc.sql("""
+				SELECT home_entry_id::text || '/' || coalesce(away_entry_id::text, '') FROM event_matches
+				WHERE game_id = :game AND pool IS NULL AND round = 1 AND NOT third_place
+				""").param("game", game.id()).query(String.class).set();
+		jdbc.sql("DELETE FROM event_matches WHERE game_id = :game AND pool IS NULL").param("game", game.id()).update();
+		var open = jdbc.sql("SELECT count(*) FROM event_matches WHERE game_id = :game AND pool IS NOT NULL AND recorded_at IS NULL")
+			.param("game", game.id()).query(Integer.class).single();
+		if (open > 0) {
+			return;
+		}
+		var view = reader.detail(game.eventId(), actorId).games().stream().filter(g -> g.id().equals(game.id())).findFirst().orElseThrow();
+		var tables = view.pools().stream().map(p -> p.table().stream().map(EventViews.LeagueRow::entryId).toList()).toList();
+		var through = Pools.through(tables, settings.advancePerPool());
+		var poolOf = new HashMap<UUID, Integer>();
+		view.entries().stream().filter(e -> e.pool() != null).forEach(e -> poolOf.put(e.id(), e.pool()));
+		var draw = Pools.bracket(through, poolOf);
+		draw.ties().forEach(t -> insertMatch(game.id(), 1, t.slot(), false, t.home(), t.away(), null));
+		draw.byes().forEach((slot, entry) -> insertMatch(game.id(), 1, slot, false, entry, null, entry));
+		rebuild(game, settings);
+		var after = jdbc.sql("""
+				SELECT home_entry_id::text || '/' || coalesce(away_entry_id::text, '') FROM event_matches
+				WHERE game_id = :game AND pool IS NULL AND round = 1 AND NOT third_place
+				""").param("game", game.id()).query(String.class).set();
+		if (!after.equals(before)) {
+			tellFirstUp(game.eventId(), game.id(), actorId, "knockout", java.util.Set.copyOf(through));
+		}
+	}
+
 
 	/* ------------------------------------------------------------------ */
 	/* Placings                                                             */
@@ -659,7 +813,8 @@ public class EventPlayService {
 	private void settle(GameRow game) {
 		boolean decided;
 		switch (game.format()) {
-			case "knockout" -> {
+			case "knockout", "pools" -> {
+				// matches() is the knockout's alone: a game in pools is decided by the knockout after them.
 				var matches = matches(game.id());
 				var firstRound = (int) matches.stream().filter(m -> !m.thirdPlace() && m.round() == 1).count();
 				var rounds = Knockout.rounds(firstRound * 2);
@@ -685,10 +840,11 @@ public class EventPlayService {
 
 	private Settings settings(UUID gameId) {
 		return jdbc.sql("""
-				SELECT best_of, draws_allowed, third_place, heat_size, advance_per_heat, location, starts_at FROM event_games WHERE id = :id
+				SELECT best_of, draws_allowed, third_place, heat_size, advance_per_heat, location, starts_at, pool_size, advance_per_pool
+				FROM event_games WHERE id = :id
 				""").param("id", gameId).query((rs, n) -> new Settings(number(rs.getObject(1)), rs.getBoolean(2), rs.getBoolean(3),
 				number(rs.getObject(4)), number(rs.getObject(5)), rs.getString(6),
-				rs.getTimestamp(7) == null ? null : rs.getTimestamp(7).toInstant())).single();
+				rs.getTimestamp(7) == null ? null : rs.getTimestamp(7).toInstant(), number(rs.getObject(8)), number(rs.getObject(9)))).single();
 	}
 
 	private static Integer number(Object value) {
@@ -698,7 +854,7 @@ public class EventPlayService {
 	private MatchRow match(UUID eventId, UUID matchId) {
 		return jdbc.sql("""
 				SELECT m.id, m.game_id, m.round, m.slot, m.third_place, m.home_entry_id, m.away_entry_id, m.winner_entry_id,
-				       m.recorded_at IS NOT NULL
+				       m.recorded_at IS NOT NULL, m.pool
 				FROM event_matches m JOIN event_games g ON g.id = m.game_id WHERE m.id = :id AND g.event_id = :event
 				""").param("id", matchId).param("event", eventId).query((rs, n) -> row(rs)).optional()
 			.orElseThrow(() -> BusinessException.notFound("That match isn’t in this event any more."));
@@ -713,16 +869,17 @@ public class EventPlayService {
 			.orElseThrow(() -> BusinessException.notFound("That heat isn’t in this event any more."));
 	}
 
+	/** A knockout's matches (or a league's): never a pool's, so a game in pools sees only the knockout after them. */
 	private List<MatchRow> matches(UUID gameId) {
 		return jdbc.sql("""
-				SELECT id, game_id, round, slot, third_place, home_entry_id, away_entry_id, winner_entry_id, recorded_at IS NOT NULL
-				FROM event_matches WHERE game_id = :game
+				SELECT id, game_id, round, slot, third_place, home_entry_id, away_entry_id, winner_entry_id, recorded_at IS NOT NULL, pool
+				FROM event_matches WHERE game_id = :game AND pool IS NULL
 				""").param("game", gameId).query((rs, n) -> row(rs)).list();
 	}
 
 	private static MatchRow row(java.sql.ResultSet rs) throws java.sql.SQLException {
 		return new MatchRow((UUID) rs.getObject(1), (UUID) rs.getObject(2), rs.getInt(3), rs.getInt(4), rs.getBoolean(5),
-				(UUID) rs.getObject(6), (UUID) rs.getObject(7), (UUID) rs.getObject(8), rs.getBoolean(9));
+				(UUID) rs.getObject(6), (UUID) rs.getObject(7), (UUID) rs.getObject(8), rs.getBoolean(9), number(rs.getObject(10)));
 	}
 
 	private static MatchRow find(List<MatchRow> matches, int round, int slot, boolean thirdPlace) {
@@ -730,11 +887,15 @@ public class EventPlayService {
 	}
 
 	private void insertMatch(UUID gameId, int round, int slot, boolean thirdPlace, UUID home, UUID away, UUID winner) {
+		insertMatch(gameId, null, round, slot, thirdPlace, home, away, winner);
+	}
+
+	private void insertMatch(UUID gameId, Integer pool, int round, int slot, boolean thirdPlace, UUID home, UUID away, UUID winner) {
 		jdbc.sql("""
-				INSERT INTO event_matches (id, game_id, round, slot, third_place, home_entry_id, away_entry_id, winner_entry_id)
-				VALUES (:id, :game, :round, :slot, :third, :home, :away, :winner)
-				""").param("id", UUID.randomUUID()).param("game", gameId).param("round", round).param("slot", slot).param("third", thirdPlace)
-			.param("home", home).param("away", away).param("winner", winner).update();
+				INSERT INTO event_matches (id, game_id, pool, round, slot, third_place, home_entry_id, away_entry_id, winner_entry_id)
+				VALUES (:id, :game, :pool, :round, :slot, :third, :home, :away, :winner)
+				""").param("id", UUID.randomUUID()).param("game", gameId).param("pool", pool).param("round", round).param("slot", slot)
+			.param("third", thirdPlace).param("home", home).param("away", away).param("winner", winner).update();
 	}
 
 	private void insertHeat(UUID gameId, String stage, int number, List<UUID> entries) {
@@ -752,15 +913,19 @@ public class EventPlayService {
 	/* ------------------------------------------------------------------ */
 
 	/**
-	 * After a draw, or the times being planned: each account holder in it hears who they meet first
-	 * (or which heat they're in), and when and where, as far as that's known.
+	 * After a draw, the times being planned, or a knockout made from the pools ({@code what}): each
+	 * account holder in it (or in {@code only}) hears who they meet first (or which heat they're in),
+	 * and when and where, as far as that's known.
 	 */
-	private void tellFirstUp(UUID eventId, UUID gameId, UUID actorId, boolean timesOnly) {
+	private void tellFirstUp(UUID eventId, UUID gameId, UUID actorId, String what, java.util.Set<UUID> only) {
 		var detail = reader.detail(eventId, actorId);
 		var game = detail.games().stream().filter(g -> g.id().equals(gameId)).findFirst().orElseThrow();
 		var accounts = accounts(detail, game);
 		var firstUp = new ArrayList<EventActivity.FirstUp>();
 		for (var entry : game.entries()) {
+			if (only != null && !only.contains(entry.id())) {
+				continue;
+			}
 			String opponent = null;
 			String when = null;
 			var match = game.matches().stream()
@@ -787,7 +952,7 @@ public class EventPlayService {
 			}
 		}
 		if (!firstUp.isEmpty()) {
-			events.publishEvent(new EventActivity.DrawMade(eventId, detail.event().name(), gameId, game.name(), firstUp, actorId, timesOnly));
+			events.publishEvent(new EventActivity.DrawMade(eventId, detail.event().name(), gameId, game.name(), firstUp, actorId, what));
 		}
 	}
 

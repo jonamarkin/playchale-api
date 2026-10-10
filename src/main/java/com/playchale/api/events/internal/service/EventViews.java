@@ -66,27 +66,33 @@ public final class EventViews {
 	public record Coordinator(UUID userId, String name, String avatar) {
 	}
 
+	/** Someone (or a pair, or a team) in a game. {@code pool} is the pool they were drawn into, for a game played in pools. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	public record Entry(UUID id, String name, UUID groupId, List<UUID> personIds, int seed, String status) {
+	public record Entry(UUID id, String name, UUID groupId, List<UUID> personIds, int seed, String status, Integer pool) {
 	}
 
 	/**
 	 * A game. {@code matchMinutes} and {@code locations} are its plan for the day, when the coordinator
-	 * made one: how long each match or heat takes, and the places they're played at once.
+	 * made one: how long each match or heat takes, and the places they're played at once. A game in
+	 * pools has each pool's table in {@code pools}; its knockout is the matches with no pool.
 	 */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record Game(UUID id, String discipline, String name, String category, String entryKind, Integer teamSize, String format,
 			String scoring, Integer bestOf, boolean drawsAllowed, boolean thirdPlace, Integer heatSize, Integer advancePerHeat,
-			String location, Instant startsAt, Integer matchMinutes, List<String> locations, String status, int position,
-			List<Coordinator> coordinators, List<Entry> entries, List<UUID> interested, List<Match> matches, List<Heat> heats,
-			List<LeagueRow> table, List<UUID> places) {
+			Integer poolSize, Integer advancePerPool, String location, Instant startsAt, Integer matchMinutes, List<String> locations,
+			String status, int position, List<Coordinator> coordinators, List<Entry> entries, List<UUID> interested, List<Match> matches,
+			List<Heat> heats, List<LeagueRow> table, List<Pool> pools, List<UUID> places) {
 
-		Game withPlay(List<Match> matches, List<Heat> heats, List<LeagueRow> table, List<UUID> places) {
+		Game withPlay(List<Match> matches, List<Heat> heats, List<LeagueRow> table, List<Pool> pools, List<UUID> places) {
 			return new Game(id, discipline, name, category, entryKind, teamSize, format, scoring, bestOf, drawsAllowed, thirdPlace,
-					heatSize, advancePerHeat, location, startsAt, matchMinutes, locations, status, position, coordinators, entries, interested,
-					matches, heats, table, places);
+					heatSize, advancePerHeat, poolSize, advancePerPool, location, startsAt, matchMinutes, locations, status, position,
+					coordinators, entries, interested, matches, heats, table, pools, places);
 		}
 
+	}
+
+	/** One pool of a game played in pools: its table so far, best first. */
+	public record Pool(int number, List<LeagueRow> table) {
 	}
 
 	public record SetScore(int home, int away) {
@@ -99,7 +105,7 @@ public final class EventViews {
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record Match(UUID id, int round, int slot, boolean thirdPlace, UUID homeEntryId, UUID awayEntryId, Integer homeScore,
 			Integer awayScore, List<SetScore> sets, UUID winnerEntryId, String decidedBy, Integer homePenalties, Integer awayPenalties,
-			Instant startsAt, String location, Instant recordedAt) {
+			Instant startsAt, String location, Instant recordedAt, Integer pool) {
 	}
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)

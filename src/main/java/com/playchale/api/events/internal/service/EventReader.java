@@ -152,13 +152,13 @@ class EventReader {
 			.forEach(r -> entryPeople.computeIfAbsent(r[0], k -> new ArrayList<>()).add(r[1]));
 		var entries = new HashMap<UUID, List<EventViews.Entry>>();
 		jdbc.sql("""
-				SELECT e.id, e.game_id, e.name, e.group_id, e.seed, e.status FROM event_entries e JOIN event_games g ON g.id = e.game_id
+				SELECT e.id, e.game_id, e.name, e.group_id, e.seed, e.status, e.pool FROM event_entries e JOIN event_games g ON g.id = e.game_id
 				WHERE g.event_id = :event ORDER BY e.seed
 				""").param("event", eventId).query((rs, n) -> {
 				var id = (UUID) rs.getObject("id");
 				entries.computeIfAbsent((UUID) rs.getObject("game_id"), k -> new ArrayList<>()).add(new EventViews.Entry(id,
 						rs.getString("name"), (UUID) rs.getObject("group_id"), entryPeople.getOrDefault(id, List.of()), rs.getInt("seed"),
-						rs.getString("status")));
+						rs.getString("status"), shortOrNull(rs, "pool")));
 				return id;
 			}).list();
 		var interest = new HashMap<UUID, List<UUID>>();
@@ -174,11 +174,12 @@ class EventReader {
 				return new EventViews.Game(id, rs.getString("discipline"), rs.getString("name"), rs.getString("category"),
 						rs.getString("entry_kind"), (Integer) rs.getObject("team_size"), rs.getString("format"), rs.getString("scoring"),
 						shortOrNull(rs, "best_of"), rs.getBoolean("draws_allowed"), rs.getBoolean("third_place"),
-						shortOrNull(rs, "heat_size"), shortOrNull(rs, "advance_per_heat"), rs.getString("location"),
+						shortOrNull(rs, "heat_size"), shortOrNull(rs, "advance_per_heat"), shortOrNull(rs, "pool_size"),
+						shortOrNull(rs, "advance_per_pool"), rs.getString("location"),
 						instant(rs, "starts_at"), shortOrNull(rs, "match_minutes"), locations(rs.getArray("locations")),
 						rs.getString("status"), rs.getInt("position"),
 						coordinators.getOrDefault(id, List.of()), entries.getOrDefault(id, List.of()), interest.getOrDefault(id, List.of()),
-						List.of(), List.of(), null, List.of());
+						List.of(), List.of(), null, null, List.of());
 			}).list();
 
 		var play = standings.load(eventId);

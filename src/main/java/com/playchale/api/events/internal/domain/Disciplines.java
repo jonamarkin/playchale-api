@@ -17,12 +17,12 @@ public final class Disciplines {
 
 	public static final List<String> ENTRY_KINDS = List.of("single", "pair", "team");
 
-	public static final List<String> FORMATS = List.of("knockout", "league", "placings");
+	public static final List<String> FORMATS = List.of("knockout", "league", "placings", "pools");
 
 	/** How a two-sided match is scored. A placings game is always scored by finishing order. */
 	public static final List<String> MATCH_SCORING = List.of("score", "sets", "outcome");
 
-	private static final List<String> TWO_SIDED = List.of("knockout", "league");
+	private static final List<String> TWO_SIDED = List.of("knockout", "league", "pools");
 
 	/**
 	 * One kind of game: who can enter it, how it can be played, and its usual settings. The first

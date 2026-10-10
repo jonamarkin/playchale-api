@@ -165,6 +165,100 @@ public class EventService {
 		return reader.detail(id, userId);
 	}
 
+	/** Running an event again: its new name and days, and whether the people's names come too. */
+	public record CopyInput(String name, LocalDate startsOn, LocalDate endsOn, Boolean people) {
+	}
+
+	/**
+	 * A new event made from this one, for next time: the same place, groups, games (how each is
+	 * played, its plan for the day moved to the new days, and its coordinators if they still have a
+	 * seat in the workspace), points and entry fee. Never the entries, results, announcements or
+	 * links. With {@code people}, the names and their groups come too, as names only: nobody's
+	 * account is put in an event they didn't join.
+	 */
+	@Transactional
+	public EventViews.Detail copy(UUID eventId, CopyInput input, UUID userId) {
+		var source = access.requireAdmin(eventId, userId);
+		var name = GameSettings.text(input == null ? null : input.name(), 100);
+		if (name == null) {
+			throw BusinessException.invalid("Give the event a name.");
+		}
+		if (input.startsOn() == null) {
+			throw BusinessException.invalid("Pick the day it starts.");
+		}
+		var was = jdbc.sql("SELECT starts_on, ends_on FROM events WHERE id = :id").param("id", eventId)
+			.query((rs, n) -> new LocalDate[] { rs.getObject(1, LocalDate.class), rs.getObject(2, LocalDate.class) }).single();
+		var shift = java.time.temporal.ChronoUnit.DAYS.between(was[0], input.startsOn());
+		var endsOn = input.endsOn() != null ? input.endsOn() : was[1].plusDays(shift);
+		if (endsOn.isBefore(input.startsOn())) {
+			throw BusinessException.invalid("It can’t end before it starts.");
+		}
+		if (endsOn.isAfter(input.startsOn().plusDays(30))) {
+			throw BusinessException.invalid("An event runs for up to a month. Make a second one for the rest.");
+		}
+		var id = UUID.randomUUID();
+		var now = now();
+		jdbc.sql("""
+				INSERT INTO events (id, organisation_id, name, starts_on, ends_on, timezone, country, venue_name, venue_area, map_url,
+				                    latitude, longitude, place_id, pin_source, pinned_at, entry_fee,
+				                    status, registration_open, join_code, board_token, placing_points, created_by, created_at, updated_at)
+				SELECT :id, organisation_id, :name, :startsOn, :endsOn, timezone, country, venue_name, venue_area, map_url,
+				       latitude, longitude, place_id, pin_source, pinned_at, entry_fee,
+				       'open', true, :code, :board, placing_points, :user, :now, :now
+				FROM events WHERE id = :source
+				""").param("id", id).param("name", name).param("startsOn", input.startsOn()).param("endsOn", endsOn).param("code", code(9))
+			.param("board", code(18)).param("user", userId).param("now", now).param("source", eventId).update();
+
+		var groups = new HashMap<UUID, UUID>();
+		jdbc.sql("SELECT id FROM event_groups WHERE event_id = :event").param("event", eventId).query(UUID.class).list()
+			.forEach(g -> groups.put(g, UUID.randomUUID()));
+		groups.forEach((old, copy) -> jdbc.sql("""
+				INSERT INTO event_groups (id, event_id, name, colour, position, created_at)
+				SELECT :copy, :event, name, colour, position, :now FROM event_groups WHERE id = :old
+				""").param("copy", copy).param("event", id).param("now", now).param("old", old).update());
+
+		var games = jdbc.sql("SELECT id FROM event_games WHERE event_id = :event ORDER BY position").param("event", eventId)
+			.query(UUID.class).list();
+		for (var game : games) {
+			var copy = UUID.randomUUID();
+			// The plan's start moves with the event's days; a game's own start time does too.
+			jdbc.sql("""
+					INSERT INTO event_games (id, event_id, discipline, name, category, entry_kind, team_size, format, scoring, best_of,
+					                         draws_allowed, third_place, heat_size, advance_per_heat, pool_size, advance_per_pool,
+					                         location, starts_at, match_minutes, locations, status, position, created_at, updated_at)
+					SELECT :copy, :event, discipline, name, category, entry_kind, team_size, format, scoring, best_of,
+					       draws_allowed, third_place, heat_size, advance_per_heat, pool_size, advance_per_pool,
+					       location, starts_at + make_interval(days => :shift), match_minutes, locations, 'open', position, :now, :now
+					FROM event_games WHERE id = :old
+					""").param("copy", copy).param("event", id).param("shift", (int) shift).param("now", now).param("old", game).update();
+			var coordinators = jdbc.sql("SELECT user_id FROM event_game_coordinators WHERE game_id = :game").param("game", game)
+				.query(UUID.class).list();
+			for (var coordinator : coordinators) {
+				if (organisations.roleOf(source.organisationId(), coordinator).isPresent()) {
+					jdbc.sql("INSERT INTO event_game_coordinators (game_id, user_id, added_by, created_at) VALUES (:game, :user, :by, :now)")
+						.param("game", copy).param("user", coordinator).param("by", userId).param("now", now).update();
+				}
+			}
+		}
+
+		var people = 0;
+		if (Boolean.TRUE.equals(input.people())) {
+			var rows = jdbc.sql("SELECT display_name, group_id FROM event_people WHERE event_id = :event ORDER BY created_at")
+				.param("event", eventId).query((rs, n) -> new Object[] { rs.getString(1), rs.getObject(2) }).list();
+			for (var row : rows) {
+				jdbc.sql("""
+						INSERT INTO event_people (id, event_id, display_name, group_id, source, added_by, created_at, updated_at)
+						VALUES (:id, :event, :name, :group, 'admin', :by, :now, :now)
+						""").param("id", UUID.randomUUID()).param("event", id).param("name", row[0])
+					.param("group", row[1] == null ? null : groups.get((UUID) row[1])).param("by", userId).param("now", now).update();
+			}
+			people = rows.size();
+		}
+		happened.record("event.copied", "event", id, userId, source.organisationId(), null,
+				Map.of("from", eventId.toString(), "games", games.size(), "people", people));
+		return reader.detail(id, userId);
+	}
+
 	@Transactional
 	public EventViews.Detail update(UUID eventId, EventInput input, UUID userId) {
 		var event = access.requireAdmin(eventId, userId);

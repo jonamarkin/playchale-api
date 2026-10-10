@@ -22,11 +22,11 @@ public final class EventActivity {
 	}
 
 	/**
-	 * A game's draw is out, or its times are ({@code timesOnly}): who plays whom first. Each recipient
-	 * gets their own first match.
+	 * Who plays whom first, each recipient their own match: after a game's draw ({@code what} "draw"),
+	 * its times being planned ("times"), or its knockout being made from its pools ("knockout").
 	 */
 	public record DrawMade(UUID eventId, String eventName, UUID gameId, String gameName, List<FirstUp> recipients, UUID actorId,
-			boolean timesOnly) {
+			String what) {
 	}
 
 	/** Who someone meets first (or which heat they're in, with no opponent), and when and where, as far as that's known. */

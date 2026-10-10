@@ -45,14 +45,14 @@ class EventStandings {
 		var matches = new HashMap<UUID, List<EventViews.Match>>();
 		jdbc.sql("""
 				SELECT m.* FROM event_matches m JOIN event_games g ON g.id = m.game_id WHERE g.event_id = :event
-				ORDER BY m.third_place, m.round, m.slot
+				ORDER BY m.pool NULLS LAST, m.third_place, m.round, m.slot
 				""").param("event", eventId).query((rs, n) -> {
 				var id = (UUID) rs.getObject("id");
 				matches.computeIfAbsent((UUID) rs.getObject("game_id"), k -> new ArrayList<>()).add(new EventViews.Match(id, rs.getInt("round"),
 						rs.getInt("slot"), rs.getBoolean("third_place"), (UUID) rs.getObject("home_entry_id"), (UUID) rs.getObject("away_entry_id"),
 						integer(rs, "home_score"), integer(rs, "away_score"), sets.getOrDefault(id, List.of()), (UUID) rs.getObject("winner_entry_id"),
 						rs.getString("decided_by"), integer(rs, "home_penalties"), integer(rs, "away_penalties"), instant(rs, "starts_at"),
-						rs.getString("location"), instant(rs, "recorded_at")));
+						rs.getString("location"), instant(rs, "recorded_at"), integer(rs, "pool")));
 				return null;
 			}).list();
 		var lanes = new HashMap<UUID, List<EventViews.Lane>>();
@@ -78,18 +78,28 @@ class EventStandings {
 		return new Play(matches, heats);
 	}
 
-	/** A game with what's been played in it, its league table, and its places once it's decided. */
+	/** A game with what's been played in it, its league or pool tables, and its places once it's decided. */
 	EventViews.Game withPlay(EventViews.Game game, Play play) {
 		var matches = play.matches().getOrDefault(game.id(), List.of());
 		var heats = play.heats().getOrDefault(game.id(), List.of());
-		var table = "league".equals(game.format()) ? table(game, matches) : null;
+		var table = "league".equals(game.format()) ? table(game, null, matches) : null;
+		var pools = "pools".equals(game.format()) ? pools(game, matches) : null;
 		var places = "finished".equals(game.status()) ? places(game, matches, heats, table) : List.<UUID>of();
-		return game.withPlay(matches, heats, table, places);
+		return game.withPlay(matches, heats, table, pools, places);
 	}
 
-	/** A league's table so far: everyone entered, played or not. */
-	List<EventViews.LeagueRow> table(EventViews.Game game, List<EventViews.Match> matches) {
-		var entries = game.entries().stream().filter(e -> "entered".equals(e.status())).map(EventViews.Entry::id).toList();
+	/** Each pool's table, from its own matches; none before the draw. */
+	List<EventViews.Pool> pools(EventViews.Game game, List<EventViews.Match> matches) {
+		var numbers = new java.util.TreeSet<Integer>();
+		game.entries().stream().map(EventViews.Entry::pool).filter(Objects::nonNull).forEach(numbers::add);
+		return numbers.stream().map(n -> new EventViews.Pool(n, table(game, n, matches.stream().filter(m -> Objects.equals(m.pool(), n)).toList())))
+			.toList();
+	}
+
+	/** A league's table so far (or one pool's): everyone entered in it, played or not. */
+	List<EventViews.LeagueRow> table(EventViews.Game game, Integer pool, List<EventViews.Match> matches) {
+		var entries = game.entries().stream().filter(e -> "entered".equals(e.status()) && (pool == null || pool.equals(e.pool())))
+			.map(EventViews.Entry::id).toList();
 		var keepsScore = !"outcome".equals(game.scoring());
 		var played = matches.stream().filter(m -> m.recordedAt() != null && m.homeEntryId() != null && m.awayEntryId() != null)
 			.map(m -> new Standings.Played(m.homeEntryId(), m.awayEntryId(), keepsScore && m.homeScore() != null ? m.homeScore() : 0,
@@ -105,12 +115,14 @@ class EventStandings {
 			case "league" -> {
 				return table == null ? List.of() : table.stream().map(EventViews.LeagueRow::entryId).toList();
 			}
-			case "knockout" -> {
-				var rounds = rounds(matches);
+			case "knockout", "pools" -> {
+				// A game in pools is decided by its knockout: the matches with no pool.
+				var knockout = matches.stream().filter(m -> m.pool() == null).toList();
+				var rounds = rounds(knockout);
 				var places = new ArrayList<UUID>();
-				matches.stream().filter(m -> !m.thirdPlace() && m.round() == rounds && m.slot() == 0).findFirst()
+				knockout.stream().filter(m -> !m.thirdPlace() && m.round() == rounds && m.slot() == 0).findFirst()
 					.ifPresent(f -> addWinnerThenLoser(places, f));
-				matches.stream().filter(EventViews.Match::thirdPlace).findFirst().ifPresent(t -> addWinnerThenLoser(places, t));
+				knockout.stream().filter(EventViews.Match::thirdPlace).findFirst().ifPresent(t -> addWinnerThenLoser(places, t));
 				return places;
 			}
 			default -> {

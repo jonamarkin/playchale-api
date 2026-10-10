@@ -81,6 +81,12 @@ class EventController {
 		return events.update(id, request, me.id());
 	}
 
+	@PostMapping("/events/{id}/copy")
+	@ResponseStatus(HttpStatus.CREATED)
+	EventViews.Detail copy(CurrentUser me, @PathVariable UUID id, @RequestBody EventService.CopyInput request) {
+		return events.copy(id, request, me.id());
+	}
+
 	@PostMapping("/events/{id}/cancel")
 	EventViews.Detail cancel(CurrentUser me, @PathVariable UUID id) {
 		return events.cancel(id, me.id());

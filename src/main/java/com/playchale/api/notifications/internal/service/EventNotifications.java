@@ -38,8 +38,13 @@ class EventNotifications {
 		for (var first : event.recipients()) {
 			var against = first.opponent() != null ? "First up: against %s%s.".formatted(first.opponent(), first.when() == null ? "" : ", " + first.when())
 					: first.when() != null ? "First up: %s.".formatted(first.when()) : "Open it to see where you are.";
-			notifications.send(first.userId(), "event", (event.timesOnly() ? "%s: the times are out" : "%s: the draw is out").formatted(event.gameName()),
-				against, game(event.eventId(), event.gameId()), event.actorId());
+			var title = switch (event.what()) {
+				case "times" -> "%s: the times are out";
+				case "knockout" -> "%s: you’re through to the knockout";
+				default -> "%s: the draw is out";
+			};
+			notifications.send(first.userId(), "event", title.formatted(event.gameName()), against, game(event.eventId(), event.gameId()),
+				event.actorId());
 		}
 	}
 

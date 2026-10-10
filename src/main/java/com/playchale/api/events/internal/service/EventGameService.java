@@ -74,16 +74,17 @@ public class EventGameService {
 			.param("event", eventId).query(Integer.class).single();
 		jdbc.sql("""
 				INSERT INTO event_games (id, event_id, discipline, name, category, entry_kind, team_size, format, scoring, best_of,
-				                         draws_allowed, third_place, heat_size, advance_per_heat, location, starts_at, status,
-				                         position, created_at, updated_at)
+				                         draws_allowed, third_place, heat_size, advance_per_heat, pool_size, advance_per_pool, location,
+				                         starts_at, status, position, created_at, updated_at)
 				VALUES (:id, :event, :discipline, :name, :category, :entryKind, :teamSize, :format, :scoring, :bestOf,
-				        :draws, :thirdPlace, :heatSize, :advance, :location, :startsAt, 'open', :position, :now, :now)
+				        :draws, :thirdPlace, :heatSize, :advance, :poolSize, :advancePerPool, :location, :startsAt, 'open', :position,
+				        :now, :now)
 				""").param("id", id).param("event", eventId).param("discipline", game.discipline()).param("name", game.name())
 			.param("category", game.category()).param("entryKind", game.entryKind()).param("teamSize", game.teamSize())
 			.param("format", game.format()).param("scoring", game.scoring()).param("bestOf", game.bestOf())
 			.param("draws", game.drawsAllowed()).param("thirdPlace", game.thirdPlace()).param("heatSize", game.heatSize())
-			.param("advance", game.advancePerHeat()).param("location", game.location()).param("startsAt", at(game))
-			.param("position", position).param("now", now()).update();
+			.param("advance", game.advancePerHeat()).param("poolSize", game.poolSize()).param("advancePerPool", game.advancePerPool())
+			.param("location", game.location()).param("startsAt", at(game)).param("position", position).param("now", now()).update();
 		happened.record("event.game-added", "event", eventId, userId, event.organisationId(), null,
 				Map.of("discipline", game.discipline(), "format", game.format()));
 		return reader.detail(eventId, userId);
@@ -114,13 +115,14 @@ public class EventGameService {
 				""" : """
 				UPDATE event_games SET discipline = :discipline, name = :name, category = :category, entry_kind = :entryKind,
 				       team_size = :teamSize, format = :format, scoring = :scoring, best_of = :bestOf, draws_allowed = :draws,
-				       third_place = :thirdPlace, heat_size = :heatSize, advance_per_heat = :advance, location = :location,
-				       starts_at = :startsAt, updated_at = :now
+				       third_place = :thirdPlace, heat_size = :heatSize, advance_per_heat = :advance, pool_size = :poolSize,
+				       advance_per_pool = :advancePerPool, location = :location, starts_at = :startsAt, updated_at = :now
 				WHERE id = :id
 				""").param("discipline", game.discipline()).param("name", game.name()).param("category", game.category())
 			.param("entryKind", game.entryKind()).param("teamSize", game.teamSize()).param("format", game.format())
 			.param("scoring", game.scoring()).param("bestOf", game.bestOf()).param("draws", game.drawsAllowed())
 			.param("thirdPlace", game.thirdPlace()).param("heatSize", game.heatSize()).param("advance", game.advancePerHeat())
+			.param("poolSize", game.poolSize()).param("advancePerPool", game.advancePerPool())
 			.param("location", game.location()).param("startsAt", at(game)).param("now", now()).param("id", gameId).update();
 		return reader.detail(eventId, userId);
 	}
