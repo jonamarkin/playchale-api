@@ -20,7 +20,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
  * coordinates table tennis and ludo, and Kwame joined with the link. Everyone else is a name an admin
  * typed in, as most people at a games day are. The day runs to a plan: oware was played first thing,
  * ludo's heats are in and its final is next, the football semi-finals are under way on the main
- * pitch, and the Bible quiz final is late morning; everything else is still taking entries.
+ * pitch, and the Bible quiz final is at noon; everything else is still taking entries.
  *
  * <p>Entries and matches are made in the same order as the web app's, so they get the same IDs.
  */
@@ -127,7 +127,7 @@ final class DemoEventDay {
 		plan("evgm-oware", "08:00", 15, "Hall");
 		plan("evgm-ludo", "09:00", 20, "Sunday school room");
 		plan("evgm-football", "10:00", 30, "Main pitch");
-		plan("evgm-quiz", "11:00", 30, "Main auditorium");
+		plan("evgm-quiz", "12:00", 30, "Main auditorium");
 		for (var game : List.of("evgm-table-tennis", "evgm-ludo")) {
 			jdbc.sql("INSERT INTO event_game_coordinators (game_id, user_id, added_by, created_at) VALUES (:game, :user, :by, :at)")
 				.param("game", id(game)).param("user", id("u-esi")).param("by", id("u-ama")).param("at", utc(daysAgo(5))).update();
@@ -223,13 +223,16 @@ final class DemoEventDay {
 			.param("third", third).param("home", id(home)).param("away", away == null ? null : id(away)).param("at", at).update();
 	}
 
-	/** The Bible quiz: four teams fit one heat, so the draw makes it the final, at 11:00 in the main auditorium. */
+	/**
+	 * The Bible quiz: four teams fit one heat, so the draw makes it the final, at noon in the main
+	 * auditorium, after the football, which some of the quiz teams play in.
+	 */
 	private void quizFinal() {
 		var finalId = id("evh-quiz-final-1");
 		jdbc.sql("""
 				INSERT INTO event_heats (id, game_id, stage, number, starts_at, location)
 				VALUES (:id, :game, 'final', 1, :at, 'Main auditorium')
-				""").param("id", finalId).param("game", id("evgm-quiz")).param("at", onTheDay(11, 0)).update();
+				""").param("id", finalId).param("game", id("evgm-quiz")).param("at", onTheDay(12, 0)).update();
 		for (int lane = 0; lane < 4; lane++) {
 			jdbc.sql("INSERT INTO event_heat_entries (heat_id, entry_id, lane) VALUES (:heat, :entry, :lane)").param("heat", finalId)
 				.param("entry", id("eve-" + (26 + lane))).param("lane", lane + 1).update();
