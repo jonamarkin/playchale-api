@@ -114,8 +114,8 @@ class EventCopyApiTest {
 		assertThat(copied.get("coordinators")).extracting(c -> c.get("userId").asString()).containsExactly(adminId.toString());
 
 		// People come as names, in their groups, and nobody's account comes with them.
-		assertThat(copy.get("people")).extracting(p -> p.get("name").asString()).containsExactlyInAnyOrder("Kofi Mensah",
-				event.at("/people").size() > 0 ? jdbc.sql("SELECT display_name FROM event_people WHERE user_id IS NOT NULL").query(String.class).single() : "");
+		var joined = jdbc.sql("SELECT display_name FROM event_people WHERE user_id IS NOT NULL").query(String.class).single();
+		assertThat(copy.get("people")).extracting(p -> p.get("name").asString()).containsExactlyInAnyOrder("Kofi Mensah", joined);
 		assertThat(copy.get("people")).allSatisfy(p -> assertThat(p.has("userId")).isFalse());
 		var hope = copy.at("/groups/1/id").asString();
 		assertThat(copy.get("people")).anySatisfy(p -> {
