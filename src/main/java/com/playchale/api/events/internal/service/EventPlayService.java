@@ -9,6 +9,7 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -21,7 +22,9 @@ import java.util.stream.Collectors;
 
 import com.playchale.api.events.api.EventActivity;
 import com.playchale.api.events.internal.domain.ResultRules;
+import com.playchale.api.events.internal.domain.GameSettings;
 import com.playchale.api.events.internal.domain.Standings;
+import com.playchale.api.events.internal.domain.Timetable;
 import com.playchale.api.events.internal.service.EventAccess.GameRow;
 import com.playchale.api.shared.draws.Knockout;
 import com.playchale.api.shared.draws.RoundRobin;
@@ -33,7 +36,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * Playing an event's games: the draw, the results, and finishing the event.
+ * Playing an event's games: the draw, when and where each match is played, the results, and
+ * finishing the event.
  *
  * <p>A knockout's later rounds are rebuilt from the winners every time a result changes, so a
  * correction flows through by itself. What can't be undone is refused: a result can only change
@@ -69,6 +73,16 @@ public class EventPlayService {
 	/** One finishing place in a heat, as the coordinator sends it. */
 	public record Placing(UUID entryId, Integer place, String mark) {
 	}
+
+	/** A game's plan for the day: when the first match starts, how long each takes, and where they're played at once. */
+	public record Plan(Instant startsAt, Integer minutes, List<String> locations) {
+	}
+
+	/** One match or heat moved by hand. Either may be left out, to clear it. */
+	public record Slot(Instant startsAt, String location) {
+	}
+
+	private static final int MAX_LOCATIONS = 12;
 
 	/** What a game is played with, beyond what the rules turn on. */
 	private record Settings(Integer bestOf, boolean drawsAllowed, boolean thirdPlace, Integer heatSize, Integer advance, String location,
@@ -137,10 +151,11 @@ public class EventPlayService {
 			}
 		}
 		jdbc.sql("UPDATE event_games SET status = 'drawn', updated_at = :now WHERE id = :id").param("now", now()).param("id", gameId).update();
+		fill(gameId, false);
 		var event = access.event(eventId);
 		happened.record("event.game-drawn", "event", eventId, userId, event.organisationId(), null,
 				Map.of("format", game.format(), "entries", entries.size()));
-		tellFirstUp(eventId, gameId, userId);
+		tellFirstUp(eventId, gameId, userId, false);
 		return reader.detail(eventId, userId);
 	}
 
@@ -163,6 +178,197 @@ public class EventPlayService {
 		jdbc.sql("DELETE FROM event_heats WHERE game_id = :game").param("game", gameId).update();
 		jdbc.sql("UPDATE event_games SET status = 'open', updated_at = :now WHERE id = :id").param("now", now()).param("id", gameId).update();
 		return reader.detail(eventId, userId);
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* When and where                                                       */
+	/* ------------------------------------------------------------------ */
+
+	/**
+	 * Plans a game's day: every match and heat not yet played gets a time and a place, and the ones
+	 * made later (the next round, a final) get theirs as they appear. Saved again, it plans again,
+	 * over any match moved by hand. After the draw, everyone in it with an account hears when and
+	 * where they're first up.
+	 */
+	@Transactional
+	public EventViews.Detail plan(UUID eventId, UUID gameId, Plan plan, UUID userId) {
+		var game = access.requireRunner(eventId, gameId, userId);
+		requireOn(eventId);
+		if (plan == null || plan.startsAt() == null) {
+			throw BusinessException.invalid("Say when the first one starts.");
+		}
+		if (plan.minutes() == null || plan.minutes() < 5 || plan.minutes() > 600) {
+			throw BusinessException.invalid("Each one takes between 5 minutes and 10 hours.");
+		}
+		var locations = new ArrayList<String>();
+		for (var location : plan.locations() == null ? List.<String>of() : plan.locations()) {
+			var clean = GameSettings.text(location, 60);
+			if (clean != null && locations.stream().noneMatch(l -> l.equalsIgnoreCase(clean))) {
+				locations.add(clean);
+			}
+		}
+		if (locations.isEmpty()) {
+			throw BusinessException.invalid("Say where it’s played: a court, a table, a pitch.");
+		}
+		if (locations.size() > MAX_LOCATIONS) {
+			throw BusinessException.invalid("Up to %d places at once.".formatted(MAX_LOCATIONS));
+		}
+		var together = String.join(", ", locations);
+		jdbc.sql("""
+				UPDATE event_games SET starts_at = :startsAt, match_minutes = :minutes, locations = :locations, location = :location,
+				       updated_at = :now
+				WHERE id = :id
+				""").param("startsAt", plan.startsAt().atOffset(ZoneOffset.UTC)).param("minutes", plan.minutes())
+			.param("locations", locations.toArray(String[]::new)).param("location", together.length() <= 60 ? together : locations.getFirst())
+			.param("now", now()).param("id", gameId).update();
+		fill(gameId, true);
+		happened.record("event.game-planned", "event", eventId, userId, access.event(eventId).organisationId(), null,
+				Map.of("minutes", plan.minutes(), "locations", locations.size()));
+		if (!game.open()) {
+			tellFirstUp(eventId, gameId, userId, true);
+		}
+		return reader.detail(eventId, userId);
+	}
+
+	/** Moves one match: another time, another court. Both sides hear, if they have an account. */
+	@Transactional
+	public EventViews.Detail moveMatch(UUID eventId, UUID matchId, Slot slot, UUID userId) {
+		var match = match(eventId, matchId);
+		var game = access.requireRunner(eventId, match.gameId(), userId);
+		requireOn(eventId);
+		var location = GameSettings.text(slot == null ? null : slot.location(), 60);
+		var startsAt = slot == null ? null : slot.startsAt();
+		var before = jdbc.sql("SELECT starts_at, location FROM event_matches WHERE id = :id").param("id", matchId)
+			.query((rs, n) -> new Slot(rs.getTimestamp(1) == null ? null : rs.getTimestamp(1).toInstant(), rs.getString(2))).single();
+		jdbc.sql("UPDATE event_matches SET starts_at = :startsAt, location = :location WHERE id = :id")
+			.param("startsAt", startsAt == null ? null : startsAt.atOffset(ZoneOffset.UTC)).param("location", location).param("id", matchId)
+			.update();
+		var detail = reader.detail(eventId, userId);
+		if (!match.recorded() && match.home() != null && match.away() != null && !before.equals(new Slot(startsAt, location))) {
+			tell(detail, game.id(), List.of(match.home(), match.away()), userId, played -> {
+				var m = matchView(played, matchId);
+				return "Moved: %s v %s%s.".formatted(EventStandings.nameOf(played, m.homeEntryId()), EventStandings.nameOf(played, m.awayEntryId()),
+						at(detail, m.startsAt(), m.location(), " is now "));
+			});
+		}
+		return detail;
+	}
+
+	/** Moves one heat, or a final. Everyone in it hears, if they have an account. */
+	@Transactional
+	public EventViews.Detail moveHeat(UUID eventId, UUID heatId, Slot slot, UUID userId) {
+		var heat = heat(eventId, heatId);
+		var game = access.requireRunner(eventId, heat.gameId(), userId);
+		requireOn(eventId);
+		var location = GameSettings.text(slot == null ? null : slot.location(), 60);
+		var startsAt = slot == null ? null : slot.startsAt();
+		var before = jdbc.sql("SELECT starts_at, location FROM event_heats WHERE id = :id").param("id", heatId)
+			.query((rs, n) -> new Slot(rs.getTimestamp(1) == null ? null : rs.getTimestamp(1).toInstant(), rs.getString(2))).single();
+		jdbc.sql("UPDATE event_heats SET starts_at = :startsAt, location = :location WHERE id = :id")
+			.param("startsAt", startsAt == null ? null : startsAt.atOffset(ZoneOffset.UTC)).param("location", location).param("id", heatId)
+			.update();
+		var detail = reader.detail(eventId, userId);
+		if (!heat.recorded() && !before.equals(new Slot(startsAt, location))) {
+			var lanes = jdbc.sql("SELECT entry_id FROM event_heat_entries WHERE heat_id = :heat").param("heat", heatId).query(UUID.class).list();
+			tell(detail, game.id(), lanes, userId, played -> {
+				var h = heatView(played, heatId);
+				return "Moved: %s%s.".formatted(heat.isFinal() ? "the final" : "Heat " + heat.number(), at(detail, h.startsAt(), h.location(), " is now "));
+			});
+		}
+		return detail;
+	}
+
+	/**
+	 * Gives a game's matches and heats their time and place from its plan, if it has one: everything
+	 * not yet played when {@code all} (the plan was just saved), otherwise only what has no time yet
+	 * (a round or a final just made), so a match moved by hand stays where it was put.
+	 */
+	private void fill(UUID gameId, boolean all) {
+		record Planned(Instant startsAt, Integer minutes, String[] locations, String format, boolean thirdPlace) {
+		}
+		var planned = jdbc.sql("SELECT starts_at, match_minutes, locations, format, third_place FROM event_games WHERE id = :id")
+			.param("id", gameId)
+			.query((rs, n) -> new Planned(rs.getTimestamp(1) == null ? null : rs.getTimestamp(1).toInstant(), number(rs.getObject(2)),
+					rs.getArray(3) == null ? null : (String[]) rs.getArray(3).getArray(), rs.getString(4), rs.getBoolean(5)))
+			.single();
+		if (planned.startsAt() == null || planned.minutes() == null || planned.locations() == null || planned.locations().length == 0) {
+			return;
+		}
+		var plan = new Timetable.Plan(planned.startsAt(), planned.minutes(), List.of(planned.locations()));
+		if (!"placings".equals(planned.format())) {
+			fillMatches(gameId, plan, "knockout".equals(planned.format()), planned.thirdPlace(), all);
+			return;
+		}
+		record TimedHeat(UUID id, boolean isFinal, int number, boolean recorded, boolean timeless) {
+		}
+		var heats = jdbc.sql("""
+				SELECT id, stage = 'final', number, recorded_at IS NOT NULL, starts_at IS NULL FROM event_heats WHERE game_id = :game
+				""").param("game", gameId).query((rs, n) -> new TimedHeat((UUID) rs.getObject(1), rs.getBoolean(2), rs.getInt(3), rs.getBoolean(4),
+					rs.getBoolean(5))).list();
+		var waves = Timetable.heatWaves((int) heats.stream().filter(h -> !h.isFinal()).count());
+		for (var h : heats) {
+			if (h.recorded() || !(all || h.timeless())) {
+				continue;
+			}
+			var slot = h.isFinal() ? Timetable.slot(plan, waves, waves.size() - 1, 0) : Timetable.slot(plan, waves, 0, h.number() - 1);
+			jdbc.sql("UPDATE event_heats SET starts_at = :at, location = :location WHERE id = :id")
+				.param("at", slot.startsAt().atOffset(ZoneOffset.UTC)).param("location", slot.location()).param("id", h.id()).update();
+		}
+	}
+
+	private void fillMatches(UUID gameId, Timetable.Plan plan, boolean knockout, boolean thirdPlace, boolean all) {
+		record Timed(UUID id, int round, int slot, boolean thirdPlace, UUID away, boolean recorded, boolean timeless) {
+		}
+		var matches = jdbc.sql("""
+				SELECT id, round, slot, third_place, away_entry_id, recorded_at IS NOT NULL, starts_at IS NULL
+				FROM event_matches WHERE game_id = :game ORDER BY third_place, round, slot
+				""").param("game", gameId).query((rs, n) -> new Timed((UUID) rs.getObject(1), rs.getInt(2), rs.getInt(3), rs.getBoolean(4),
+					(UUID) rs.getObject(5), rs.getBoolean(6), rs.getBoolean(7))).list();
+		var firstRound = matches.stream().filter(m -> m.round() == 1 && !m.thirdPlace()).toList();
+		// A bye in a knockout's first round isn't played.
+		var ties = firstRound.stream().filter(m -> m.away() != null).map(Timed::id).toList();
+		var rounds = Knockout.rounds(firstRound.size() * 2);
+		var withThird = thirdPlace && rounds >= 2;
+		List<Integer> waves;
+		if (knockout) {
+			waves = Timetable.knockoutWaves(firstRound.size(), ties.size(), thirdPlace);
+		}
+		else {
+			var perRound = new TreeMap<Integer, Integer>();
+			matches.forEach(m -> perRound.merge(m.round(), 1, Integer::sum));
+			waves = new ArrayList<>();
+			for (int round = 1; round <= (perRound.isEmpty() ? 0 : perRound.lastKey()); round++) {
+				waves.add(perRound.getOrDefault(round, 0));
+			}
+		}
+		for (var m : matches) {
+			var bye = knockout && m.round() == 1 && m.away() == null;
+			if (bye || m.recorded() || !(all || m.timeless())) {
+				continue;
+			}
+			var index = knockout ? Timetable.knockoutIndex(m.round(), m.slot(), m.thirdPlace(), rounds, withThird, ties.indexOf(m.id())) : m.slot();
+			var slot = Timetable.slot(plan, waves, m.round() - 1, index);
+			jdbc.sql("UPDATE event_matches SET starts_at = :at, location = :location WHERE id = :id")
+				.param("at", slot.startsAt().atOffset(ZoneOffset.UTC)).param("location", slot.location()).param("id", m.id()).update();
+		}
+	}
+
+	/**
+	 * When and where, as people say it: "10:30 am, Court 2", after {@code lead}; with the day when the
+	 * event runs over several. Empty when neither is known.
+	 */
+	private static String at(EventViews.Detail detail, Instant startsAt, String location, String lead) {
+		var parts = new ArrayList<String>();
+		if (startsAt != null) {
+			var zone = ZoneId.of(detail.event().timezone());
+			var oneDay = detail.event().startsOn().equals(detail.event().endsOn());
+			var clock = DateTimeFormatter.ofPattern(oneDay ? "h:mm a" : "EEE h:mm a", Locale.UK).format(startsAt.atZone(zone));
+			parts.add(clock.replace("AM", "am").replace("PM", "pm"));
+		}
+		if (location != null) {
+			parts.add(location);
+		}
+		return parts.isEmpty() ? "" : lead + String.join(", ", parts);
 	}
 
 	/* ------------------------------------------------------------------ */
@@ -367,6 +573,7 @@ public class EventPlayService {
 		else if (third != null && !third.recorded()) {
 			jdbc.sql("DELETE FROM event_matches WHERE id = :id").param("id", third.id()).update();
 		}
+		fill(game.id(), false);
 	}
 
 	/** Puts the sides into a tie, making or removing it as needed. Returns the matches as they now are. */
@@ -438,6 +645,7 @@ public class EventPlayService {
 				.query((rs, n) -> new Standings.Placed((UUID) rs.getObject(1), rs.getInt(2))).list());
 		}
 		insertHeat(game.id(), "final", 1, Standings.through(placed, settings.advance()));
+		fill(game.id(), false);
 	}
 
 	private boolean finalRun(UUID gameId) {
@@ -543,21 +751,35 @@ public class EventPlayService {
 	/* Telling people                                                       */
 	/* ------------------------------------------------------------------ */
 
-	/** After a draw: each account holder in it hears who they meet first, and when and where if the coordinator said. */
-	private void tellFirstUp(UUID eventId, UUID gameId, UUID actorId) {
+	/**
+	 * After a draw, or the times being planned: each account holder in it hears who they meet first
+	 * (or which heat they're in), and when and where, as far as that's known.
+	 */
+	private void tellFirstUp(UUID eventId, UUID gameId, UUID actorId, boolean timesOnly) {
 		var detail = reader.detail(eventId, actorId);
 		var game = detail.games().stream().filter(g -> g.id().equals(gameId)).findFirst().orElseThrow();
 		var accounts = accounts(detail, game);
 		var firstUp = new ArrayList<EventActivity.FirstUp>();
-		var zone = ZoneId.of(detail.event().timezone());
-		var when = game.startsAt() == null ? game.location()
-				: DateTimeFormatter.ofPattern("h:mm a", Locale.UK).format(game.startsAt().atZone(zone)).toLowerCase(Locale.ROOT)
-						+ (game.location() == null ? "" : ", " + game.location());
 		for (var entry : game.entries()) {
-			var opponent = game.matches().stream().filter(m -> m.recordedAt() == null && (entry.id().equals(m.homeEntryId()) || entry.id().equals(m.awayEntryId())))
-				.filter(m -> m.homeEntryId() != null && m.awayEntryId() != null)
-				.findFirst().map(m -> EventStandings.nameOf(game, entry.id().equals(m.homeEntryId()) ? m.awayEntryId() : m.homeEntryId()))
-				.orElse(null);
+			String opponent = null;
+			String when = null;
+			var match = game.matches().stream()
+				.filter(m -> m.recordedAt() == null && m.homeEntryId() != null && m.awayEntryId() != null)
+				.filter(m -> entry.id().equals(m.homeEntryId()) || entry.id().equals(m.awayEntryId()))
+				.min(Comparator.comparing(EventViews.Match::startsAt, Comparator.nullsLast(Comparator.naturalOrder())));
+			var heat = game.heats().stream().filter(h -> h.recordedAt() == null && h.lanes().stream().anyMatch(l -> l.entryId().equals(entry.id())))
+				.findFirst();
+			if (match.isPresent()) {
+				var m = match.get();
+				opponent = EventStandings.nameOf(game, entry.id().equals(m.homeEntryId()) ? m.awayEntryId() : m.homeEntryId());
+				var at = at(detail, m.startsAt() == null ? game.startsAt() : m.startsAt(), m.location() == null ? game.location() : m.location(), "");
+				when = at.isEmpty() ? null : at;
+			}
+			else if (heat.isPresent()) {
+				var h = heat.get();
+				when = ("final".equals(h.stage()) ? "the final" : "Heat " + h.number())
+						+ at(detail, h.startsAt() == null ? game.startsAt() : h.startsAt(), h.location() == null ? game.location() : h.location(), ", ");
+			}
 			for (var user : accounts.getOrDefault(entry.id(), List.of())) {
 				if (!user.equals(actorId)) {
 					firstUp.add(new EventActivity.FirstUp(user, opponent, when));
@@ -565,7 +787,7 @@ public class EventPlayService {
 			}
 		}
 		if (!firstUp.isEmpty()) {
-			events.publishEvent(new EventActivity.DrawMade(eventId, detail.event().name(), gameId, game.name(), firstUp, actorId));
+			events.publishEvent(new EventActivity.DrawMade(eventId, detail.event().name(), gameId, game.name(), firstUp, actorId, timesOnly));
 		}
 	}
 

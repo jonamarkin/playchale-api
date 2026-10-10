@@ -71,7 +71,8 @@ class EventStandings {
 				""").param("event", eventId).query((rs, n) -> {
 				var id = (UUID) rs.getObject("id");
 				heats.computeIfAbsent((UUID) rs.getObject("game_id"), k -> new ArrayList<>()).add(new EventViews.Heat(id, rs.getString("stage"),
-						rs.getInt("number"), lanes.getOrDefault(id, List.of()), instant(rs, "recorded_at")));
+						rs.getInt("number"), lanes.getOrDefault(id, List.of()), instant(rs, "starts_at"), rs.getString("location"),
+						instant(rs, "recorded_at")));
 				return null;
 			}).list();
 		return new Play(matches, heats);

@@ -35,7 +35,7 @@ public final class EventViews {
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record Info(UUID id, UUID organisationId, String name, LocalDate startsOn, LocalDate endsOn, String timezone, String country,
-			Venue venue, String status, boolean registrationOpen, List<Integer> placingPoints, Instant createdAt) {
+			Venue venue, String status, boolean registrationOpen, List<Integer> placingPoints, Instant createdAt, Long entryFee, String currency) {
 	}
 
 	/**
@@ -54,7 +54,12 @@ public final class EventViews {
 
 	/** Someone taking part. {@code userId} only when they joined with their own account. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	public record Person(UUID id, String name, UUID groupId, UUID userId, String avatar, String source) {
+	public record Person(UUID id, String name, UUID groupId, UUID userId, String avatar, String source, String feePaidVia, Instant feePaidAt) {
+
+		/** The same person, without whether they've paid: for anyone but an admin, or the person themselves. */
+		Person withoutFee() {
+			return new Person(id, name, groupId, userId, avatar, source, null, null);
+		}
 	}
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
@@ -65,16 +70,21 @@ public final class EventViews {
 	public record Entry(UUID id, String name, UUID groupId, List<UUID> personIds, int seed, String status) {
 	}
 
+	/**
+	 * A game. {@code matchMinutes} and {@code locations} are its plan for the day, when the coordinator
+	 * made one: how long each match or heat takes, and the places they're played at once.
+	 */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record Game(UUID id, String discipline, String name, String category, String entryKind, Integer teamSize, String format,
 			String scoring, Integer bestOf, boolean drawsAllowed, boolean thirdPlace, Integer heatSize, Integer advancePerHeat,
-			String location, Instant startsAt, String status, int position, List<Coordinator> coordinators, List<Entry> entries,
-			List<UUID> interested, List<Match> matches, List<Heat> heats, List<LeagueRow> table, List<UUID> places) {
+			String location, Instant startsAt, Integer matchMinutes, List<String> locations, String status, int position,
+			List<Coordinator> coordinators, List<Entry> entries, List<UUID> interested, List<Match> matches, List<Heat> heats,
+			List<LeagueRow> table, List<UUID> places) {
 
 		Game withPlay(List<Match> matches, List<Heat> heats, List<LeagueRow> table, List<UUID> places) {
 			return new Game(id, discipline, name, category, entryKind, teamSize, format, scoring, bestOf, drawsAllowed, thirdPlace,
-					heatSize, advancePerHeat, location, startsAt, status, position, coordinators, entries, interested, matches, heats, table,
-					places);
+					heatSize, advancePerHeat, location, startsAt, matchMinutes, locations, status, position, coordinators, entries, interested,
+					matches, heats, table, places);
 		}
 
 	}
@@ -98,7 +108,7 @@ public final class EventViews {
 
 	/** A heat or the final of a placings game: who's in it, and where they finished once it's run. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	public record Heat(UUID id, String stage, int number, List<Lane> lanes, Instant recordedAt) {
+	public record Heat(UUID id, String stage, int number, List<Lane> lanes, Instant startsAt, String location, Instant recordedAt) {
 	}
 
 	public record LeagueRow(UUID entryId, int played, int won, int drawn, int lost, int scored, int conceded, int points) {
@@ -114,13 +124,23 @@ public final class EventViews {
 
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record Detail(Info event, Brand organisation, Viewer viewer, List<Group> groups, List<Person> people, List<Game> games,
-			List<GroupRow> table, Links links) {
+			List<GroupRow> table, Links links, List<Announcement> announcements) {
+	}
+
+	/** Something the organisers told everyone, newest first. */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Announcement(UUID id, String body, Instant postedAt, String postedBy) {
 	}
 
 	/** One game on the board: how it stands, and who's up next. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record BoardGame(UUID id, String discipline, String name, String category, String status, String location, Instant startsAt,
-			List<String> places, List<String> next) {
+			List<String> places, List<Next> next) {
+	}
+
+	/** A match or heat still to play, and when and where, if that's planned. */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Next(String line, Instant startsAt, String location) {
 	}
 
 	/** A result just in, for the board. */
@@ -133,7 +153,7 @@ public final class EventViews {
 	 */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record Board(String name, String timezone, Brand organisation, LocalDate startsOn, LocalDate endsOn, Venue venue, String status,
-			List<Group> groups, List<GroupRow> table, List<BoardGame> games, List<Latest> latest, Instant at) {
+			List<Group> groups, List<GroupRow> table, List<BoardGame> games, List<Latest> latest, Instant at, Announcement announcement) {
 	}
 
 	/** One game, as someone deciding whether to join sees it. */
@@ -143,6 +163,32 @@ public final class EventViews {
 
 	/** What the signed-in player already has in the event they're joining. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
+	/** A claim link for someone added by name: the path to send them, shown once. */
+	public record ClaimLink(String url) {
+	}
+
+	/**
+	 * What a claim link is for, before it's used: the event, and the name the organisers typed.
+	 * {@code mine} says the viewer is already that person; {@code claimed} that someone already has.
+	 */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record ClaimPreview(UUID eventId, String eventName, Brand organisation, LocalDate startsOn, LocalDate endsOn, String personName,
+			Group group, int games, boolean claimed, Boolean mine) {
+	}
+
+	/**
+	 * A finished event someone took part in with their account, for their profile: their group, how
+	 * it finished overall, and every game they played with where they placed (null: no place).
+	 */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Result(UUID eventId, String name, String organisationName, LocalDate startsOn, LocalDate endsOn, Group group,
+			Integer groupPlace, List<GamePlace> games) {
+	}
+
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record GamePlace(String name, String category, String discipline, Integer place) {
+	}
+
 	public record Mine(UUID personId, UUID groupId, List<UUID> gameIds) {
 	}
 

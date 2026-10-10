@@ -79,6 +79,9 @@ class CompetitionApiTest {
 			.andExpect(jsonPath("$.table.length()").value(3))
 			.andExpect(jsonPath("$.table[0].team.name").exists());
 
+		// Its fixtures are the teams' squads' to play, so they aren't among the games anyone can join.
+		mvc.perform(get("/games").cookie(sam)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+
 		mvc.perform(get("/competitions")).andExpect(jsonPath("$[0].id").value(id)).andExpect(jsonPath("$[0].teams[0].joinToken").value(""));
 		mvc.perform(get("/competitions/" + id).cookie(sam)).andExpect(jsonPath("$.teams[0].joinToken").isNotEmpty());
 		mvc.perform(get("/competitions/0199f000-0000-7000-8000-000000000000")).andExpect(status().isNotFound());

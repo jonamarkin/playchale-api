@@ -1,5 +1,8 @@
 package com.playchale.api.events.internal.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.DateTimeException;
@@ -10,6 +13,7 @@ import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -26,6 +30,8 @@ import com.playchale.api.shared.maps.MapLink;
 import com.playchale.api.shared.maps.MapPin;
 import com.playchale.api.shared.maps.Pin;
 import com.playchale.api.users.api.UserDirectory;
+import com.playchale.api.events.api.EventActivity;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
@@ -66,8 +72,10 @@ public class EventService {
 
 	private final Happened happened;
 
+	private final ApplicationEventPublisher events;
+
 	EventService(JdbcClient jdbc, Clock clock, EventAccess access, EventReader reader, EventEntries entries,
-			OrganisationAccess organisations, UserDirectory users, Happened happened) {
+			OrganisationAccess organisations, UserDirectory users, Happened happened, ApplicationEventPublisher events) {
 		this.jdbc = jdbc;
 		this.clock = clock;
 		this.access = access;
@@ -76,6 +84,7 @@ public class EventService {
 		this.organisations = organisations;
 		this.users = users;
 		this.happened = happened;
+		this.events = events;
 	}
 
 	/** Where it is. A {@code pin} gives the link for directions in place of {@code mapUrl}. */
@@ -86,8 +95,12 @@ public class EventService {
 	}
 
 	/** An event's details. Groups are only read when it's created; after that they have their own calls. */
+	/**
+	 * An event's details. {@code entryFee}: what each person pays the organisers, in the event's money,
+	 * minor units; left out it stays as it was, and 0 takes it off.
+	 */
 	public record EventInput(String name, LocalDate startsOn, LocalDate endsOn, String timezone, String country, VenueInput venue,
-			List<GroupInput> groups, List<Integer> placingPoints, Boolean registrationOpen) {
+			List<GroupInput> groups, List<Integer> placingPoints, Boolean registrationOpen, Long entryFee) {
 	}
 
 	public record PersonInput(String name, UUID groupId) {
@@ -103,6 +116,10 @@ public class EventService {
 
 	public List<EventViews.Summary> inWorkspace(UUID organisationId, UUID userId) {
 		return reader.inWorkspace(organisationId, userId);
+	}
+
+	public List<EventViews.Result> resultsOf(UUID userId) {
+		return reader.resultsOf(userId);
 	}
 
 	public List<EventViews.Summary> mine(UUID userId) {
@@ -125,16 +142,17 @@ public class EventService {
 		var now = now();
 		jdbc.sql("""
 				INSERT INTO events (id, organisation_id, name, starts_on, ends_on, timezone, country, venue_name, venue_area, map_url,
-				                    latitude, longitude, place_id, pin_source, pinned_at,
+				                    latitude, longitude, place_id, pin_source, pinned_at, entry_fee,
 				                    status, registration_open, join_code, board_token, placing_points, created_by, created_at, updated_at)
 				VALUES (:id, :organisation, :name, :startsOn, :endsOn, :timezone, :country, :venueName, :venueArea, :mapUrl,
-				        :lat, :lng, :placeId, :pinSource, :pinnedAt,
+				        :lat, :lng, :placeId, :pinSource, :pinnedAt, :fee,
 				        'open', :registration, :code, :board, :points, :user, :now, :now)
 				""").params(pinParams(details.pin())).param("id", id).param("organisation", organisationId).param("name", details.name())
 			.param("startsOn", details.startsOn()).param("endsOn", details.endsOn()).param("timezone", details.timezone())
 			.param("country", details.country()).param("venueName", details.venueName()).param("venueArea", details.venueArea())
 			.param("mapUrl", details.mapUrl()).param("registration", details.registrationOpen()).param("code", code(9))
-			.param("board", code(18)).param("points", details.points()).param("user", userId).param("now", now).update();
+			.param("board", code(18)).param("points", details.points()).param("fee", fee(input.entryFee(), null)).param("user", userId)
+			.param("now", now).update();
 		var seen = new HashSet<String>();
 		for (var group : groups) {
 			var name = groupName(group.name());
@@ -153,14 +171,15 @@ public class EventService {
 		// Whatever wasn't sent stays as it was.
 		var points = jdbc.sql("SELECT placing_points FROM events WHERE id = :id").param("id", eventId)
 			.query((rs, n) -> (Integer[]) rs.getArray(1).getArray()).single();
+		var fee = entryFee(eventId);
 		var details = details(input, event.registrationOpen(), points, reader.pin(eventId));
 		jdbc.sql("""
 				UPDATE events SET name = :name, starts_on = :startsOn, ends_on = :endsOn, timezone = :timezone, country = :country,
 				       venue_name = :venueName, venue_area = :venueArea, map_url = :mapUrl, registration_open = :registration,
 				       latitude = :lat, longitude = :lng, place_id = :placeId, pin_source = :pinSource, pinned_at = :pinnedAt,
-				       placing_points = :points, updated_at = :now
+				       placing_points = :points, entry_fee = :fee, updated_at = :now
 				WHERE id = :id
-				""").params(pinParams(details.pin())).param("name", details.name()).param("startsOn", details.startsOn()).param("endsOn", details.endsOn())
+				""").params(pinParams(details.pin())).param("fee", fee(input.entryFee(), fee)).param("name", details.name()).param("startsOn", details.startsOn()).param("endsOn", details.endsOn())
 			.param("timezone", details.timezone()).param("country", details.country()).param("venueName", details.venueName())
 			.param("venueArea", details.venueArea()).param("mapUrl", details.mapUrl()).param("registration", details.registrationOpen())
 			.param("points", details.points()).param("now", now()).param("id", eventId).update();
@@ -356,6 +375,165 @@ public class EventService {
 	}
 
 	/* ------------------------------------------------------------------ */
+	/* Announcements and the entry fee                                      */
+	/* ------------------------------------------------------------------ */
+
+	/** Admins tell everyone something: it's on the event's page and board, and everyone in it with an account hears. */
+	@Transactional
+	public EventViews.Detail announce(UUID eventId, String body, UUID userId) {
+		var event = access.requireAdmin(eventId, userId);
+		var text = body == null ? "" : body.strip();
+		if (text.isEmpty()) {
+			throw BusinessException.invalid("Write what you want everyone to know.");
+		}
+		if (text.length() > 500) {
+			throw BusinessException.invalid("Keep it under 500 characters.");
+		}
+		jdbc.sql("INSERT INTO event_announcements (id, event_id, body, posted_by, posted_at) VALUES (:id, :event, :body, :user, :now)")
+			.param("id", UUID.randomUUID()).param("event", eventId).param("body", text).param("user", userId).param("now", now()).update();
+		var recipients = jdbc.sql("""
+				SELECT user_id FROM event_people WHERE event_id = :event AND user_id IS NOT NULL AND user_id <> :me
+				UNION SELECT c.user_id FROM event_game_coordinators c JOIN event_games g ON g.id = c.game_id
+				WHERE g.event_id = :event AND c.user_id <> :me
+				""").param("event", eventId).param("me", userId).query(UUID.class).list();
+		if (!recipients.isEmpty()) {
+			events.publishEvent(new EventActivity.Announced(eventId, event.name(), text, recipients, userId));
+		}
+		happened.record("event.announced", "event", eventId, userId, event.organisationId(), null, Map.of("people", recipients.size()));
+		return reader.detail(eventId, userId);
+	}
+
+	@Transactional
+	public EventViews.Detail removeAnnouncement(UUID eventId, UUID announcementId, UUID userId) {
+		var event = access.requireAdmin(eventId, userId);
+		var removed = jdbc.sql("DELETE FROM event_announcements WHERE id = :id AND event_id = :event").param("id", announcementId)
+			.param("event", eventId).update();
+		if (removed == 0) {
+			throw BusinessException.notFound("That announcement has already gone.");
+		}
+		happened.record("event.announcement-removed", "event", eventId, userId, event.organisationId(), null, Map.of());
+		return reader.detail(eventId, userId);
+	}
+
+	/**
+	 * Admins mark someone's entry fee paid (cash or MoMo, to the organisers: PlayChale never holds the
+	 * money), or take that back with null.
+	 */
+	@Transactional
+	public EventViews.Detail markFee(UUID eventId, UUID personId, String via, UUID userId) {
+		var event = access.requireAdmin(eventId, userId);
+		if (via != null && !"cash".equals(via) && !"momo".equals(via)) {
+			throw BusinessException.invalid("Say how they paid: cash or MoMo.");
+		}
+		var fee = entryFee(eventId);
+		if (fee == null && via != null) {
+			throw BusinessException.conflict("This event has no entry fee. Set one in Settings first.");
+		}
+		var marked = jdbc.sql("""
+				UPDATE event_people SET fee_paid_via = :via, fee_paid_at = :at, fee_marked_by = :by, updated_at = :now
+				WHERE id = :id AND event_id = :event
+				""").param("via", via).param("at", via == null ? null : now()).param("by", via == null ? null : userId).param("now", now())
+			.param("id", personId).param("event", eventId).update();
+		if (marked == 0) {
+			throw BusinessException.notFound("That person isn’t in this event any more.");
+		}
+		happened.record(via == null ? "event.fee-unmarked" : "event.fee-paid", "event", eventId, userId, event.organisationId(), null,
+				via == null ? Map.of() : Map.of("via", via));
+		return reader.detail(eventId, userId);
+	}
+
+	/* ------------------------------------------------------------------ */
+	/* Claim links: someone added by name attaches their account            */
+	/* ------------------------------------------------------------------ */
+
+	/**
+	 * A link for someone an admin added by name, to attach their account. A new one replaces the last,
+	 * so a link sent to the wrong person can be undone by sending another.
+	 */
+	@Transactional
+	public EventViews.ClaimLink claimLink(UUID eventId, UUID personId, UUID userId) {
+		var event = access.requireAdmin(eventId, userId);
+		var person = jdbc.sql("SELECT display_name, user_id FROM event_people WHERE id = :id AND event_id = :event")
+			.param("id", personId).param("event", eventId)
+			.query((rs, n) -> new Object[] { rs.getString(1), rs.getObject(2) }).optional()
+			.orElseThrow(() -> BusinessException.notFound("That person isn’t in this event any more."));
+		if (person[1] != null) {
+			throw BusinessException.conflict("%s is already in with their own account.".formatted(person[0]));
+		}
+		var token = code(24);
+		jdbc.sql("UPDATE event_people SET claim_hash = :hash, claim_issued_at = :now WHERE id = :id")
+			.param("hash", sha256(token)).param("now", now()).param("id", personId).update();
+		happened.record("event.claim-link", "event", eventId, userId, event.organisationId(), null, Map.of());
+		return new EventViews.ClaimLink("/events/claim?token=" + token);
+	}
+
+	/** What a claim link is for, before signing in to it. */
+	@Transactional(readOnly = true)
+	public EventViews.ClaimPreview claimPreview(String token, UUID viewerId) {
+		var row = claimed(token);
+		var event = access.event(row.eventId());
+		var info = reader.info(row.eventId());
+		var group = row.groupId() == null ? null : reader.groups(row.eventId()).stream().filter(g -> g.id().equals(row.groupId())).findFirst().orElse(null);
+		// Games they're entered in, and pair or team games they've asked to play.
+		var games = jdbc.sql("""
+				SELECT count(*) FROM (SELECT game_id FROM event_entry_people WHERE person_id = :person
+				                      UNION SELECT game_id FROM event_game_interest WHERE person_id = :person) g
+				""").param("person", row.personId()).query(Integer.class).single();
+		var mine = viewerId == null ? null : (Boolean) viewerId.equals(row.userId());
+		return new EventViews.ClaimPreview(row.eventId(), info.name(), reader.brand(event), info.startsOn(), info.endsOn(), row.name(), group,
+				games, row.userId() != null, mine);
+	}
+
+	/**
+	 * The signed-in player is the person the link was sent to: the name becomes theirs, with every
+	 * game it's in. Not if they're already in the event under another name: two of them would count twice.
+	 */
+	@Transactional
+	public EventViews.Detail claim(String token, UUID userId) {
+		var row = claimed(token);
+		if (userId.equals(row.userId())) {
+			return reader.detail(row.eventId(), userId);
+		}
+		if (row.userId() != null) {
+			throw BusinessException.conflict("Someone has already used this link. Ask the organisers for a new one if that wasn’t you.");
+		}
+		var event = access.event(row.eventId());
+		var already = access.personOf(row.eventId(), userId);
+		if (already != null) {
+			var name = jdbc.sql("SELECT display_name FROM event_people WHERE id = :id").param("id", already).query(String.class).single();
+			throw BusinessException.conflict(
+					"You’re already in %s as %s. Ask the organisers to remove one of the two first.".formatted(event.name(), name));
+		}
+		jdbc.sql("UPDATE event_people SET user_id = :user, updated_at = :now WHERE id = :id")
+			.param("user", userId).param("now", now()).param("id", row.personId()).update();
+		happened.record("event.claimed", "event", row.eventId(), userId, event.organisationId(), null, Map.of());
+		return reader.detail(row.eventId(), userId);
+	}
+
+	private record ClaimRow(UUID personId, UUID eventId, String name, UUID groupId, UUID userId) {
+	}
+
+	/** The person a claim link is for, used or not. */
+	private ClaimRow claimed(String token) {
+		var hash = token == null || token.isBlank() ? "" : sha256(token.strip());
+		return jdbc.sql("SELECT id, event_id, display_name, group_id, user_id FROM event_people WHERE claim_hash = :hash")
+			.param("hash", hash)
+			.query((rs, n) -> new ClaimRow((UUID) rs.getObject(1), (UUID) rs.getObject(2), rs.getString(3), (UUID) rs.getObject(4),
+					(UUID) rs.getObject(5)))
+			.optional()
+			.orElseThrow(() -> BusinessException.notFound("That link doesn’t work any more. Ask the organisers for a new one."));
+	}
+
+	private static String sha256(String text) {
+		try {
+			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
+		}
+		catch (NoSuchAlgorithmException e) {
+			throw new IllegalStateException(e);
+		}
+	}
+
+	/* ------------------------------------------------------------------ */
 	/* Joining with the link                                                */
 	/* ------------------------------------------------------------------ */
 
@@ -478,6 +656,23 @@ public class EventService {
 
 	private record Details(String name, LocalDate startsOn, LocalDate endsOn, String timezone, String country, String venueName,
 			String venueArea, String mapUrl, Pin pin, boolean registrationOpen, Integer[] points) {
+	}
+
+	/** The event's entry fee, or null for none. */
+	private Long entryFee(UUID eventId) {
+		return jdbc.sql("SELECT entry_fee FROM events WHERE id = :id").param("id", eventId).query((rs, n) -> rs.getObject(1, Long.class)).list()
+			.stream().filter(java.util.Objects::nonNull).findFirst().orElse(null);
+	}
+
+	/** An entry fee as sent: left out, {@code current}; 0, none. Up to a hundred thousand in the event's money. */
+	private static Long fee(Long sent, Long current) {
+		if (sent == null) {
+			return current;
+		}
+		if (sent < 0 || sent > 10_000_000) {
+			throw BusinessException.invalid("Set an entry fee of up to 100,000, or none.");
+		}
+		return sent == 0 ? null : sent;
 	}
 
 	/** The pin's columns, all null for none. */

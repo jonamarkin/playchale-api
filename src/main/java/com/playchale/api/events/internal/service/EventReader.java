@@ -69,31 +69,38 @@ class EventReader {
 		for (var game : detail.games()) {
 			var name = game.category() == null ? game.name() : game.name() + " · " + game.category();
 			var places = game.places().stream().limit(3).map(e -> EventStandings.nameOf(game, e)).toList();
-			var next = new ArrayList<String>();
+			var next = new ArrayList<EventViews.Next>();
 			for (var m : game.matches()) {
 				if (m.recordedAt() != null && m.homeEntryId() != null && m.awayEntryId() != null) {
 					latest.add(new EventViews.Latest(name, EventPlayService.summary(game, m), m.recordedAt()));
 				}
-				else if (m.recordedAt() == null && m.homeEntryId() != null && m.awayEntryId() != null && next.size() < 2) {
-					next.add(EventStandings.nameOf(game, m.homeEntryId()) + " v " + EventStandings.nameOf(game, m.awayEntryId()));
+				else if (m.recordedAt() == null && m.homeEntryId() != null && m.awayEntryId() != null) {
+					next.add(new EventViews.Next(EventStandings.nameOf(game, m.homeEntryId()) + " v " + EventStandings.nameOf(game, m.awayEntryId()),
+							m.startsAt(), m.location()));
 				}
 			}
 			for (var h : game.heats()) {
 				if (h.recordedAt() != null) {
 					latest.add(new EventViews.Latest(name, EventPlayService.summary(game, h), h.recordedAt()));
 				}
-				else if (next.size() < 2) {
-					next.add(("final".equals(h.stage()) ? "Final" : "Heat " + h.number()) + ": "
-							+ h.lanes().stream().map(l -> EventStandings.nameOf(game, l.entryId())).collect(java.util.stream.Collectors.joining(", ")));
+				else {
+					next.add(new EventViews.Next(("final".equals(h.stage()) ? "Final" : "Heat " + h.number()) + ": "
+							+ h.lanes().stream().map(l -> EventStandings.nameOf(game, l.entryId())).collect(java.util.stream.Collectors.joining(", ")),
+							h.startsAt(), h.location()));
 				}
 			}
+			// Soonest first where there's a time; the bracket's order where there isn't.
+			next.sort(java.util.Comparator.comparing(EventViews.Next::startsAt, java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())));
 			games.add(new EventViews.BoardGame(game.id(), game.discipline(), name, game.category(), game.status(), game.location(),
-					game.startsAt(), places, next));
+					game.startsAt(), places, next.stream().limit(2).toList()));
 		}
 		latest.sort(java.util.Comparator.comparing(EventViews.Latest::at).reversed());
 		var info = detail.event();
+		// The board shows today's latest word from the organisers; yesterday's has had its moment.
+		var announcement = announcements(eventId, 1).stream().filter(a -> a.postedAt().isAfter(java.time.Instant.now().minus(java.time.Duration.ofHours(12))))
+			.findFirst().orElse(null);
 		return new EventViews.Board(info.name(), info.timezone(), detail.organisation(), info.startsOn(), info.endsOn(), info.venue(), info.status(),
-				detail.groups(), detail.table(), games, latest.stream().limit(8).toList(), java.time.Instant.now());
+				detail.groups(), detail.table(), games, latest.stream().limit(8).toList(), java.time.Instant.now(), announcement);
 	}
 
 	/** The whole event. {@code role} null for the board, which shows no viewer and no links. */
@@ -103,15 +110,16 @@ class EventReader {
 		var groups = groups(eventId);
 		var linked = new HashSet<UUID>();
 		var people = jdbc.sql("""
-				SELECT id, display_name, group_id, user_id, source FROM event_people
+				SELECT id, display_name, group_id, user_id, source, fee_paid_via, fee_paid_at FROM event_people
 				WHERE event_id = :event ORDER BY lower(display_name), created_at
 				""").param("event", eventId).query((rs, n) -> {
 				var userId = (UUID) rs.getObject("user_id");
 				if (userId != null) {
 					linked.add(userId);
 				}
+				var paidAt = rs.getObject("fee_paid_at", java.time.OffsetDateTime.class);
 				return new EventViews.Person((UUID) rs.getObject("id"), rs.getString("display_name"), (UUID) rs.getObject("group_id"),
-						userId, null, rs.getString("source"));
+						userId, null, rs.getString("source"), rs.getString("fee_paid_via"), paidAt == null ? null : paidAt.toInstant());
 			}).list();
 
 		var coordinatorRows = jdbc.sql("""
@@ -121,7 +129,8 @@ class EventReader {
 		coordinatorRows.forEach(r -> linked.add(r[1]));
 		var accounts = users.findAll(linked);
 		people = people.stream().map(p -> p.userId() == null || !accounts.containsKey(p.userId()) ? p
-				: new EventViews.Person(p.id(), p.name(), p.groupId(), p.userId(), accounts.get(p.userId()).avatar(), p.source())).toList();
+				: new EventViews.Person(p.id(), p.name(), p.groupId(), p.userId(), accounts.get(p.userId()).avatar(), p.source(), p.feePaidVia(),
+						p.feePaidAt())).toList();
 
 		var coordinators = new HashMap<UUID, List<EventViews.Coordinator>>();
 		var mine = new ArrayList<UUID>();
@@ -166,7 +175,8 @@ class EventReader {
 						rs.getString("entry_kind"), (Integer) rs.getObject("team_size"), rs.getString("format"), rs.getString("scoring"),
 						shortOrNull(rs, "best_of"), rs.getBoolean("draws_allowed"), rs.getBoolean("third_place"),
 						shortOrNull(rs, "heat_size"), shortOrNull(rs, "advance_per_heat"), rs.getString("location"),
-						instant(rs, "starts_at"), rs.getString("status"), rs.getInt("position"),
+						instant(rs, "starts_at"), shortOrNull(rs, "match_minutes"), locations(rs.getArray("locations")),
+						rs.getString("status"), rs.getInt("position"),
 						coordinators.getOrDefault(id, List.of()), entries.getOrDefault(id, List.of()), interest.getOrDefault(id, List.of()),
 						List.of(), List.of(), null, List.of());
 			}).list();
@@ -180,9 +190,11 @@ class EventReader {
 			.query((rs, n) -> new EventViews.Links("/events/join?code=" + rs.getString(1), "/events/board/" + rs.getString(2))).single()
 				: null;
 		var viewer = role == null ? null : new EventViews.Viewer(role, access.personOf(eventId, viewerId), List.copyOf(mine));
-		// The board shows names only: no accounts, no faces.
-		var shownPeople = role == null ? List.<EventViews.Person>of() : people;
-		return new EventViews.Detail(info, brand(row), viewer, groups, shownPeople, played, table, links);
+		// The board shows names only: no accounts, no faces. Who has paid is the admins' and each person's own.
+		var ownPerson = viewer == null ? null : viewer.personId();
+		var shownPeople = role == null ? List.<EventViews.Person>of()
+				: admin ? people : people.stream().map(p -> p.id().equals(ownPerson) ? p : p.withoutFee()).toList();
+		return new EventViews.Detail(info, brand(row), viewer, groups, shownPeople, played, table, links, announcements(eventId, 20));
 	}
 
 	EventViews.Info info(UUID eventId) {
@@ -190,8 +202,24 @@ class EventReader {
 				(UUID) rs.getObject("id"), (UUID) rs.getObject("organisation_id"), rs.getString("name"),
 				rs.getObject("starts_on", java.time.LocalDate.class), rs.getObject("ends_on", java.time.LocalDate.class),
 				rs.getString("timezone"), rs.getString("country").strip(), venue(rs), rs.getString("status"),
-				rs.getBoolean("registration_open"), points(rs.getArray("placing_points")), instant(rs, "created_at")))
+				rs.getBoolean("registration_open"), points(rs.getArray("placing_points")), instant(rs, "created_at"),
+				rs.getObject("entry_fee", Long.class), com.playchale.api.market.Market.get(rs.getString("country").strip()).currency()))
 			.optional().orElseThrow(() -> BusinessException.notFound(EventAccess.GONE));
+	}
+
+	/** The latest announcements, newest first, with who posted each (their name as it is now). */
+	List<EventViews.Announcement> announcements(UUID eventId, int limit) {
+		var rows = jdbc.sql("""
+				SELECT id, body, posted_at, posted_by FROM event_announcements WHERE event_id = :event ORDER BY posted_at DESC LIMIT :limit
+				""").param("event", eventId).param("limit", limit)
+			.query((rs, n) -> new Object[] { rs.getObject(1), rs.getString(2), rs.getObject(3, java.time.OffsetDateTime.class).toInstant(),
+					rs.getObject(4) })
+			.list();
+		var people = users.findAll(rows.stream().map(r -> (UUID) r[3]).filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet()));
+		return rows.stream().map(r -> {
+			var poster = r[3] == null ? null : people.get((UUID) r[3]);
+			return new EventViews.Announcement((UUID) r[0], (String) r[1], (Instant) r[2], poster == null ? null : poster.name());
+		}).toList();
 	}
 
 	List<EventViews.Group> groups(UUID eventId) {
@@ -203,6 +231,50 @@ class EventReader {
 	EventViews.Brand brand(EventRow event) {
 		var brand = organisations.brand(event.organisationId());
 		return brand == null ? null : new EventViews.Brand(brand.id(), brand.name(), brand.primaryColour(), brand.logoUrl());
+	}
+
+	/**
+	 * Finished events someone took part in with their account (joined with the link, or claimed the
+	 * name they were added under): for their profile, so public. Every game they played, and their
+	 * place in it.
+	 */
+	@Transactional(readOnly = true)
+	List<EventViews.Result> resultsOf(UUID userId) {
+		var taking = jdbc.sql("""
+				SELECT p.id AS person, p.event_id FROM event_people p JOIN events e ON e.id = p.event_id
+				WHERE p.user_id = :user AND e.status = 'finished'
+				ORDER BY e.starts_on DESC
+				""").param("user", userId).query((rs, n) -> new UUID[] { (UUID) rs.getObject(1), (UUID) rs.getObject(2) }).list();
+		var results = new ArrayList<EventViews.Result>();
+		for (var row : taking) {
+			var personId = row[0];
+			// Built as the board sees it: every game and its places, without anyone's account details.
+			var detail = build(access.event(row[1]), null, null);
+			var groupId = jdbc.sql("SELECT group_id FROM event_people WHERE id = :id").param("id", personId)
+				.query((rs, n) -> (UUID) rs.getObject(1)).list().stream().filter(java.util.Objects::nonNull).findFirst().orElse(null);
+			var group = groupId == null ? null : detail.groups().stream().filter(g -> g.id().equals(groupId)).findFirst().orElse(null);
+			Integer groupPlace = null;
+			if (group != null) {
+				for (int i = 0; i < detail.table().size(); i++) {
+					if (detail.table().get(i).groupId().equals(group.id()) && detail.table().get(i).points() > 0) {
+						groupPlace = i + 1;
+					}
+				}
+			}
+			var games = new ArrayList<EventViews.GamePlace>();
+			for (var game : detail.games()) {
+				var entry = game.entries().stream().filter(e -> "entered".equals(e.status()) && e.personIds().contains(personId)).findFirst();
+				if (entry.isEmpty()) {
+					continue;
+				}
+				var at = game.places().indexOf(entry.get().id());
+				games.add(new EventViews.GamePlace(game.name(), game.category(), game.discipline(), at < 0 ? null : at + 1));
+			}
+			var info = detail.event();
+			results.add(new EventViews.Result(info.id(), info.name(), detail.organisation() == null ? null : detail.organisation().name(),
+					info.startsOn(), info.endsOn(), group, groupPlace, games));
+		}
+		return results;
 	}
 
 	/** Events in a workspace, newest first. For anyone with a seat in it. */
@@ -301,6 +373,10 @@ class EventReader {
 
 	private static List<Integer> points(Array array) throws SQLException {
 		return array == null ? List.of() : Arrays.stream((Integer[]) array.getArray()).toList();
+	}
+
+	private static List<String> locations(Array array) throws SQLException {
+		return array == null ? null : List.of((String[]) array.getArray());
 	}
 
 	private static Integer shortOrNull(ResultSet rs, String column) throws SQLException {

@@ -21,11 +21,15 @@ public final class EventActivity {
 			UUID actorId) {
 	}
 
-	/** A game's draw is out: who plays whom first. Each recipient gets their own first match. */
-	public record DrawMade(UUID eventId, String eventName, UUID gameId, String gameName, List<FirstUp> recipients, UUID actorId) {
+	/**
+	 * A game's draw is out, or its times are ({@code timesOnly}): who plays whom first. Each recipient
+	 * gets their own first match.
+	 */
+	public record DrawMade(UUID eventId, String eventName, UUID gameId, String gameName, List<FirstUp> recipients, UUID actorId,
+			boolean timesOnly) {
 	}
 
-	/** Who someone meets first, and when and where, if the coordinator said. */
+	/** Who someone meets first (or which heat they're in, with no opponent), and when and where, as far as that's known. */
 	public record FirstUp(UUID userId, String opponent, String when) {
 	}
 
@@ -35,6 +39,10 @@ public final class EventActivity {
 	}
 
 	/** The event is over: the overall winner, for everyone taking part. */
+	/** The organisers told everyone something. */
+	public record Announced(UUID eventId, String eventName, String body, List<UUID> recipients, UUID actorId) {
+	}
+
 	public record EventFinished(UUID eventId, String eventName, String winner, List<UUID> recipients, UUID actorId) {
 	}
 

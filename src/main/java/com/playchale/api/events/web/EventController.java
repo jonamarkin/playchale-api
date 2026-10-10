@@ -1,6 +1,7 @@
 package com.playchale.api.events.web;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.playchale.api.events.internal.domain.GameSettings;
@@ -131,6 +132,54 @@ class EventController {
 		return events.removePerson(id, personId, me.id());
 	}
 
+	/* Announcements and the entry fee */
+
+	record AnnouncementRequest(String body) {
+	}
+
+	record FeeRequest(String via) {
+	}
+
+	@PostMapping("/events/{id}/announcements")
+	EventViews.Detail announce(CurrentUser me, @PathVariable UUID id, @RequestBody AnnouncementRequest request) {
+		return events.announce(id, request.body(), me.id());
+	}
+
+	@DeleteMapping("/events/{id}/announcements/{announcementId}")
+	EventViews.Detail removeAnnouncement(CurrentUser me, @PathVariable UUID id, @PathVariable UUID announcementId) {
+		return events.removeAnnouncement(id, announcementId, me.id());
+	}
+
+	/** {"via": "cash" | "momo"} marks it paid; {"via": null} takes that back. */
+	@PutMapping("/events/{id}/people/{personId}/fee")
+	EventViews.Detail markFee(CurrentUser me, @PathVariable UUID id, @PathVariable UUID personId, @RequestBody FeeRequest request) {
+		return events.markFee(id, personId, request.via(), me.id());
+	}
+
+	/* Claim links: someone added by name attaches their account */
+
+	@PostMapping("/events/{id}/people/{personId}/claim-link")
+	EventViews.ClaimLink claimLink(CurrentUser me, @PathVariable UUID id, @PathVariable UUID personId) {
+		return events.claimLink(id, personId, me.id());
+	}
+
+	/** Open without signing in: the page says what the link is for, then asks them to sign in. */
+	@GetMapping("/events/claims/{token}")
+	EventViews.ClaimPreview claimPreview(Optional<CurrentUser> me, @PathVariable String token) {
+		return events.claimPreview(token, me.map(CurrentUser::id).orElse(null));
+	}
+
+	@PostMapping("/events/claims/{token}")
+	EventViews.Detail claim(CurrentUser me, @PathVariable String token) {
+		return events.claim(token, me.id());
+	}
+
+	/** A player's finished events and their places, for their profile: public, like the rest of it. */
+	@GetMapping("/users/{userId}/event-results")
+	List<EventViews.Result> results(@PathVariable UUID userId) {
+		return events.resultsOf(userId);
+	}
+
 	/* Joining with the link, and the signed-in player's own games */
 
 	@GetMapping("/events/join/{code}")
@@ -187,6 +236,21 @@ class EventController {
 	@DeleteMapping("/events/{id}/games/{gameId}/draw")
 	EventViews.Detail undraw(CurrentUser me, @PathVariable UUID id, @PathVariable UUID gameId) {
 		return play.undraw(id, gameId, me.id());
+	}
+
+	@PutMapping("/events/{id}/games/{gameId}/plan")
+	EventViews.Detail plan(CurrentUser me, @PathVariable UUID id, @PathVariable UUID gameId, @RequestBody EventPlayService.Plan request) {
+		return play.plan(id, gameId, request, me.id());
+	}
+
+	@PutMapping("/events/{id}/matches/{matchId}/slot")
+	EventViews.Detail moveMatch(CurrentUser me, @PathVariable UUID id, @PathVariable UUID matchId, @RequestBody EventPlayService.Slot request) {
+		return play.moveMatch(id, matchId, request, me.id());
+	}
+
+	@PutMapping("/events/{id}/heats/{heatId}/slot")
+	EventViews.Detail moveHeat(CurrentUser me, @PathVariable UUID id, @PathVariable UUID heatId, @RequestBody EventPlayService.Slot request) {
+		return play.moveHeat(id, heatId, request, me.id());
 	}
 
 	@PutMapping("/events/{id}/matches/{matchId}/result")

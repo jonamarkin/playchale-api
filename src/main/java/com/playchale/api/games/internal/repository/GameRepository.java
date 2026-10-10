@@ -34,10 +34,13 @@ public interface GameRepository extends JpaRepository<Game, UUID> {
 	/**
 	 * Upcoming games still on, that the viewer may see, starting in [from, to). {@code sport} and
 	 * {@code country} are '' for any; {@code pattern} is a lower-case LIKE pattern over title, format and venue.
+	 * Games to join, so not a competition's fixtures: their spots are the teams' squads', and they're on
+	 * the competition's own page.
 	 */
 	@Query("""
 			select g from Game g
 			where g.status in ('open', 'full') and g.startsAt > :now and g.startsAt >= :from and g.startsAt < :to
+			  and g.competitionId is null
 			  and (g.visibility = 'public' or g.hostId = :viewer
 			       or exists (select 1 from Participant p where p.game = g and p.userId = :viewer))
 			  and (:sport = '' or g.sport = :sport)

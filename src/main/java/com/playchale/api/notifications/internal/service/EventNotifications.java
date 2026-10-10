@@ -36,10 +36,10 @@ class EventNotifications {
 	@EventListener
 	void on(EventActivity.DrawMade event) {
 		for (var first : event.recipients()) {
-			var against = first.opponent() == null ? "Open it to see where you are." : "First up: against %s%s.".formatted(first.opponent(),
-				first.when() == null ? "" : ", " + first.when());
-			notifications.send(first.userId(), "event", "%s: the draw is out".formatted(event.gameName()), against,
-				game(event.eventId(), event.gameId()), event.actorId());
+			var against = first.opponent() != null ? "First up: against %s%s.".formatted(first.opponent(), first.when() == null ? "" : ", " + first.when())
+					: first.when() != null ? "First up: %s.".formatted(first.when()) : "Open it to see where you are.";
+			notifications.send(first.userId(), "event", (event.timesOnly() ? "%s: the times are out" : "%s: the draw is out").formatted(event.gameName()),
+				against, game(event.eventId(), event.gameId()), event.actorId());
 		}
 	}
 
@@ -47,6 +47,14 @@ class EventNotifications {
 	void on(EventActivity.ResultRecorded event) {
 		for (var recipient : event.recipients()) {
 			notifications.send(recipient, "event", event.gameName(), event.summary(), game(event.eventId(), event.gameId()), event.actorId());
+		}
+	}
+
+	@EventListener
+	void on(EventActivity.Announced event) {
+		var body = event.body().length() > 180 ? event.body().substring(0, 179).strip() + "…" : event.body();
+		for (var recipient : event.recipients()) {
+			notifications.send(recipient, "event", event.eventName(), body, "/events/" + event.eventId(), event.actorId());
 		}
 	}
 
