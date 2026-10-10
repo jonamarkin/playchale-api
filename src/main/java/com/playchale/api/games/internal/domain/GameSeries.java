@@ -75,7 +75,8 @@ public class GameSeries extends AuditableEntity {
 	@Embedded
 	private Pin pin;
 
-	private int capacity;
+	/** How many can play each week; null for open to any number. */
+	private Integer capacity;
 
 	private long totalCost;
 
@@ -342,7 +343,7 @@ public class GameSeries extends AuditableEntity {
 		return venueArea;
 	}
 
-	public int getCapacity() {
+	public Integer getCapacity() {
 		return capacity;
 	}
 

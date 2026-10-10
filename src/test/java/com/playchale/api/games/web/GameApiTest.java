@@ -102,6 +102,34 @@ class GameApiTest {
 	}
 
 	@Test
+	void aGameWithNoLimit() throws Exception {
+		var kwame = TestSignIn.as(mvc, "024 455 5123");
+		var open = NEW_GAME.replace("\"capacity\":10,\"totalCost\":25000", "\"capacity\":null,\"totalCost\":0");
+		var id = json.readTree(mvc.perform(post("/games").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content(open))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.capacity").doesNotExist())
+			.andExpect(jsonPath("$.spotsLeft").doesNotExist())
+			.andReturn().getResponse().getContentAsString()).get("id").asString();
+		for (var n = 0; n < 3; n++) {
+			mvc.perform(post("/games/" + id + "/players").cookie(TestSignIn.as(mvc, "024 455 51" + (30 + n)))).andExpect(status().isOk());
+		}
+		mvc.perform(get("/games/" + id)).andExpect(jsonPath("$.status").value("open")).andExpect(jsonPath("$.players.length()").value(4));
+		mvc.perform(get("/notifications").cookie(kwame)).andExpect(jsonPath("$[0].body").value(org.hamcrest.Matchers.startsWith("4 going · ")));
+
+		var priced = NEW_GAME.replace("\"capacity\":10,\"totalCost\":25000", "\"capacity\":null,\"totalCost\":3000,\"pricing\":\"per-player\"");
+		mvc.perform(post("/games").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content(priced))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.share").value(3000));
+		var split = NEW_GAME.replace("\"capacity\":10", "\"capacity\":null");
+		mvc.perform(post("/games").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content(split))
+			.andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.error.message").value("Splitting a cost needs a number of spots. Set the spots, or charge each player a price."));
+		mvc.perform(post("/games").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content(NEW_GAME.replace("\"capacity\":10", "\"capacity\":101")))
+			.andExpect(status().isUnprocessableContent())
+			.andExpect(jsonPath("$.error.message").value("A game can have at most 100 spots, or no limit."));
+	}
+
+	@Test
 	void guestsAndClaimLinks() throws Exception {
 		var kwame = TestSignIn.as(mvc, "024 455 5123");
 		var id = json.readTree(mvc.perform(post("/games").cookie(kwame).contentType(MediaType.APPLICATION_JSON).content(NEW_GAME))

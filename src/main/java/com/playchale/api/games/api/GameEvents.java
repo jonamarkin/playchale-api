@@ -65,11 +65,11 @@ public final class GameEvents {
 	 *
 	 * @param filled spots taken now, out of {@code capacity}
 	 */
-	public record PlayerJoined(GameInfo game, UUID playerId, int filled, int capacity, boolean claimedGuestSpot) {
+	public record PlayerJoined(GameInfo game, UUID playerId, int filled, Integer capacity, boolean claimedGuestSpot) {
 	}
 
 	/** Someone without an account took a spot themselves, as a guest. */
-	public record GuestJoined(GameInfo game, String guestName, int filled, int capacity) {
+	public record GuestJoined(GameInfo game, String guestName, int filled, Integer capacity) {
 	}
 
 	/**

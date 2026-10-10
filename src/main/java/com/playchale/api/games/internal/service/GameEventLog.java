@@ -37,8 +37,7 @@ class GameEventLog {
 
 	@EventListener
 	void on(GameEvents.GuestJoined e) {
-		happened.record("game.guest-joined", GAME, e.game().gameId(), null,
-				Map.of("filled", e.filled(), "capacity", e.capacity(), "full", e.filled() >= e.capacity()));
+		happened.record("game.guest-joined", GAME, e.game().gameId(), null, filling(e.filled(), e.capacity(), Map.of()));
 	}
 
 	@EventListener
@@ -50,8 +49,18 @@ class GameEventLog {
 	void on(GameEvents.PlayerJoined e) {
 		// filled and capacity are the whole point: with the time, they give how fast a game fills.
 		happened.record("game.joined", GAME, e.game().gameId(), e.playerId(),
-				Map.of("filled", e.filled(), "capacity", e.capacity(), "full", e.filled() >= e.capacity(),
-						"claimedGuestSpot", e.claimedGuestSpot()));
+				filling(e.filled(), e.capacity(), Map.of("claimedGuestSpot", e.claimedGuestSpot())));
+	}
+
+	/** How full a game is: filled, and (unless it has no limit) its capacity and whether that's reached. */
+	private static Map<String, Object> filling(int filled, Integer capacity, Map<String, Object> more) {
+		var details = new java.util.LinkedHashMap<String, Object>(more);
+		details.put("filled", filled);
+		if (capacity != null) {
+			details.put("capacity", capacity);
+			details.put("full", filled >= capacity);
+		}
+		return details;
 	}
 
 	@EventListener

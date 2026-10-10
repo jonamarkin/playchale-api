@@ -66,16 +66,21 @@ class GameNotifications {
 		var link = "/games/%s".formatted(game.gameId());
 		if (e.claimedGuestSpot()) {
 			notifications.send(game.hostId(), "player-joined", "%s claimed their spot in %s".formatted(who, game.title()),
-					"%d of %d spots filled · %s".formatted(e.filled(), e.capacity(), kickoff(game)), link, e.playerId());
+					"%s · %s".formatted(filled(e.filled(), e.capacity()), kickoff(game)), link, e.playerId());
 		}
-		else if (e.filled() >= e.capacity()) {
+		else if (e.capacity() != null && e.filled() >= e.capacity()) {
 			notifications.send(game.hostId(), "game-full", "%s is full".formatted(game.title()),
 					"%s took the last spot. All %d players are in.".formatted(who, e.capacity()), link, e.playerId());
 		}
 		else {
 			notifications.send(game.hostId(), "player-joined", "%s joined %s".formatted(who, game.title()),
-					"%d of %d spots filled · %s".formatted(e.filled(), e.capacity(), kickoff(game)), link, e.playerId());
+					"%s · %s".formatted(filled(e.filled(), e.capacity()), kickoff(game)), link, e.playerId());
 		}
+	}
+
+	/** "6 of 10 spots filled", or "12 going" for a game with no limit. */
+	private static String filled(int filled, Integer capacity) {
+		return capacity == null ? "%d going".formatted(filled) : "%d of %d spots filled".formatted(filled, capacity);
 	}
 
 	/** A guest took a spot: the host is told, as for any player, and that they came without an account. */
@@ -83,13 +88,13 @@ class GameNotifications {
 	void on(GameEvents.GuestJoined e) {
 		var game = e.game();
 		var link = "/games/%s".formatted(game.gameId());
-		if (e.filled() >= e.capacity()) {
+		if (e.capacity() != null && e.filled() >= e.capacity()) {
 			notifications.send(game.hostId(), "game-full", "%s is full".formatted(game.title()),
 					"%s took the last spot, as a guest. All %d players are in.".formatted(e.guestName(), e.capacity()), link, null);
 		}
 		else {
 			notifications.send(game.hostId(), "player-joined", "%s joined %s as a guest".formatted(e.guestName(), game.title()),
-					"%d of %d spots filled · %s".formatted(e.filled(), e.capacity(), kickoff(game)), link, null);
+					"%s · %s".formatted(filled(e.filled(), e.capacity()), kickoff(game)), link, null);
 		}
 	}
 

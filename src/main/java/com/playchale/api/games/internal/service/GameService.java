@@ -269,11 +269,11 @@ public class GameService {
 		game.answerChallenge(accept, now);
 		events.publishEvent(new GameEvents.ChallengeAnswered(info(game), home, away.name(), me, accept));
 		if (accept) {
-			if (away.memberIds().contains(me) && game.spotOf(me).isEmpty() && game.spotsLeft() > 0) {
+			if (away.memberIds().contains(me) && game.spotOf(me).isEmpty() && !game.isFull()) {
 				game.join(me, away.id(), now);
-				events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.getCapacity() - game.spotsLeft(), game.getCapacity(), false));
+				events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.filled(), game.getCapacity(), false));
 			}
-			if (game.spotsLeft() > 0) {
+			if (!game.isFull()) {
 				ask(game, away.memberIds(), away.id(), away.name(), me);
 			}
 		}
@@ -286,7 +286,7 @@ public class GameService {
 		var game = locked(gameId);
 		if (game.spotOf(me).isEmpty()) {
 			game.join(me, sideFor(game, me), clock.instant());
-			events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.getCapacity() - game.spotsLeft(), game.getCapacity(), false));
+			events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.filled(), game.getCapacity(), false));
 		}
 		// Joining is saying yes to an invite, however they got here.
 		invites.findById(new InviteId(gameId, me)).filter(i -> !i.isAccepted()).ifPresent(i -> i.accept(clock.instant()));
@@ -350,7 +350,7 @@ public class GameService {
 	}
 
 	/** What the host can change about a game (GameService.change). {@code venue} only counts for a place that isn't a partner venue. */
-	public record Change(String format, String title, String notes, Instant startsAt, int durationMinutes, int capacity, long totalCost,
+	public record Change(String format, String title, String notes, Instant startsAt, int durationMinutes, Integer capacity, long totalCost,
 			String pricing, String visibility, VenueChange venue) {
 	}
 
@@ -456,7 +456,7 @@ public class GameService {
 		if (accept) {
 			if (game.spotOf(me).isEmpty()) {
 				game.join(me, sideFor(game, me), now);
-				events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.getCapacity() - game.spotsLeft(), game.getCapacity(), false));
+				events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.filled(), game.getCapacity(), false));
 			}
 			invite.accept(now);
 		}
@@ -526,7 +526,7 @@ public class GameService {
 		var token = newToken();
 		var spot = game.joinAsGuest(name, e164, address, hash(token), clock.instant());
 		var saved = games.saveAndFlush(game);
-		events.publishEvent(new GameEvents.GuestJoined(info(saved), spot.getGuestName(), saved.getCapacity() - saved.spotsLeft(),
+		events.publishEvent(new GameEvents.GuestJoined(info(saved), spot.getGuestName(), saved.filled(),
 				saved.getCapacity()));
 		return new GuestAdded(views.of(saved, null), token, spotId(saved, token));
 	}
@@ -619,7 +619,7 @@ public class GameService {
 			events.publishEvent(new GameEvents.GuestSpotClaimed(info(game), me, played));
 		}
 		else {
-			events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.getCapacity() - game.spotsLeft(), game.getCapacity(), true));
+			events.publishEvent(new GameEvents.PlayerJoined(info(game), me, game.filled(), game.getCapacity(), true));
 		}
 		invites.findById(new InviteId(game.getId(), me)).filter(i -> !i.isAccepted()).ifPresent(i -> i.accept(clock.instant()));
 	}
@@ -719,7 +719,7 @@ public class GameService {
 		if (game.hasStarted(clock.instant())) {
 			throw BusinessException.conflict("This game has already kicked off.");
 		}
-		if (game.spotsLeft() == 0) {
+		if (game.isFull()) {
 			throw BusinessException.conflict("The game is full. There’s no spot to offer.");
 		}
 		return game;

@@ -18,12 +18,12 @@ import com.playchale.api.shared.maps.Pin;
  *                  kept on the game this one repeats
  */
 public record GameDetails(String sport, String format, String title, Instant startsAt, int durationMinutes,
-		String venueKind, UUID venueId, UUID pitchId, String venueName, String venueArea, String venueMapUrl, int capacity, long totalCost,
+		String venueKind, UUID venueId, UUID pitchId, String venueName, String venueArea, String venueMapUrl, Integer capacity, long totalCost,
 		String pricing, String visibility, String notes, Pin venuePin) {
 
 	/** Without a pin. */
 	public GameDetails(String sport, String format, String title, Instant startsAt, int durationMinutes, String venueKind, UUID venueId,
-			UUID pitchId, String venueName, String venueArea, String venueMapUrl, int capacity, long totalCost, String pricing, String visibility,
+			UUID pitchId, String venueName, String venueArea, String venueMapUrl, Integer capacity, long totalCost, String pricing, String visibility,
 			String notes) {
 		this(sport, format, title, startsAt, durationMinutes, venueKind, venueId, pitchId, venueName, venueArea, venueMapUrl, capacity, totalCost,
 				pricing, visibility, notes, null);

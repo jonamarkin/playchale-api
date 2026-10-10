@@ -16,7 +16,7 @@ import jakarta.validation.constraints.NotNull;
  * partner venue's is its own. With {@code repeats} it's the first game of a repeating one.
  */
 public record NewGameRequest(String sport, String format, String title, @NotNull(message = "Pick a time in the future.") Instant startsAt,
-		int durationMinutes, @NotNull(message = "Say where you’re playing.") @Valid VenueRefRequest venue, int capacity,
+		int durationMinutes, @NotNull(message = "Say where you’re playing.") @Valid VenueRefRequest venue, Integer capacity,
 		long totalCost, String pricing, String visibility, String notes, UUID homeTeamId, UUID awayTeamId, String timezone,
 		GameRequests.RepeatsRequest repeats) {
 

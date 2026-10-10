@@ -11,5 +11,5 @@ import java.time.LocalTime;
  * @param title       blank keeps the current one
  */
 public record SeriesChange(String title, int weekday, LocalTime kickOff, String frequency, Integer weekOfMonth, int durationMinutes,
-		int capacity, long totalCost, String pricing, String visibility, String notes) {
+		Integer capacity, long totalCost, String pricing, String visibility, String notes) {
 }

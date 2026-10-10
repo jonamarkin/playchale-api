@@ -100,8 +100,13 @@ public class Game extends AuditableEntity {
 
 	private String pitchName;
 
-	private int capacity;
+	/** How many can play; null for a game open to any number. */
+	private Integer capacity;
 
+	/**
+	 * What the game costs: the total, split between the spots or, per player, the price times the
+	 * spots. A game with no limit has no total: per player, this is the price itself.
+	 */
 	private long totalCost;
 
 	/** {@link #SPLIT} or {@link #PER_PLAYER}: how the cost is set, and so how the app describes it. */
@@ -178,11 +183,12 @@ public class Game extends AuditableEntity {
 		if (sport.isEmpty() || !sport.get().formats().contains(details.format())) {
 			throw BusinessException.invalid("Pick a sport and format.");
 		}
-		if (details.capacity() < 2) {
+		var spots = details.capacity();
+		if (spots != null && spots < 2) {
 			throw BusinessException.invalid("A game needs at least 2 spots.");
 		}
-		if (details.capacity() > 100) {
-			throw BusinessException.invalid("A game can have at most 100 spots.");
+		if (spots != null && spots > 100) {
+			throw BusinessException.invalid("A game can have at most 100 spots, or no limit.");
 		}
 		if (details.startsAt() == null || !details.startsAt().isAfter(now)) {
 			throw BusinessException.invalid("Pick a time in the future.");
@@ -212,8 +218,15 @@ public class Game extends AuditableEntity {
 			throw BusinessException.invalid("Choose how the cost works.");
 		}
 		// Per player, the total is always the price times the spots, so every spot pays exactly the price.
-		if (PER_PLAYER.equals(pricing) && details.totalCost() % details.capacity() != 0) {
+		if (PER_PLAYER.equals(pricing) && spots != null && details.totalCost() % spots != 0) {
 			throw BusinessException.invalid("Set what each player pays to take part.");
+		}
+		// A split needs to know how many share it: open to any number, it's free or a price each.
+		if (spots == null && details.totalCost() > 0 && !PER_PLAYER.equals(pricing)) {
+			throw BusinessException.invalid("Splitting a cost needs a number of spots. Set the spots, or charge each player a price.");
+		}
+		if (spots == null && details.pitchId() != null) {
+			throw BusinessException.invalid("A booked pitch’s price is shared by the players, so set how many spots.");
 		}
 		this.pricing = details.totalCost() == 0 ? SPLIT : pricing;
 		this.currency = market.currency();
@@ -259,12 +272,11 @@ public class Game extends AuditableEntity {
 		}
 		// Every rule a new game is held to, and its tidying: a blank title, blank notes.
 		var checked = new Game(details, hostId, market(), now);
-		if (details.capacity() < participants.size()) {
+		if (details.capacity() != null && details.capacity() < participants.size()) {
 			throw BusinessException.invalid("%d players are in, so the game needs at least %d spots.".formatted(participants.size(), participants.size()));
 		}
 		var market = market();
-		var share = checked.totalCost == 0 ? 0
-				: PER_PLAYER.equals(checked.pricing) ? checked.totalCost / checked.capacity : market.shareOf(checked.totalCost, checked.capacity);
+		var share = checked.share(market);
 		var money = share != share(market) || !checked.pricing.equals(pricing);
 		if (money && !paidNames.isEmpty()) {
 			throw BusinessException.conflict("%s %s already paid, so what each player pays can’t change. Refunds aren’t in the app yet."
@@ -661,6 +673,9 @@ public class Game extends AuditableEntity {
 		if (totalCost == 0) {
 			return 0;
 		}
+		if (capacity == null) {
+			return totalCost; // open to any number: only ever a price each
+		}
 		return PER_PLAYER.equals(pricing) ? totalCost / capacity : market.shareOf(totalCost, capacity);
 	}
 
@@ -810,14 +825,25 @@ public class Game extends AuditableEntity {
 		return CANCELLED.equals(status);
 	}
 
-	/** A league fixture always is: its squads play it, however many are listed. */
+	/** A league fixture always is: its squads play it, however many are listed. A game with no limit never is. */
 	public boolean isFull() {
-		return competitionId != null || participants.size() >= capacity;
+		return competitionId != null || capacity != null && participants.size() >= capacity;
 	}
 
-	/** None in a league fixture: its squads play it, and nobody joins one on their own. */
-	public int spotsLeft() {
-		return competitionId != null ? 0 : Math.max(0, capacity - participants.size());
+	/**
+	 * None in a league fixture: its squads play it, and nobody joins one on their own. Null for a game
+	 * with no limit.
+	 */
+	public Integer spotsLeft() {
+		if (competitionId != null) {
+			return 0;
+		}
+		return capacity == null ? null : Math.max(0, capacity - participants.size());
+	}
+
+	/** How many are in it, guests included. */
+	public int filled() {
+		return participants.size();
 	}
 
 	/**
@@ -927,7 +953,8 @@ public class Game extends AuditableEntity {
 		return pitchName;
 	}
 
-	public int getCapacity() {
+	/** Null for a game open to any number. */
+	public Integer getCapacity() {
 		return capacity;
 	}
 

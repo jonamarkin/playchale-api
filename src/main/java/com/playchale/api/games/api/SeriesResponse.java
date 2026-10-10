@@ -14,7 +14,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record SeriesResponse(UUID id, String title, String sport, String format, String venueKind, UUID venueId, UUID pitchId,
-		String venueName, String venueArea, int durationMinutes, int capacity, long totalCost, String pricing, String currency, String visibility,
+		String venueName, String venueArea, int durationMinutes, Integer capacity, long totalCost, String pricing, String currency, String visibility,
 		String notes, String country, String timezone, String frequency, int weekday, Integer weekOfMonth, String kickOff, String status,
 		String pausedReason, Instant nextStartsAt, Instant opensAt, LastGame lastGame) {
 

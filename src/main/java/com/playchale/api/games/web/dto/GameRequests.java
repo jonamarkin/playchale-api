@@ -86,7 +86,7 @@ public final class GameRequests {
 	 * {@code kickOff} "18:00", in the game's own time.
 	 */
 	public record SeriesChangeRequest(String title, int weekday, String kickOff, String frequency, Integer weekOfMonth, int durationMinutes,
-			int capacity, long totalCost, String pricing, String visibility, String notes) {
+			Integer capacity, long totalCost, String pricing, String visibility, String notes) {
 
 		public SeriesChange toChange() {
 			LocalTime time;

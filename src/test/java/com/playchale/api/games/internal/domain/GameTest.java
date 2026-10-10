@@ -25,7 +25,7 @@ class GameTest {
 
 	private final UUID ama = UUID.randomUUID();
 
-	static GameDetails details(int capacity, long totalCost) {
+	static GameDetails details(Integer capacity, long totalCost) {
 		return new GameDetails("football", "5-a-side", " ", KICKOFF, 60, "unlisted", null, null, "Legon Park", null, null, capacity,
 				totalCost, null, "public", null);
 	}
@@ -68,6 +68,49 @@ class GameTest {
 		assertThatThrownBy(() -> game.join(ama, NOW)).hasMessage("Sorry, this game just filled up.");
 		game.leave(kojo, NOW);
 		assertThat(game.getStatus()).isEqualTo(Game.OPEN);
+	}
+
+	@Test
+	void aGameWithNoLimitNeverFills() {
+		var game = new Game(details(null, 0), host, Market.get("GH"), NOW);
+		for (var i = 0; i < 120; i++) {
+			game.join(UUID.randomUUID(), NOW);
+		}
+		assertThat(game.getStatus()).isEqualTo(Game.OPEN);
+		assertThat(game.isFull()).isFalse();
+		assertThat(game.spotsLeft()).as("no count of spots to go").isNull();
+		assertThat(game.filled()).isEqualTo(121);
+	}
+
+	@Test
+	void withNoLimitACostIsAPriceEach() {
+		var priced = new GameDetails("football", "5-a-side", null, KICKOFF, 60, "unlisted", null, null, "Legon Park", null, null, null, 3_000,
+				Game.PER_PLAYER, "public", null);
+		assertThat(new Game(priced, host, Market.get("GH"), NOW).share()).as("the price, however many come").isEqualTo(3_000);
+		assertThatThrownBy(() -> new Game(details(null, 25_000), host, Market.get("GH"), NOW))
+			.hasMessage("Splitting a cost needs a number of spots. Set the spots, or charge each player a price.");
+		var pitch = new GameDetails("football", "5-a-side", null, KICKOFF, 60, "partner", UUID.randomUUID(), UUID.randomUUID(), "Legon Park",
+				null, null, null, 0, null, "public", null);
+		assertThatThrownBy(() -> new Game(pitch, host, Market.get("GH"), NOW))
+			.hasMessage("A booked pitch’s price is shared by the players, so set how many spots.");
+		assertThatThrownBy(() -> new Game(details(101, 0), host, Market.get("GH"), NOW))
+			.hasMessage("A game can have at most 100 spots, or no limit.");
+	}
+
+	@Test
+	void aGameCanGoFromSpotsToNoLimitAndBack() {
+		var game = game(4, 0);
+		game.join(kojo, NOW);
+		game.join(ama, NOW);
+		game.change(details(null, 0), List.of(), NOW);
+		assertThat(game.getCapacity()).isNull();
+		game.join(UUID.randomUUID(), NOW);
+		game.join(UUID.randomUUID(), NOW);
+		assertThat(game.getStatus()).isEqualTo(Game.OPEN);
+		assertThatThrownBy(() -> game.change(details(4, 0), List.of(), NOW))
+			.hasMessage("5 players are in, so the game needs at least 5 spots.");
+		game.change(details(5, 0), List.of(), NOW);
+		assertThat(game.getStatus()).isEqualTo(Game.FULL);
 	}
 
 	@Test
