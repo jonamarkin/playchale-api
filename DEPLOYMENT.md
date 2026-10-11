@@ -250,6 +250,10 @@ PayCycl's (the same deploy key works for both apps):
 The API deploy waits for the new version to report ready before it counts as done. If it doesn't,
 the job fails and prints the API's last log lines.
 
+A push that only changes Markdown, `deploy/` (these files go to the server by hand) or `.vscode/`
+doesn't run CI, so it doesn't deploy either. A newer push cancels the run it overtakes, and the newer
+one deploys.
+
 ## 9. Monitoring
 
 In UptimeRobot, add HTTPS monitors (5-minute interval, email alerts) for:

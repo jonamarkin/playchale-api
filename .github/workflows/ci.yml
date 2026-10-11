@@ -1,12 +1,25 @@
 # Every push and pull request: all the tests, against a real Postgres (Testcontainers uses the
 # runner's Docker). On main, the image is then built and published to GitHub's container registry as
 # ghcr.io/<owner>/playchale-api:<commit> and :latest, and deployed if a server is configured.
+#
+# Minutes: a private repository gets a monthly allowance, and every job is billed rounded up to the
+# minute. So a run overtaken by a newer push is cancelled, changes to the docs, the server's config
+# files (deploy/, copied to the server by hand) and the editor's settings don't run CI at all, and
+# building, publishing and deploying are one job.
 name: CI
 
 on:
   push:
     branches: [main]
+    paths-ignore: ['**/*.md', 'deploy/**', '.vscode/**']
   pull_request:
+    paths-ignore: ['**/*.md', 'deploy/**', '.vscode/**']
+
+# A newer push to the same branch stops the run it overtook: only the latest commit's result matters,
+# and it's the one that deploys.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -38,10 +51,14 @@ jobs:
           name: surefire-reports
           path: target/surefire-reports
 
-  image:
+  # The tests passed on main: the image, published under the commit and :latest, and the server pulls
+  # it and restarts the API. The deploy is off until the repository variable DEPLOY_HOST and the
+  # secrets DEPLOY_USER / DEPLOY_SSH_KEY are set (see DEPLOYMENT.md).
+  release:
     needs: test
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    concurrency: production
     permissions:
       contents: read
       packages: write
@@ -69,23 +86,15 @@ jobs:
             ${{ steps.name.outputs.image }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  # Pulls the new image on the server and restarts the API. Off until the repository variable
-  # DEPLOY_HOST and the secrets DEPLOY_USER / DEPLOY_SSH_KEY are set (see DEPLOYMENT.md).
-  deploy:
-    needs: image
-    if: ${{ vars.DEPLOY_HOST != '' }}
-    runs-on: ubuntu-24.04
-    concurrency: production
-    steps:
+      # Waits for the new API to report ready (it runs any new migrations first) before calling the
+      # deploy done.
       - name: Pull and restart on the server
+        if: ${{ vars.DEPLOY_HOST != '' }}
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ vars.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          # Waits for the new API to report ready (it runs any new migrations first) before calling
-          # the deploy done.
           script: |
             set -e
             cd /opt/playchale
