@@ -15,6 +15,7 @@ import java.util.UUID;
 
 import com.playchale.api.games.api.GameModeration;
 import com.playchale.api.integration.sms.SmsBalance;
+import com.playchale.api.venues.api.VenueReview;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.shared.events.Happened;
 import org.springframework.beans.factory.ObjectProvider;
@@ -50,13 +51,17 @@ public class AdminDesk {
 
 	private final GameModeration moderation;
 
-	AdminDesk(Staff staff, Happened happened, JdbcClient jdbc, Clock clock, ObjectProvider<SmsBalance> smsBalance, GameModeration moderation) {
+	private final VenueReview venueReview;
+
+	AdminDesk(Staff staff, Happened happened, JdbcClient jdbc, Clock clock, ObjectProvider<SmsBalance> smsBalance, GameModeration moderation,
+			VenueReview venueReview) {
 		this.staff = staff;
 		this.happened = happened;
 		this.jdbc = jdbc;
 		this.clock = clock;
 		this.smsBalance = smsBalance;
 		this.moderation = moderation;
+		this.venueReview = venueReview;
 	}
 
 	/**
@@ -567,6 +572,97 @@ public class AdminDesk {
 		staff.require(by);
 		moderation.takeDown(gameId, why, by);
 		happened.record("admin.took-down-game", "game", gameId, by, Map.of("why", why == null ? "" : why.strip()));
+	}
+
+	/**
+	 * A venue, as staff check it: where it is (to look it up on a map), how to reach it, what it
+	 * charges, and who listed it. Its phone is the venue's own, given to show players who book.
+	 *
+	 * @param review  "pending" (waiting for staff), "approved" (live) or "declined"
+	 * @param pitches each "name · sport format · price per hour", in its currency's minor units
+	 */
+	public record VenueRow(UUID id, String name, String area, String country, String currency, String address, String mapUrl, Double latitude,
+			Double longitude, String phone, String description, List<String> amenities, UUID ownerId, String ownerName, boolean ownerGuest,
+			String review, String reviewNote, Instant reviewedAt, Instant createdAt, long bookings, List<VenuePitch> pitches) {
+	}
+
+	public record VenuePitch(String name, String sport, String format, long pricePerHour) {
+	}
+
+	/** Which venues, and in what order: waiting (oldest first, the next to check), live, or declined. */
+	private static final Map<String, String[]> VENUES_WHEN = Map.of(
+			"waiting", new String[] { "v.review = 'pending'", "v.created_at" },
+			"live", new String[] { "v.review = 'approved'", "v.name" },
+			"declined", new String[] { "v.review = 'declined'", "v.reviewed_at DESC" });
+
+	/** Venues waiting for staff to check them, live, or declined; found by name, area or who listed them. */
+	@Transactional(readOnly = true)
+	public List<VenueRow> venues(UUID by, String when, String query, int limit) {
+		staff.require(by);
+		var which = VENUES_WHEN.getOrDefault(when == null ? "waiting" : when, VENUES_WHEN.get("waiting"));
+		var term = query == null ? "" : query.strip();
+		var rows = jdbc.sql("""
+				SELECT v.id, v.name, v.area, v.country, v.currency, v.address, v.map_url, v.latitude, v.longitude, v.phone, v.description,
+				       v.owner_id, u.name AS owner_name, coalesce(u.guest, false) AS owner_guest, v.review, v.review_note, v.reviewed_at,
+				       v.created_at, (SELECT count(*) FROM bookings b WHERE b.venue_id = v.id) AS bookings
+				FROM venues v LEFT JOIN users u ON u.id = v.owner_id
+				WHERE (CAST(:term AS text) = '' OR v.name ILIKE '%' || CAST(:term AS text) || '%' OR v.area ILIKE '%' || CAST(:term AS text) || '%'
+				       OR u.name ILIKE '%' || CAST(:term AS text) || '%')
+				""" + "  AND (" + which[0] + ")\nORDER BY " + which[1] + "\nLIMIT :limit")
+			.param("term", term).param("limit", Math.clamp(limit <= 0 ? 50 : limit, 1, 200)).query().listOfRows();
+		var ids = rows.stream().map(r -> (UUID) r.get("id")).toList();
+		var pitches = new HashMap<UUID, List<VenuePitch>>();
+		var amenities = new HashMap<UUID, List<String>>();
+		if (!ids.isEmpty()) {
+			jdbc.sql("SELECT venue_id, name, sport, format, price_per_hour FROM pitches WHERE venue_id IN (:ids) AND removed_at IS NULL ORDER BY position")
+				.param("ids", ids).query().listOfRows()
+				.forEach(p -> pitches.computeIfAbsent((UUID) p.get("venue_id"), k -> new ArrayList<>())
+					.add(new VenuePitch((String) p.get("name"), (String) p.get("sport"), (String) p.get("format"), ((Number) p.get("price_per_hour")).longValue())));
+			jdbc.sql("SELECT id, array_to_string(amenities, ',') AS amenities FROM venues WHERE id IN (:ids)").param("ids", ids).query().listOfRows()
+				.forEach(a -> amenities.put((UUID) a.get("id"), ((String) a.get("amenities")).isEmpty() ? List.of() : List.of(((String) a.get("amenities")).split(","))));
+		}
+		return rows.stream().map(r -> {
+			var id = (UUID) r.get("id");
+			return new VenueRow(id, (String) r.get("name"), (String) r.get("area"), (String) r.get("country"), (String) r.get("currency"),
+					(String) r.get("address"), (String) r.get("map_url"), r.get("latitude") == null ? null : ((Number) r.get("latitude")).doubleValue(),
+					r.get("longitude") == null ? null : ((Number) r.get("longitude")).doubleValue(), (String) r.get("phone"), (String) r.get("description"),
+					amenities.getOrDefault(id, List.of()), (UUID) r.get("owner_id"), (String) r.get("owner_name"), (Boolean) r.get("owner_guest"),
+					(String) r.get("review"), (String) r.get("review_note"), instant(r.get("reviewed_at")), instant(r.get("created_at")),
+					((Number) r.get("bookings")).longValue(), pitches.getOrDefault(id, List.of()));
+		}).toList();
+	}
+
+	/** How many venues are waiting for staff: the desk shows it on its Venues tab. */
+	@Transactional(readOnly = true)
+	public long venuesWaiting(UUID by) {
+		staff.require(by);
+		return jdbc.sql("SELECT count(*) FROM venues WHERE review = 'pending'").query(Long.class).single();
+	}
+
+	/** Staff checked a venue and it's real: live for players, and its owner told. */
+	@Transactional
+	public void approveVenue(UUID by, UUID venueId) {
+		staff.require(by);
+		venueReview.approve(venueId, by);
+		happened.record("admin.approved-venue", "venue", venueId, by, Map.of());
+	}
+
+	/** Not yet, or not any more: hidden from players, and its owner told what to change. */
+	@Transactional
+	public void declineVenue(UUID by, UUID venueId, String why) {
+		staff.require(by);
+		venueReview.decline(venueId, why, by);
+		happened.record("admin.declined-venue", "venue", venueId, by, Map.of("why", why == null ? "" : why.strip()));
+	}
+
+	private static Instant instant(Object value) {
+		return switch (value) {
+			case null -> null;
+			case java.sql.Timestamp t -> t.toInstant();
+			case java.time.OffsetDateTime o -> o.toInstant();
+			case Instant i -> i;
+			default -> throw new IllegalStateException("Not a time: " + value.getClass());
+		};
 	}
 
 	/**

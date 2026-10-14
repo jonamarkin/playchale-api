@@ -78,6 +78,20 @@ public class Venue extends AuditableEntity {
 
 	private boolean listed;
 
+	/**
+	 * Whether PlayChale's staff have checked it: {@link #PENDING} until they do, then {@link #APPROVED}
+	 * (players can find and book it) or {@link #DECLINED} with a note for the owner. Changing a
+	 * declined venue sends it back to waiting.
+	 */
+	private String review = PENDING;
+
+	/** What staff told the owner when they declined it. */
+	private String reviewNote;
+
+	private UUID reviewedBy;
+
+	private Instant reviewedAt;
+
 	/** Sunday first: "HH:MM-HH:MM", or "" when closed. {@link #hours()} reads them. */
 	@JdbcTypeCode(SqlTypes.ARRAY)
 	private List<String> hours = new ArrayList<>();
@@ -88,6 +102,12 @@ public class Venue extends AuditableEntity {
 	@OneToMany(mappedBy = "venue", cascade = CascadeType.ALL)
 	@OrderBy("position")
 	private List<Pitch> pitches = new ArrayList<>();
+
+	public static final String PENDING = "pending";
+
+	public static final String APPROVED = "approved";
+
+	public static final String DECLINED = "declined";
 
 	protected Venue() {
 	}
@@ -119,6 +139,10 @@ public class Venue extends AuditableEntity {
 	 * mentioned are removed (the caller checks first that none of those have bookings to come).
 	 */
 	public void apply(VenueDetails details, Instant now) {
+		// The owner changed what staff asked about: it goes back to them.
+		if (DECLINED.equals(review)) {
+			review = PENDING;
+		}
 		var name = strip(details.name());
 		if (name.length() < 2 || name.length() > 80) {
 			throw BusinessException.invalid("Give your venue a name.");
@@ -289,6 +313,42 @@ public class Venue extends AuditableEntity {
 
 	public boolean isListed() {
 		return listed;
+	}
+
+	/** Players can find it and book its pitches: listed, and approved by staff. */
+	public boolean isLive() {
+		return listed && APPROVED.equals(review);
+	}
+
+	public String getReview() {
+		return review;
+	}
+
+	public String getReviewNote() {
+		return reviewNote;
+	}
+
+	/** Staff checked it, and it's real: players can find and book it. */
+	public void approve(UUID staffId, Instant now) {
+		review = APPROVED;
+		reviewNote = null;
+		reviewedBy = staffId;
+		reviewedAt = now;
+	}
+
+	/**
+	 * Staff need something changed first (or are taking a live venue off): it's hidden from players
+	 * until the owner changes it. Bookings already made stay; nobody can make new ones.
+	 */
+	public void decline(String note, UUID staffId, Instant now) {
+		var why = strip(note);
+		if (why.isEmpty()) {
+			throw BusinessException.invalid("Say what needs changing: the owner reads it.");
+		}
+		review = DECLINED;
+		reviewNote = why.substring(0, Math.min(280, why.length()));
+		reviewedBy = staffId;
+		reviewedAt = now;
 	}
 
 	public List<String> getAmenities() {

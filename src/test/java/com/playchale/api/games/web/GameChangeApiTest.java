@@ -4,6 +4,7 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import com.playchale.api.TestVenues;
 import com.playchale.api.TestSignIn;
 import com.playchale.api.TestcontainersConfiguration;
 import jakarta.servlet.http.Cookie;
@@ -146,6 +147,7 @@ class GameChangeApiTest {
 				"""), 201);
 		var venueId = venue.get("id").asString();
 		var pitchId = venue.at("/pitches/0/id").asString();
+		TestVenues.approveAll(jdbc);
 		var booked = """
 				{"sport":"football","format":"5-a-side","title":"Pitch A 5s","startsAt":"%s","durationMinutes":60,
 				 "venue":{"kind":"listed","venueId":"%s","name":"Halfway Line Turf","area":"Osu, Accra","pitchId":"%s"},

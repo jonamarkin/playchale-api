@@ -1,5 +1,6 @@
 package com.playchale.api.games.internal.service;
 
+import com.playchale.api.TestVenues;
 import com.playchale.api.games.api.GameResponse;
 import java.time.Duration;
 import java.time.Instant;
@@ -156,6 +157,7 @@ class GameServiceTest {
 		var hours = Collections.nCopies(7, new DayHours("06:00", "23:00"));
 		var pitches = List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000));
 		var osu = venues.create(adwoa, new VenueDetails("Halfway Line Turf", "Osu, Accra", null, null, null, null, pitches, hours, List.of()));
+		TestVenues.approveAll(jdbc);
 		var atOsu = games.create(new GameDetails("football", "5-a-side", null, KICKOFF, 60, "listed", osu.id(), null, null, null,
 				"https://maps.app.goo.gl/IgnoredForPartners", 10, 0, null, "public", null), kwame);
 		assertThat(atOsu.venue().mapUrl()).isNull();
@@ -173,6 +175,7 @@ class GameServiceTest {
 						new PitchDetails(null, "Pitch B", "football", "5-a-side", "turf", 25_000),
 						new PitchDetails(null, "Court", "basketball", "5v5", "hard", 15_000)),
 				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of()));
+		TestVenues.approveAll(jdbc);
 		var pitchB = osu.pitches().get(1).id();
 		var court = osu.pitches().get(2).id();
 		var game = games.create(new GameDetails("football", "5-a-side", "Saturday 5s", KICKOFF, 60, "listed", osu.id(),
@@ -205,6 +208,7 @@ class GameServiceTest {
 		var osu = venues.create(adwoa, new VenueDetails("Halfway Line Turf", "Osu, Accra", null, null, null, null,
 				List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000)),
 				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of()));
+		TestVenues.approveAll(jdbc);
 		var pitch = osu.pitches().getFirst().id();
 		var details = new GameDetails("football", "5-a-side", null, KICKOFF, 60, "listed", osu.id(), pitch, null, null, null, 10, 25_000, null,
 				"public", null);

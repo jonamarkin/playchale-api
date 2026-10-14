@@ -6,6 +6,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
+import com.playchale.api.TestVenues;
 import com.playchale.api.TestcontainersConfiguration;
 import com.playchale.api.shared.TestClock;
 import com.playchale.api.shared.error.BusinessException;
@@ -96,6 +97,7 @@ class BookingServiceTest {
 				List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000),
 						new PitchDetails(null, "Pitch B", "football", "5-a-side", "turf", 25_000)),
 				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of()));
+		TestVenues.approveAll(jdbc);
 		pitchA = osu.pitches().getFirst().id();
 	}
 

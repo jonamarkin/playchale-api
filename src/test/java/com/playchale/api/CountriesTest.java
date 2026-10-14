@@ -198,6 +198,7 @@ class CountriesTest {
 		var hours = Collections.nCopies(7, new DayHours("06:00", "23:00"));
 		var pitches = List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 2_000_000));
 		venues.create(chidi, new VenueDetails("Lekki Arena", "Lekki, Lagos", null, null, null, null, pitches, hours, List.of()), "NG", "Africa/Lagos");
+		TestVenues.approveAll(jdbc);
 		assertThat(venues.search("", "NG")).extracting(v -> v.name()).containsExactly("Lekki Arena");
 		assertThat(venues.search("", "GB")).isEmpty();
 		assertThat(venues.search("lekki", null)).as("anywhere").hasSize(1);

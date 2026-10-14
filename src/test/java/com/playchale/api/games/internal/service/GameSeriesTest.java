@@ -10,6 +10,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 
+import com.playchale.api.TestVenues;
 import com.playchale.api.TestcontainersConfiguration;
 import com.playchale.api.games.api.GameResponse;
 import com.playchale.api.games.internal.domain.GameDetails;
@@ -198,6 +199,7 @@ class GameSeriesTest {
 		var osu = venues.create(adwoa, new VenueDetails("Halfway Line Turf", "Osu, Accra", null, null, null, null,
 				List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000)),
 				Collections.nCopies(7, new DayHours("06:00", "23:00")), List.of()));
+		TestVenues.approveAll(jdbc);
 		var pitch = osu.pitches().getFirst().id();
 		var first = series.start(new GameDetails("football", "5-a-side", "Saturday 5s", KICKOFF, 60, "listed", osu.id(), pitch, null, null, null,
 				10, 25_000, null, "public", null), null, "weekly", null, kwame);

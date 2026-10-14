@@ -124,6 +124,31 @@ class AdminController {
 		return desk.games(me.id(), when, query, limit);
 	}
 
+	/** admin.venues: waiting for staff to check, live, or declined. */
+	@GetMapping("/venues")
+	List<AdminDesk.VenueRow> venues(CurrentUser me, @RequestParam(defaultValue = "waiting") String when,
+			@RequestParam(required = false) String query, @RequestParam(defaultValue = "50") int limit) {
+		return desk.venues(me.id(), when, query, limit);
+	}
+
+	/** admin.venuesWaiting: how many are waiting, for the desk's Venues tab. */
+	@GetMapping("/venues/waiting")
+	Map<String, Long> venuesWaiting(CurrentUser me) {
+		return Map.of("waiting", desk.venuesWaiting(me.id()));
+	}
+
+	/** admin.approveVenue: live for players; its owner is told. */
+	@PostMapping("/venues/{id}/approve")
+	void approveVenue(CurrentUser me, @PathVariable UUID id) {
+		desk.approveVenue(me.id(), id);
+	}
+
+	/** admin.declineVenue: hidden from players until its owner changes what the note asks. */
+	@PostMapping("/venues/{id}/decline")
+	void declineVenue(CurrentUser me, @PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
+		desk.declineVenue(me.id(), id, body == null ? null : body.get("why"));
+	}
+
 	/** admin.takeDownGame: calls a fake or spam game off, telling its host and players why. */
 	@PostMapping("/games/{id}/take-down")
 	void takeDown(CurrentUser me, @PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {

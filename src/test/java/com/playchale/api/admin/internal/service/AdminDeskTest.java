@@ -5,6 +5,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
@@ -18,6 +19,10 @@ import com.playchale.api.shared.TestClock;
 import com.playchale.api.usage.internal.service.UsageCounts;
 import com.playchale.api.users.api.Terms;
 import com.playchale.api.users.api.UserDirectory;
+import com.playchale.api.venues.internal.domain.DayHours;
+import com.playchale.api.venues.internal.domain.PitchDetails;
+import com.playchale.api.venues.internal.domain.VenueDetails;
+import com.playchale.api.venues.internal.service.VenueService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -80,6 +85,9 @@ class AdminDeskTest {
 	GuestHosts guestHosts;
 
 	@Autowired
+	VenueService venues;
+
+	@Autowired
 	JdbcClient jdbc;
 
 	UUID owner;
@@ -92,7 +100,7 @@ class AdminDeskTest {
 	void setUp() {
 		jdbc.sql("""
 				TRUNCATE users, sign_in_codes, sessions, games, game_participants, game_messages, notifications, game_results,
-				audit_events, platform_staff, usage_counts, rate_limits, organisations, events, host_keys CASCADE
+				audit_events, platform_staff, usage_counts, rate_limits, organisations, events, host_keys, venues, pitches, bookings CASCADE
 				""").update();
 		clock.set(NOW);
 		owner = user("+233244555123", "Ama Owner");
@@ -415,6 +423,48 @@ class AdminDeskTest {
 				"Legon Park", "Legon", null, 10, 0, null, "public", null), player);
 		jdbc.sql("UPDATE games SET status = 'completed' WHERE id = :id").param("id", played.id()).update();
 		assertThatThrownBy(() -> desk.takeDown(owner, played.id(), "Spam")).hasMessageContaining("has a result");
+	}
+
+	@Test
+	void aNewVenueWaitsOnTheDeskUntilStaffApproveItOrSayWhatToChange() {
+		var hours = Collections.nCopies(7, new DayHours("06:00", "23:00"));
+		var osu = venues.create(player, new VenueDetails("Halfway Line Turf", "Osu, Accra", "Floodlit turf by the lighthouse", "Behind the lighthouse",
+				null, "+233244555125", List.of(new PitchDetails(null, "Pitch A", "football", "5-a-side", "turf", 25_000)), hours, List.of("floodlights")));
+		var fake = venues.create(support, new VenueDetails("Free Jerseys Arena", "Accra", null, null, null, null,
+				List.of(new PitchDetails(null, "Pitch", "football", "5-a-side", "turf", 100)), hours, List.of()));
+
+		assertThat(desk.venuesWaiting(owner)).isEqualTo(2);
+		var waiting = desk.venues(owner, "waiting", null, 50);
+		assertThat(waiting).extracting(AdminDesk.VenueRow::name).containsExactly("Halfway Line Turf", "Free Jerseys Arena");
+		var row = waiting.getFirst();
+		assertThat(row.ownerName()).isEqualTo("Kojo Player");
+		assertThat(row.phone()).isEqualTo("+233244555125");
+		assertThat(row.amenities()).containsExactly("floodlights");
+		assertThat(row.pitches()).containsExactly(new AdminDesk.VenuePitch("Pitch A", "football", "5-a-side", 25_000));
+		assertThat(venues.search("", null)).as("hidden from players while it waits").isEmpty();
+
+		desk.approveVenue(owner, osu.id());
+		assertThatThrownBy(() -> desk.declineVenue(owner, fake.id(), " ")).hasMessageContaining("Say what needs changing");
+		desk.declineVenue(owner, fake.id(), "We couldn’t find this venue. Send us its address.");
+
+		assertThat(desk.venuesWaiting(owner)).isZero();
+		assertThat(desk.venues(owner, "live", null, 50)).extracting(AdminDesk.VenueRow::name).containsExactly("Halfway Line Turf");
+		assertThat(desk.venues(owner, "declined", null, 50)).singleElement()
+			.satisfies(v -> assertThat(v.reviewNote()).isEqualTo("We couldn’t find this venue. Send us its address."));
+		assertThat(venues.search("", null)).extracting(v -> v.name()).containsExactly("Halfway Line Turf");
+		assertThat(recorded("admin.approved-venue")).isOne();
+		assertThat(recorded("admin.declined-venue")).isOne();
+		assertThat(jdbc.sql("SELECT title FROM notifications WHERE user_id = :id").param("id", player).query(String.class).list())
+			.containsExactly("Halfway Line Turf is live");
+
+		// A live venue can be taken off too: its owner hears it's off.
+		desk.declineVenue(owner, osu.id(), "Players say it closed down.");
+		assertThat(venues.search("", null)).isEmpty();
+		assertThat(jdbc.sql("SELECT title FROM notifications WHERE user_id = :id").param("id", player).query(String.class).list())
+			.containsExactlyInAnyOrder("Halfway Line Turf is live", "Halfway Line Turf is off PlayChale for now");
+
+		assertThatThrownBy(() -> desk.venues(player, "waiting", null, 50)).hasMessage("Not found.");
+		assertThatThrownBy(() -> desk.approveVenue(player, fake.id())).hasMessage("Not found.");
 	}
 
 	/** An event run by Kojo's workspace "Hillview Chapel", made the way a first one is: with its workspace. */

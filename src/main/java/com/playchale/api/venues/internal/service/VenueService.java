@@ -59,19 +59,33 @@ public class VenueService {
 		return venues.searchListed(pattern, where, Limit.of(SEARCH_LIMIT)).stream().map(v -> VenueResponse.of(v, null)).toList();
 	}
 
-	/** venues.get: the venue with its owner. */
+	/** venues.get: the venue with its owner. Only a live one, unless it's the owner asking. */
 	@Transactional(readOnly = true)
 	public Optional<VenueResponse> get(UUID id) {
-		return venues.findById(id).map(v -> VenueResponse.of(v, users.find(v.getOwnerId()).map(o -> o.toPublic()).orElse(null)));
+		return get(id, null);
+	}
+
+	/**
+	 * As above, for {@code viewer} (null when signed out). A venue waiting for staff, or declined, is
+	 * its owner's alone to see, with what staff asked them to change.
+	 */
+	@Transactional(readOnly = true)
+	public Optional<VenueResponse> get(UUID id, UUID viewer) {
+		return venues.findById(id)
+			.filter(v -> v.isLive() || v.getOwnerId().equals(viewer))
+			.map(v -> VenueResponse.of(v, users.find(v.getOwnerId()).map(o -> o.toPublic()).orElse(null), v.getOwnerId().equals(viewer)));
 	}
 
 	/** venues.mine */
 	@Transactional(readOnly = true)
 	public List<VenueResponse> mine(UUID owner) {
-		return venues.findByOwnerIdOrderByCreatedAt(owner).stream().map(v -> VenueResponse.of(v, null)).toList();
+		return venues.findByOwnerIdOrderByCreatedAt(owner).stream().map(v -> VenueResponse.of(v, null, true)).toList();
 	}
 
-	/** venues.create: listed straight away, in the owner's country unless another is given. */
+	/**
+	 * venues.create: in the owner's country unless another is given, waiting for staff to check it
+	 * before players can find or book it.
+	 */
 	@Transactional
 	public VenueResponse create(UUID owner, VenueDetails details) {
 		return create(owner, details, null, null);
@@ -90,7 +104,7 @@ public class VenueService {
 		var venue = new Venue(owner, Market.get(where));
 		venue.keepTime(timezone);
 		venue.apply(details, clock.instant());
-		return VenueResponse.of(venues.save(venue), null);
+		return VenueResponse.of(venues.save(venue), null, true);
 	}
 
 	/** venues.update: owner only. A pitch with bookings still to come can't be removed. */
@@ -102,7 +116,7 @@ public class VenueService {
 			throw BusinessException.conflict("A pitch you removed still has upcoming bookings. Cancel or move them first.");
 		}
 		venue.apply(details, clock.instant());
-		return VenueResponse.of(venues.saveAndFlush(venue), null);
+		return VenueResponse.of(venues.saveAndFlush(venue), null, true);
 	}
 
 	/**

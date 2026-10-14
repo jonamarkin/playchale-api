@@ -33,6 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class BookingService implements PitchBookings {
 
+	/** A venue staff haven't approved (or have taken off): nobody books it until they do. */
+	static final String NOT_LIVE = "%s isn’t taking bookings on PlayChale yet.";
+
 	private final BookingRepository bookings;
 
 	private final VenueRepository venues;
@@ -79,6 +82,7 @@ public class BookingService implements PitchBookings {
 	public Optional<String> problemForGame(UUID venueId, UUID pitchId, Instant startsAt, Instant endsAt, UUID gameId) {
 		var venue = venues.findById(venueId).orElse(null);
 		if (venue == null) return Optional.of("That partner venue is no longer available.");
+		if (!venue.isLive()) return Optional.of(NOT_LIVE.formatted(venue.getName()));
 		if (venue.activePitch(pitchId).isEmpty()) return Optional.of("That pitch is no longer available at this venue.");
 		if (!venue.isOpen(startsAt, endsAt)) return Optional.of("%s is closed at that time.".formatted(venue.getName()));
 		// A game not created yet has no booking of its own to leave out. (Asked with null, the lookup would
@@ -93,6 +97,9 @@ public class BookingService implements PitchBookings {
 	@Transactional
 	public PitchBooking bookForGame(UUID venueId, UUID pitchId, Instant startsAt, Instant endsAt, UUID gameId, UUID host) {
 		var venue = venues.findById(venueId).orElseThrow(VenueService::notFound);
+		if (!venue.isLive()) {
+			throw BusinessException.invalid(NOT_LIVE.formatted(venue.getName()));
+		}
 		var pitch = venue.activePitch(pitchId)
 			.orElseThrow(() -> BusinessException.invalid("That pitch isn’t available at this venue any more."));
 		if (!venue.isOpen(startsAt, endsAt)) {

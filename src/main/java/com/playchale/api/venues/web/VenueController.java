@@ -3,6 +3,7 @@ package com.playchale.api.venues.web;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.playchale.api.shared.error.BusinessException;
@@ -48,10 +49,13 @@ class VenueController {
 		return venues.search(query, country);
 	}
 
-	/** venues.get: 404 when it doesn't exist, which the web app reads as null. */
+	/**
+	 * venues.get: 404 when it doesn't exist, which the web app reads as null; also for a venue still
+	 * waiting for staff to check it, to anyone but its owner.
+	 */
 	@GetMapping("/venues/{id}")
-	VenueResponse get(@PathVariable UUID id) {
-		return venues.get(id).orElseThrow(() -> BusinessException.notFound("That venue could not be found."));
+	VenueResponse get(Optional<CurrentUser> me, @PathVariable UUID id) {
+		return venues.get(id, me.map(CurrentUser::id).orElse(null)).orElseThrow(() -> BusinessException.notFound("That venue could not be found."));
 	}
 
 	/** venues.mine */

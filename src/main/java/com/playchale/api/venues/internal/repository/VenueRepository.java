@@ -10,10 +10,13 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface VenueRepository extends JpaRepository<Venue, UUID> {
 
-	/** Listed venues whose name or area contains the text (lower-case, with % around it), in a country ('' for any). */
+	/**
+	 * Live venues (listed, and approved by staff) whose name or area contains the text (lower-case,
+	 * with % around it), in a country ('' for any).
+	 */
 	@Query("""
 			select v from Venue v
-			where v.listed = true and lower(concat(v.name, ' ', v.area)) like :pattern
+			where v.listed = true and v.review = 'approved' and lower(concat(v.name, ' ', v.area)) like :pattern
 			  and (:country = '' or v.country = :country)
 			order by v.name
 			""")

@@ -291,8 +291,10 @@ class DemoSeed {
 		for (var v : VENUES) {
 			var created = Instant.parse(v.created());
 			jdbc.sql("""
-					INSERT INTO venues (id, owner_id, name, area, description, address, phone, country, currency, timezone, listed, hours, amenities, created_at, updated_at)
-					VALUES (:id, :owner, :name, :area, :description, :address, :phone, 'GH', 'GHS', 'Africa/Accra', true, :hours, :amenities, :created, :created)
+					INSERT INTO venues (id, owner_id, name, area, description, address, phone, country, currency, timezone, listed, review, hours, amenities,
+					                    created_at, updated_at)
+					VALUES (:id, :owner, :name, :area, :description, :address, :phone, 'GH', 'GHS', 'Africa/Accra', true, 'approved', :hours, :amenities,
+					        :created, :created)
 					""")
 				.param("id", id(v.id())).param("owner", id(v.owner())).param("name", v.name()).param("area", v.area())
 				.param("description", v.description()).param("address", v.address()).param("phone", v.phone())
