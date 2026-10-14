@@ -15,6 +15,7 @@ import com.playchale.api.events.internal.service.EventService;
 import com.playchale.api.games.internal.domain.GameDetails;
 import com.playchale.api.games.internal.service.GameService;
 import com.playchale.api.games.internal.service.GameTalk;
+import com.playchale.api.reports.internal.service.ReportService;
 import com.playchale.api.shared.TestClock;
 import com.playchale.api.usage.internal.service.UsageCounts;
 import com.playchale.api.users.api.Terms;
@@ -88,6 +89,9 @@ class AdminDeskTest {
 	VenueService venues;
 
 	@Autowired
+	ReportService reports;
+
+	@Autowired
 	JdbcClient jdbc;
 
 	UUID owner;
@@ -100,7 +104,7 @@ class AdminDeskTest {
 	void setUp() {
 		jdbc.sql("""
 				TRUNCATE users, sign_in_codes, sessions, games, game_participants, game_messages, notifications, game_results,
-				audit_events, platform_staff, usage_counts, rate_limits, organisations, events, host_keys, venues, pitches, bookings CASCADE
+				audit_events, platform_staff, usage_counts, rate_limits, organisations, events, host_keys, venues, pitches, bookings, reports CASCADE
 				""").update();
 		clock.set(NOW);
 		owner = user("+233244555123", "Ama Owner");
@@ -433,7 +437,7 @@ class AdminDeskTest {
 		var fake = venues.create(support, new VenueDetails("Free Jerseys Arena", "Accra", null, null, null, null,
 				List.of(new PitchDetails(null, "Pitch", "football", "5-a-side", "turf", 100)), hours, List.of()));
 
-		assertThat(desk.venuesWaiting(owner)).isEqualTo(2);
+		assertThat(desk.waiting(owner).venues()).isEqualTo(2);
 		var waiting = desk.venues(owner, "waiting", null, 50);
 		assertThat(waiting).extracting(AdminDesk.VenueRow::name).containsExactly("Halfway Line Turf", "Free Jerseys Arena");
 		var row = waiting.getFirst();
@@ -447,7 +451,7 @@ class AdminDeskTest {
 		assertThatThrownBy(() -> desk.declineVenue(owner, fake.id(), " ")).hasMessageContaining("Say what needs changing");
 		desk.declineVenue(owner, fake.id(), "We couldn’t find this venue. Send us its address.");
 
-		assertThat(desk.venuesWaiting(owner)).isZero();
+		assertThat(desk.waiting(owner).venues()).isZero();
 		assertThat(desk.venues(owner, "live", null, 50)).extracting(AdminDesk.VenueRow::name).containsExactly("Halfway Line Turf");
 		assertThat(desk.venues(owner, "declined", null, 50)).singleElement()
 			.satisfies(v -> assertThat(v.reviewNote()).isEqualTo("We couldn’t find this venue. Send us its address."));
@@ -465,6 +469,55 @@ class AdminDeskTest {
 
 		assertThatThrownBy(() -> desk.venues(player, "waiting", null, 50)).hasMessage("Not found.");
 		assertThatThrownBy(() -> desk.approveVenue(player, fake.id())).hasMessage("Not found.");
+	}
+
+	@Test
+	void reportsAboutOneThingAreDecidedTogetherAndTheReportersThanked() {
+		var fake = games.create(new GameDetails("football", "5-a-side", "Free iPhones here", NOW.plus(Duration.ofHours(4)), 60, "unlisted", null,
+				null, "Legon Park", "Legon", null, 10, 0, null, "public", null), player);
+		var said = talk.say(fake.id(), "Call me for cheap jerseys", player).getLast();
+		reports.send(support, "game", fake.id(), "spam", "Selling phones");
+		reports.send(owner, "game", fake.id(), "unsafe", null);
+		reports.send(support, "message", said.id(), "spam", null);
+		reports.send(support, "user", player, "abuse", "Keeps messaging me");
+
+		assertThat(desk.waiting(owner).reports()).isEqualTo(3);
+		var open = desk.reports(owner, false);
+		assertThat(open).extracting(AdminDesk.Reported::subjectType).as("the most reported first").startsWith("game");
+		var game = open.getFirst();
+		assertThat(game.title()).isEqualTo("Free iPhones here");
+		assertThat(game.detail()).contains("Kojo Player");
+		assertThat(game.reports()).extracting(AdminDesk.ReportLine::reason).containsExactly("spam", "unsafe");
+		assertThat(open).filteredOn(r -> r.subjectType().equals("message")).singleElement()
+			.satisfies(m -> assertThat(m.title()).isEqualTo("Call me for cheap jerseys"));
+
+		// The game comes down, with a reason everyone in it reads; both reporters are thanked.
+		assertThatThrownBy(() -> desk.takeDownReported(owner, "game", fake.id(), "")).hasMessageContaining("Say why");
+		desk.takeDownReported(owner, "game", fake.id(), "Not a real game: it advertises phones.");
+		assertThat(jdbc.sql("SELECT status FROM games WHERE id = :id").param("id", fake.id()).query(String.class).single()).isEqualTo("cancelled");
+		for (var reporter : List.of(support, owner)) {
+			assertThat(jdbc.sql("SELECT body FROM notifications WHERE user_id = :id AND title = 'Thanks for your report'").param("id", reporter)
+				.query(String.class).list()).containsExactly("PlayChale’s team looked at the game you reported.");
+		}
+
+		// The message goes; the person is dealt with outside the app (a call), and it's noted.
+		desk.takeDownReported(owner, "message", said.id(), "Selling");
+		assertThat(jdbc.sql("SELECT count(*) FROM game_messages WHERE id = :id").param("id", said.id()).query(Integer.class).single()).isZero();
+		desk.dismissReports(owner, "user", player, "Spoke to them; a misunderstanding.");
+		assertThat(desk.reports(owner, false)).isEmpty();
+		assertThat(desk.waiting(owner).reports()).isZero();
+
+		var decided = desk.reports(owner, true);
+		assertThat(decided).hasSize(3);
+		assertThat(decided).filteredOn(r -> r.subjectType().equals("user")).singleElement().satisfies(r -> {
+			assertThat(r.outcome()).isEqualTo("dismissed");
+			assertThat(r.outcomeNote()).isEqualTo("Spoke to them; a misunderstanding.");
+			assertThat(r.decidedBy()).isEqualTo("Ama Owner");
+		});
+		assertThat(recorded("admin.decided-report")).isEqualTo(3);
+
+		assertThatThrownBy(() -> desk.reports(player, false)).hasMessage("Not found.");
+		assertThatThrownBy(() -> desk.dismissReports(player, "game", fake.id(), null)).hasMessage("Not found.");
 	}
 
 	/** An event run by Kojo's workspace "Hillview Chapel", made the way a first one is: with its workspace. */

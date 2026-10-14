@@ -1,0 +1,12 @@
+<!-- The email that tells staff something is waiting on the admin desk, placed inside layout.html. -->
+<h1 class="pc-ink" style="margin:0 0 8px;font-size:24px;line-height:32px;font-weight:600;letter-spacing:-0.01em;color:#0b1716;">{{headline}}</h1>
+<p class="pc-body" style="margin:0 0 20px;font-size:16px;line-height:24px;color:#2a3635;">{{since}}</p>
+<p class="pc-body" style="margin:0 0 24px;font-size:16px;line-height:24px;color:#2a3635;">Waiting now: <strong>{{waiting}}</strong>.</p>
+<table role="presentation" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="background:#7cf0c8;border-radius:999px;">
+      <a href="{{link}}" style="display:inline-block;padding:12px 22px;font-size:15px;font-weight:600;color:#0b1716;text-decoration:none;">Open the admin desk</a>
+    </td>
+  </tr>
+</table>
+<p class="pc-mute pc-rule" style="margin:24px 0 0;padding-top:20px;border-top:1px solid #e0e7e3;font-size:14px;line-height:21px;color:#64716f;">At most one of these every ten minutes, and only when something new has come in.</p>

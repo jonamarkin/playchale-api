@@ -131,10 +131,28 @@ class AdminController {
 		return desk.venues(me.id(), when, query, limit);
 	}
 
-	/** admin.venuesWaiting: how many are waiting, for the desk's Venues tab. */
-	@GetMapping("/venues/waiting")
-	Map<String, Long> venuesWaiting(CurrentUser me) {
-		return Map.of("waiting", desk.venuesWaiting(me.id()));
+	/** admin.waiting: venues to check and reported things to decide on, for the desk's tabs. */
+	@GetMapping("/waiting")
+	AdminDesk.Waiting waiting(CurrentUser me) {
+		return desk.waiting(me.id());
+	}
+
+	/** admin.reports: reported things waiting for a decision, or (decided=true) the latest decisions. */
+	@GetMapping("/reports")
+	List<AdminDesk.Reported> reports(CurrentUser me, @RequestParam(defaultValue = "false") boolean decided) {
+		return desk.reports(me.id(), decided);
+	}
+
+	/** admin.takeDownReported: the game, message or venue comes down with the reason; its reports close. */
+	@PostMapping("/reports/{type}/{id}/take-down")
+	void takeDownReported(CurrentUser me, @PathVariable String type, @PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
+		desk.takeDownReported(me.id(), type, id, body == null ? null : body.get("why"));
+	}
+
+	/** admin.dismissReports: nothing wrong with it; its reports close and it stays. */
+	@PostMapping("/reports/{type}/{id}/dismiss")
+	void dismissReports(CurrentUser me, @PathVariable String type, @PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
+		desk.dismissReports(me.id(), type, id, body == null ? null : body.get("why"));
 	}
 
 	/** admin.approveVenue: live for players; its owner is told. */

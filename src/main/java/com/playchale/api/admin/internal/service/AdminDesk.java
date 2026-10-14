@@ -1,20 +1,25 @@
 package com.playchale.api.admin.internal.service;
 
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.TemporalAdjusters;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import com.playchale.api.games.api.GameModeration;
 import com.playchale.api.integration.sms.SmsBalance;
+import com.playchale.api.reports.api.ReportDecisions;
 import com.playchale.api.venues.api.VenueReview;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.shared.events.Happened;
@@ -53,8 +58,10 @@ public class AdminDesk {
 
 	private final VenueReview venueReview;
 
+	private final ReportDecisions reportDecisions;
+
 	AdminDesk(Staff staff, Happened happened, JdbcClient jdbc, Clock clock, ObjectProvider<SmsBalance> smsBalance, GameModeration moderation,
-			VenueReview venueReview) {
+			VenueReview venueReview, ReportDecisions reportDecisions) {
 		this.staff = staff;
 		this.happened = happened;
 		this.jdbc = jdbc;
@@ -62,6 +69,7 @@ public class AdminDesk {
 		this.smsBalance = smsBalance;
 		this.moderation = moderation;
 		this.venueReview = venueReview;
+		this.reportDecisions = reportDecisions;
 	}
 
 	/**
@@ -632,11 +640,17 @@ public class AdminDesk {
 		}).toList();
 	}
 
-	/** How many venues are waiting for staff: the desk shows it on its Venues tab. */
+	/** What's waiting for staff: venues to check, and reported things to decide on. The desk shows them on its tabs. */
+	public record Waiting(long venues, long reports) {
+	}
+
 	@Transactional(readOnly = true)
-	public long venuesWaiting(UUID by) {
+	public Waiting waiting(UUID by) {
 		staff.require(by);
-		return jdbc.sql("SELECT count(*) FROM venues WHERE review = 'pending'").query(Long.class).single();
+		return jdbc.sql("""
+				SELECT (SELECT count(*) FROM venues WHERE review = 'pending') AS venues,
+				       (SELECT count(DISTINCT (subject_type, subject_id)) FROM reports WHERE status = 'open') AS reports
+				""").query(Waiting.class).single();
 	}
 
 	/** Staff checked a venue and it's real: live for players, and its owner told. */
@@ -655,11 +669,159 @@ public class AdminDesk {
 		happened.record("admin.declined-venue", "venue", venueId, by, Map.of("why", why == null ? "" : why.strip()));
 	}
 
+	/**
+	 * Something players reported, with every report about it: one decision answers them all.
+	 *
+	 * @param subjectType "game", "message", "user" or "venue"
+	 * @param title       what it is: a game's title, what was said, a person's name, a venue's name;
+	 *                    null when it's gone already (a host removed the message, say)
+	 * @param detail      who and where: the host, who said it and in which game, a handle, an area
+	 * @param gameId      for a message, the game it was said in (to open it)
+	 * @param state       a game's or venue's status now ("cancelled", "declined"), to see it's dealt with
+	 * @param outcome     for decided ones: "actioned" or "dismissed", with the note and who decided
+	 */
+	public record Reported(String subjectType, UUID subjectId, String title, String detail, UUID gameId, String state, List<ReportLine> reports,
+			String outcome, String outcomeNote, String decidedBy, Instant decidedAt) {
+	}
+
+	/** One report: why, in the reporter's words, and who. */
+	public record ReportLine(String reason, String note, UUID reporterId, String reporterName, Instant at) {
+	}
+
+	/**
+	 * Reported things: open ones, the most reported first (then the oldest); or, with {@code decided},
+	 * the latest decisions.
+	 */
+	@Transactional(readOnly = true)
+	public List<Reported> reports(UUID by, boolean decided) {
+		staff.require(by);
+		var lines = jdbc.sql("""
+				SELECT r.subject_type, r.subject_id, r.reason, r.note, r.reporter_id, u.name AS reporter_name, r.created_at,
+				       r.status, r.outcome_note, d.name AS decided_by, r.decided_at
+				FROM reports r JOIN users u ON u.id = r.reporter_id LEFT JOIN users d ON d.id = r.decided_by
+				WHERE (r.status = 'open') <> :decided
+				  AND (NOT :decided OR r.decided_at >= :recent)
+				ORDER BY r.created_at
+				""").param("decided", decided).param("recent", clock.instant().minus(Duration.ofDays(90)).atOffset(ZoneOffset.UTC))
+			.query().listOfRows();
+		// One per thing (and, decided, per decision), in the order its reports came.
+		var grouped = new LinkedHashMap<String, List<Map<String, Object>>>();
+		for (var line : lines) {
+			var key = line.get("subject_type") + ":" + line.get("subject_id") + (decided ? ":" + line.get("decided_at") : "");
+			grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(line);
+		}
+		var summaries = summaries(grouped.values().stream().map(g -> g.getFirst()).toList());
+		var out = new ArrayList<Reported>();
+		for (var group : grouped.values()) {
+			var first = group.getFirst();
+			var type = (String) first.get("subject_type");
+			var id = (UUID) first.get("subject_id");
+			var summary = summaries.get(type + ":" + id);
+			out.add(new Reported(type, id, summary == null ? null : summary.title(), summary == null ? null : summary.detail(),
+					summary == null ? null : summary.gameId(), summary == null ? null : summary.state(),
+					group.stream().map(l -> new ReportLine((String) l.get("reason"), (String) l.get("note"), (UUID) l.get("reporter_id"),
+							(String) l.get("reporter_name"), instant(l.get("created_at")))).toList(),
+					decided ? (String) first.get("status") : null, decided ? (String) first.get("outcome_note") : null,
+					decided ? (String) first.get("decided_by") : null, decided ? instant(first.get("decided_at")) : null));
+		}
+		if (decided) {
+			out.sort(Comparator.comparing(Reported::decidedAt, Comparator.nullsLast(Comparator.reverseOrder())));
+			return out.stream().limit(50).toList();
+		}
+		out.sort(Comparator.comparingInt((Reported r) -> -r.reports().size()).thenComparing(r -> r.reports().getFirst().at()));
+		return out;
+	}
+
+	private record Summary(String title, String detail, UUID gameId, String state) {
+	}
+
+	/** What each reported thing is now, read from its own table, keyed "type:id". Gone ones are missing. */
+	private Map<String, Summary> summaries(List<Map<String, Object>> things) {
+		var byType = new HashMap<String, List<UUID>>();
+		things.forEach(t -> byType.computeIfAbsent((String) t.get("subject_type"), k -> new ArrayList<>()).add((UUID) t.get("subject_id")));
+		var out = new HashMap<String, Summary>();
+		var queries = Map.of(
+				"game", """
+						SELECT g.id, g.title, 'Hosted by ' || coalesce(u.name, 'someone who’s left') || ' · ' || g.venue_name AS detail,
+						       g.id AS game_id, g.status AS state
+						FROM games g LEFT JOIN users u ON u.id = g.host_id WHERE g.id IN (:ids)
+						""",
+				"message", """
+						SELECT m.id, m.body AS title, coalesce(u.name, 'Someone') || ' in ' || g.title AS detail, g.id AS game_id, NULL AS state
+						FROM game_messages m JOIN games g ON g.id = m.game_id LEFT JOIN users u ON u.id = m.user_id WHERE m.id IN (:ids)
+						""",
+				"user", """
+						SELECT u.id, u.name AS title, coalesce('@' || u.handle, 'No username') || ' · ' || coalesce(u.area, u.country) AS detail,
+						       NULL::uuid AS game_id, CASE WHEN u.deleted_at IS NOT NULL THEN 'closed' END AS state
+						FROM users u WHERE u.id IN (:ids)
+						""",
+				"venue", """
+						SELECT v.id, v.name AS title, v.area || ' · listed by ' || coalesce(u.name, 'someone who’s left') AS detail, NULL::uuid AS game_id,
+						       v.review AS state
+						FROM venues v LEFT JOIN users u ON u.id = v.owner_id WHERE v.id IN (:ids)
+						""");
+		byType.forEach((type, ids) -> jdbc.sql(queries.get(type)).param("ids", ids).query().listOfRows()
+			.forEach(r -> out.put(type + ":" + r.get("id"), new Summary((String) r.get("title"), (String) r.get("detail"), (UUID) r.get("game_id"),
+					(String) r.get("state")))));
+		return out;
+	}
+
+	/**
+	 * Takes the reported thing down with a reason (the game called off, the message removed, the venue
+	 * taken off) and closes its reports. A person can't be taken down from here yet; for them, and for
+	 * something already gone, the reports are closed as dealt with.
+	 */
+	@Transactional
+	public void takeDownReported(UUID by, String subjectType, UUID subjectId, String why) {
+		staff.require(by);
+		var reason = why == null ? "" : why.strip();
+		if (reason.isEmpty()) {
+			throw BusinessException.invalid("Say why: it’s recorded, and for a game or venue its people read it.");
+		}
+		switch (subjectType) {
+			case "game" -> {
+				if (gameOpen(subjectId)) {
+					takeDown(by, subjectId, reason);
+				}
+			}
+			case "message" -> {
+				if (jdbc.sql("SELECT count(*) > 0 FROM game_messages WHERE id = :id").param("id", subjectId).query(Boolean.class).single()) {
+					removeMessage(by, subjectId, reason);
+				}
+			}
+			case "venue" -> {
+				if (jdbc.sql("SELECT count(*) > 0 FROM venues WHERE id = :id AND review <> 'declined'").param("id", subjectId).query(Boolean.class).single()) {
+					declineVenue(by, subjectId, reason);
+				}
+			}
+			case "user" -> {
+				// Nothing to take down yet: what was done (a call, a warning) is the note.
+			}
+			default -> throw BusinessException.invalid("That isn’t something players can report.");
+		}
+		reportDecisions.actioned(subjectType, subjectId, reason, by);
+		happened.record("admin.decided-report", subjectType, subjectId, by, Map.of("outcome", "actioned"));
+	}
+
+	/** Nothing wrong with it: its reports are closed and it stays as it is. */
+	@Transactional
+	public void dismissReports(UUID by, String subjectType, UUID subjectId, String why) {
+		staff.require(by);
+		reportDecisions.dismissed(subjectType, subjectId, why, by);
+		happened.record("admin.decided-report", subjectType, subjectId, by, Map.of("outcome", "dismissed"));
+	}
+
+	/** Still on and not yet played: a game that can be called off. */
+	private boolean gameOpen(UUID gameId) {
+		return jdbc.sql("SELECT count(*) > 0 FROM games WHERE id = :id AND status NOT IN ('cancelled', 'completed')").param("id", gameId)
+			.query(Boolean.class).single();
+	}
+
 	private static Instant instant(Object value) {
 		return switch (value) {
 			case null -> null;
-			case java.sql.Timestamp t -> t.toInstant();
-			case java.time.OffsetDateTime o -> o.toInstant();
+			case Timestamp t -> t.toInstant();
+			case OffsetDateTime o -> o.toInstant();
 			case Instant i -> i;
 			default -> throw new IllegalStateException("Not a time: " + value.getClass());
 		};
@@ -684,7 +846,8 @@ public class AdminDesk {
 				Map.entry("payments", rows("SELECT * FROM payments WHERE user_id = :id", userId)),
 				Map.entry("movements", rows("SELECT * FROM movements WHERE user_id = :id", userId)),
 				Map.entry("notifications", rows("SELECT * FROM notifications WHERE user_id = :id", userId)),
-				Map.entry("results", rows("SELECT * FROM result_players WHERE user_id = :id", userId)));
+				Map.entry("results", rows("SELECT * FROM result_players WHERE user_id = :id", userId)),
+				Map.entry("reportsMade", rows("SELECT subject_type, reason, note, status, created_at FROM reports WHERE reporter_id = :id", userId)));
 	}
 
 	private List<Map<String, Object>> rows(String sql, UUID userId) {

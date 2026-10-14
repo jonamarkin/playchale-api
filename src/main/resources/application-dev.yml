@@ -19,6 +19,9 @@ playchale:
   sign-in:
     per-connection-per-hour: 100000
     per-day: 100000
+  # The admin desk on a laptop, for the link in the emails that tell staff something is waiting.
+  admin:
+    url: http://localhost:3200
   # A hosted checkout (Paystack) sends the payer back to the web app here.
   payments:
     web-app-url: http://localhost:3000
