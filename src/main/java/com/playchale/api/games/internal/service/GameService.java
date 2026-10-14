@@ -16,6 +16,7 @@ import java.util.Base64;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
@@ -358,6 +359,39 @@ public class GameService {
 		events.publishEvent(new GameEvents.GameCalledOff(info(game), players, game.getCancelReason(), game.getVenueId(), venueOwner,
 				game.getPitchName()));
 		return views.of(game, host);
+	}
+
+	/**
+	 * PlayChale's staff took the game down (GameModeration): called off as the host would, its
+	 * repeats stopped so it doesn't come back next week, and everyone in it, the host too, told why.
+	 */
+	@Transactional
+	public void takeDown(UUID gameId, String why, UUID staffId) {
+		var reason = why == null ? "" : why.strip();
+		if (reason.isEmpty()) {
+			throw BusinessException.invalid("Say why it’s coming down: the host and its players read it.");
+		}
+		var game = locked(gameId);
+		if (game.getCompetitionId() != null) {
+			throw BusinessException.conflict("This is a competition fixture: change it from the competition.");
+		}
+		var paidNames = game.paidByOthers().stream()
+			.map(p -> p.isGuest() ? p.getGuestName() : firstName(p.getUserId()))
+			.toList();
+		game.cancel(reason, paidNames, clock.instant());
+		if (game.getSeriesId() != null) {
+			series.findById(game.getSeriesId()).filter(GameSeries::isActive).ifPresent(repeat -> repeat.stop(clock.instant()));
+		}
+		UUID venueOwner = null;
+		if (game.getPitchId() != null) {
+			pitches.releaseForGame(game.getId());
+			venueOwner = pitches.findVenue(game.getVenueId()).map(v -> v.ownerId()).orElse(null);
+		}
+		var people = new LinkedHashSet<UUID>();
+		people.add(game.getHostId());
+		game.getParticipants().stream().map(Participant::getUserId).filter(Objects::nonNull).forEach(people::add);
+		events.publishEvent(new GameEvents.GameTakenDown(info(game), List.copyOf(people), game.getCancelReason(), game.getVenueId(), venueOwner,
+				game.getPitchName(), staffId));
 	}
 
 	/** What the host can change about a game (GameService.change). {@code venue} only counts for a place that isn't a partner venue. */

@@ -76,6 +76,11 @@ class GameEventLog {
 	}
 
 	@EventListener
+	void on(GameEvents.GameTakenDown e) {
+		happened.record("game.taken-down", GAME, e.game().gameId(), e.staffId(), Map.of("people", e.peopleIds().size(), "atVenue", e.venueId() != null));
+	}
+
+	@EventListener
 	void on(GameEvents.GameChanged e) {
 		happened.record("game.changed", GAME, e.game().gameId(), e.game().hostId(),
 				Map.of("time", e.time(), "place", e.place(), "money", e.money(), "players", e.playerIds().size()));

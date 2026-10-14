@@ -167,7 +167,8 @@ public class EventService {
 			}
 			insertGroup(id, name, colour(group.colour(), seen.size() - 1), seen.size() - 1);
 		}
-		happened.record("event.created", "event", id, userId, organisationId, null, Map.of("groups", groups.size()));
+		// After commit: a first event's workspace is made in this same transaction (createWithWorkspace).
+		happened.recordAfterCommit("event.created", "event", id, userId, organisationId, null, Map.of("groups", groups.size()));
 		return reader.detail(id, userId);
 	}
 

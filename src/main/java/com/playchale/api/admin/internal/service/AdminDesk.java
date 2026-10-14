@@ -1,13 +1,19 @@
 package com.playchale.api.admin.internal.service;
 
 import java.time.Clock;
+import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import com.playchale.api.games.api.GameModeration;
 import com.playchale.api.integration.sms.SmsBalance;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.shared.events.Happened;
@@ -42,12 +48,15 @@ public class AdminDesk {
 
 	private final ObjectProvider<SmsBalance> smsBalance;
 
-	AdminDesk(Staff staff, Happened happened, JdbcClient jdbc, Clock clock, ObjectProvider<SmsBalance> smsBalance) {
+	private final GameModeration moderation;
+
+	AdminDesk(Staff staff, Happened happened, JdbcClient jdbc, Clock clock, ObjectProvider<SmsBalance> smsBalance, GameModeration moderation) {
 		this.staff = staff;
 		this.happened = happened;
 		this.jdbc = jdbc;
 		this.clock = clock;
 		this.smsBalance = smsBalance;
+		this.moderation = moderation;
 	}
 
 	/**
@@ -72,9 +81,13 @@ public class AdminDesk {
 				credits.isPresent() && credits.getAsLong() < balance.lowAt());
 	}
 
-	/** Someone as the desk sees them: enough to recognise them, not their whole life. */
+	/**
+	 * Someone as the desk sees them: enough to recognise them, not their whole life.
+	 *
+	 * @param guestHost hosting without an account: a name and a number, no way to sign in yet
+	 */
 	public record Person(UUID id, String name, String handle, String phone, String email, String area, String country, Instant joinedAt,
-			Instant deletedAt, int games, boolean staff) {
+			Instant deletedAt, int games, boolean staff, boolean guestHost) {
 	}
 
 	/** One line of someone's history, for answering "what happened to me". */
@@ -120,6 +133,77 @@ public class AdminDesk {
 	}
 
 	/**
+	 * How things went, period by period, for drawing: by day over a month or less, by week over a
+	 * season, by month over a year. Every period is there, a quiet one as zeros.
+	 *
+	 * @param unit "day", "week" (from Monday) or "month"
+	 */
+	public record Trends(String unit, List<Bucket> buckets) {
+	}
+
+	/** One period: the day it starts, and what happened in it. Visits are counted without knowing who. */
+	public record Bucket(String start, long signups, long activePeople, long gamesCreated, long gamesPlayed, long eventPeople, long visits) {
+	}
+
+	/**
+	 * From a visit to doing something. The first two steps are counted without knowing who (pages,
+	 * not people), so the steps are counts side by side, not the same people followed through.
+	 *
+	 * @param openedForm   create pages opened: a game, an event, a venue, a team, a league
+	 * @param didSomething of the new accounts, those who hosted or joined a game, are in an event,
+	 *                     run a workspace or list a venue
+	 */
+	public record Funnel(long visits, long openedForm, long signups, long didSomething, Guests guests) {
+	}
+
+	/**
+	 * Using PlayChale without an account, and how many then signed up.
+	 *
+	 * @param hostsStarted    games hosted with just a name and a number
+	 * @param hostsKept       of guest hosts, those who signed up (or moved their games to an account)
+	 * @param eventGuests     people who joined a games day through its link without an account
+	 * @param eventGuestsKept of them, those whose place is now on an account
+	 * @param gameGuests      spots taken in games without an account
+	 * @param gameGuestsKept  spots claimed by an account since
+	 */
+	public record Guests(long hostsStarted, long hostsKept, long eventGuests, long eventGuestsKept, long gameGuests, long gameGuestsKept) {
+	}
+
+	/**
+	 * A games day or corporate games, as the desk lists it.
+	 *
+	 * @param live         on today, where it's held
+	 * @param guests       of the people, those who joined without an account
+	 * @param resultsIn    matches and heats with a result put in
+	 * @param resultsTotal matches and heats drawn
+	 */
+	public record EventRow(UUID id, String name, String organisation, String country, LocalDate startsOn, LocalDate endsOn, String status,
+			boolean live, long people, long guests, long games, long resultsIn, long resultsTotal, String publicSlug, Instant createdAt) {
+	}
+
+	/** One event, with who runs it (to call on the day) and how each of its games is getting on. */
+	public record EventDetail(EventRow event, List<Organiser> organisers, List<EventGame> games) {
+	}
+
+	/** Someone who runs the event's workspace. Their number and email are why looking is recorded. */
+	public record Organiser(UUID id, String name, String phone, String email, String role) {
+	}
+
+	public record EventGame(UUID id, String name, String entryKind, String format, String status, long entries, long resultsIn, long resultsTotal) {
+	}
+
+	/**
+	 * A game, as the desk lists it: enough to tell a real one from a fake.
+	 *
+	 * @param hostGuest its host has no account (a guest host)
+	 * @param fixture   a competition's game, which only the competition changes
+	 */
+	public record GameRow(UUID id, String title, String sport, String format, Instant startsAt, String venueName, String venueArea, UUID hostId,
+			String hostName, boolean hostGuest, String visibility, long players, Integer capacity, String status, String cancelReason,
+			Instant createdAt, long messages, boolean fixture) {
+	}
+
+	/**
 	 * Finds people by name, handle, phone or email. A blank search returns the newest, so the screen
 	 * has something in it rather than an empty box.
 	 */
@@ -133,7 +217,8 @@ public class AdminDesk {
 		var rows = jdbc.sql("""
 				SELECT u.id, u.name, u.handle, u.phone, u.email, u.area, u.country, u.created_at AS joined_at, u.deleted_at,
 				       (SELECT count(*) FROM game_participants p WHERE p.user_id = u.id) AS games,
-				       (SELECT count(*) > 0 FROM platform_staff s WHERE s.user_id = u.id) AS staff
+				       (SELECT count(*) > 0 FROM platform_staff s WHERE s.user_id = u.id) AS staff,
+				       u.guest AS guest_host
 				FROM users u
 				WHERE CAST(:term AS text) = ''
 				   OR u.name ILIKE '%' || CAST(:term AS text) || '%'
@@ -219,7 +304,7 @@ public class AdminDesk {
 		staff.require(by);
 		var since = clock.instant().minus(Duration.ofDays(Math.clamp(days <= 0 ? 30 : days, 1, 365))).atOffset(ZoneOffset.UTC);
 		return jdbc.sql("""
-				SELECT (SELECT count(*) FROM users WHERE created_at >= :since AND deleted_at IS NULL)              AS signups,
+				SELECT (SELECT count(*) FROM users WHERE created_at >= :since AND deleted_at IS NULL AND NOT guest) AS signups,
 				       (SELECT count(*) FROM games WHERE created_at >= :since)                                     AS games_created,
 				       (SELECT count(*) FROM game_results r JOIN games g ON g.id = r.game_id
 				         WHERE g.starts_at >= :since)                                                              AS games_played,
@@ -270,6 +355,218 @@ public class AdminDesk {
 				""").param("since", since).query(Film.class).list();
 		return new Visits(((Number) totals.get("opens")).longValue(), ((Number) totals.get("arrivals")).longValue(), perDay, pages,
 				sources, films);
+	}
+
+	/** How things went over the last {@code days}, period by period, oldest first. */
+	@Transactional(readOnly = true)
+	public Trends trends(UUID by, int days) {
+		staff.require(by);
+		var window = Math.clamp(days <= 0 ? 30 : days, 1, 365);
+		var unit = window <= 31 ? "day" : window <= 120 ? "week" : "month";
+		var today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);
+		var first = periodOf(today.minusDays(window - 1L), unit);
+		var signups = perPeriod("""
+				SELECT date_trunc(CAST(:unit AS text), created_at AT TIME ZONE 'UTC')::date AS period, count(*) AS n
+				FROM users WHERE created_at >= :from AND deleted_at IS NULL AND NOT guest GROUP BY 1
+				""", unit, first);
+		var active = perPeriod("""
+				SELECT date_trunc(CAST(:unit AS text), joined_at AT TIME ZONE 'UTC')::date AS period, count(DISTINCT user_id) AS n
+				FROM game_participants WHERE joined_at >= :from AND user_id IS NOT NULL GROUP BY 1
+				""", unit, first);
+		var created = perPeriod("""
+				SELECT date_trunc(CAST(:unit AS text), created_at AT TIME ZONE 'UTC')::date AS period, count(*) AS n
+				FROM games WHERE created_at >= :from GROUP BY 1
+				""", unit, first);
+		var played = perPeriod("""
+				SELECT date_trunc(CAST(:unit AS text), g.starts_at AT TIME ZONE 'UTC')::date AS period, count(*) AS n
+				FROM game_results r JOIN games g ON g.id = r.game_id WHERE g.starts_at >= :from GROUP BY 1
+				""", unit, first);
+		var eventPeople = perPeriod("""
+				SELECT date_trunc(CAST(:unit AS text), created_at AT TIME ZONE 'UTC')::date AS period, count(*) AS n
+				FROM event_people WHERE created_at >= :from GROUP BY 1
+				""", unit, first);
+		var visits = perPeriod("""
+				SELECT date_trunc(CAST(:unit AS text), CAST(day AS timestamp))::date AS period, sum(n) AS n
+				FROM usage_counts WHERE kind = 'page' AND source <> '' AND day >= :fromDay GROUP BY 1
+				""", unit, first);
+		var buckets = new ArrayList<Bucket>();
+		for (var start = first; !start.isAfter(today); start = next(start, unit)) {
+			buckets.add(new Bucket(start.toString(), signups.getOrDefault(start, 0L), active.getOrDefault(start, 0L), created.getOrDefault(start, 0L),
+					played.getOrDefault(start, 0L), eventPeople.getOrDefault(start, 0L), visits.getOrDefault(start, 0L)));
+		}
+		return new Trends(unit, buckets);
+	}
+
+	private Map<LocalDate, Long> perPeriod(String sql, String unit, LocalDate from) {
+		var counts = new HashMap<LocalDate, Long>();
+		jdbc.sql(sql).param("unit", unit).param("from", from.atStartOfDay().atOffset(ZoneOffset.UTC)).param("fromDay", from)
+			.query((row, n) -> Map.entry(row.getObject("period", LocalDate.class), row.getLong("n")))
+			.list().forEach(entry -> counts.put(entry.getKey(), entry.getValue()));
+		return counts;
+	}
+
+	/** The start of the period a day is in: itself, its week's Monday, or its month's first. */
+	private static LocalDate periodOf(LocalDate day, String unit) {
+		return switch (unit) {
+			case "week" -> day.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+			case "month" -> day.withDayOfMonth(1);
+			default -> day;
+		};
+	}
+
+	private static LocalDate next(LocalDate start, String unit) {
+		return switch (unit) {
+			case "week" -> start.plusWeeks(1);
+			case "month" -> start.plusMonths(1);
+			default -> start.plusDays(1);
+		};
+	}
+
+	/** Pages a visitor opens to make something: where "set it up before signing up" starts. */
+	private static final List<String> CREATE_PAGES = List.of("/games/new", "/events/new", "/venues/new", "/teams/new", "/competitions/new");
+
+	/** From visiting to doing something, and using PlayChale without an account, over the last {@code days}. */
+	@Transactional(readOnly = true)
+	public Funnel funnel(UUID by, int days) {
+		staff.require(by);
+		var window = Math.clamp(days <= 0 ? 30 : days, 1, 365);
+		var since = clock.instant().minus(Duration.ofDays(window)).atOffset(ZoneOffset.UTC);
+		// Visits are counted by day, so the window is whole days, as on the visits table.
+		var sinceDay = clock.instant().minus(Duration.ofDays(window - 1L)).atOffset(ZoneOffset.UTC).toLocalDate();
+		var row = jdbc.sql("""
+				SELECT (SELECT coalesce(sum(n), 0) FROM usage_counts WHERE kind = 'page' AND source <> '' AND day >= :sinceDay) AS visits,
+				       (SELECT coalesce(sum(n), 0) FROM usage_counts WHERE kind = 'page' AND day >= :sinceDay AND name IN (:pages)) AS opened_form,
+				       (SELECT count(*) FROM users WHERE created_at >= :since AND deleted_at IS NULL AND NOT guest) AS signups,
+				       (SELECT count(*) FROM users u WHERE u.created_at >= :since AND u.deleted_at IS NULL AND NOT u.guest AND (
+				            EXISTS (SELECT 1 FROM games g WHERE g.host_id = u.id)
+				         OR EXISTS (SELECT 1 FROM game_participants p WHERE p.user_id = u.id)
+				         OR EXISTS (SELECT 1 FROM game_departures d WHERE d.user_id = u.id)
+				         OR EXISTS (SELECT 1 FROM event_people e WHERE e.user_id = u.id)
+				         OR EXISTS (SELECT 1 FROM organisation_memberships m WHERE m.user_id = u.id)
+				         OR EXISTS (SELECT 1 FROM venues v WHERE v.owner_id = u.id))) AS did_something,
+				       (SELECT count(*) FROM audit_events WHERE event_type = 'guest-host.started' AND occurred_at >= :since) AS hosts_started,
+				       (SELECT count(*) FROM audit_events WHERE event_type = 'guest-host.kept' AND occurred_at >= :since) AS hosts_kept,
+				       (SELECT count(*) FROM event_people WHERE source = 'guest' AND created_at >= :since) AS event_guests,
+				       (SELECT count(*) FROM event_people WHERE source = 'guest' AND created_at >= :since AND user_id IS NOT NULL) AS event_guests_kept,
+				       (SELECT count(*) FROM audit_events WHERE event_type = 'game.guest-joined' AND occurred_at >= :since) AS game_guests,
+				       (SELECT count(*) FROM audit_events WHERE event_type = 'game.guest-spot-claimed' AND occurred_at >= :since) AS game_guests_kept
+				""").param("since", since).param("sinceDay", sinceDay).param("pages", CREATE_PAGES).query().singleRow();
+		return new Funnel(count(row, "visits"), count(row, "opened_form"), count(row, "signups"), count(row, "did_something"),
+				new Guests(count(row, "hosts_started"), count(row, "hosts_kept"), count(row, "event_guests"), count(row, "event_guests_kept"),
+						count(row, "game_guests"), count(row, "game_guests_kept")));
+	}
+
+	private static long count(Map<String, Object> row, String column) {
+		return ((Number) row.get(column)).longValue();
+	}
+
+	/**
+	 * An event's row. "Today" is the day where it's held, so a games day in Accra is live on Accra's
+	 * Saturday whatever the server's clock says.
+	 */
+	private static final String EVENT_ROWS = """
+			SELECT e.id, e.name, o.name AS organisation, e.country, e.starts_on, e.ends_on, e.status,
+			       (e.status = 'open' AND (CAST(:now AS timestamptz) AT TIME ZONE e.timezone)::date BETWEEN e.starts_on AND e.ends_on) AS live,
+			       (SELECT count(*) FROM event_people p WHERE p.event_id = e.id) AS people,
+			       (SELECT count(*) FROM event_people p WHERE p.event_id = e.id AND p.source = 'guest') AS guests,
+			       (SELECT count(*) FROM event_games g WHERE g.event_id = e.id) AS games,
+			       (SELECT count(*) FROM event_matches m JOIN event_games g ON g.id = m.game_id WHERE g.event_id = e.id AND m.recorded_at IS NOT NULL)
+			       + (SELECT count(*) FROM event_heats h JOIN event_games g ON g.id = h.game_id WHERE g.event_id = e.id AND h.recorded_at IS NOT NULL) AS results_in,
+			       (SELECT count(*) FROM event_matches m JOIN event_games g ON g.id = m.game_id WHERE g.event_id = e.id)
+			       + (SELECT count(*) FROM event_heats h JOIN event_games g ON g.id = h.game_id WHERE g.event_id = e.id) AS results_total,
+			       e.public_slug, e.created_at
+			FROM events e JOIN organisations o ON o.id = e.organisation_id
+			""";
+
+	/** Which events, and in what order: coming up (soonest first), been, or called off. */
+	private static final Map<String, String[]> EVENTS_WHEN = Map.of(
+			"upcoming", new String[] { "e.status = 'open' AND e.ends_on >= (CAST(:now AS timestamptz) AT TIME ZONE e.timezone)::date",
+					"e.starts_on, e.name" },
+			"past", new String[] { "e.status = 'finished' OR (e.status = 'open' AND e.ends_on < (CAST(:now AS timestamptz) AT TIME ZONE e.timezone)::date)",
+					"e.starts_on DESC, e.name" },
+			"cancelled", new String[] { "e.status = 'cancelled'", "e.starts_on DESC, e.name" });
+
+	/** Games days and corporate games: coming up, been, or called off, found by their name or whose they are. */
+	@Transactional(readOnly = true)
+	public List<EventRow> events(UUID by, String when, String query, int limit) {
+		staff.require(by);
+		var which = EVENTS_WHEN.getOrDefault(when == null ? "upcoming" : when, EVENTS_WHEN.get("upcoming"));
+		var term = query == null ? "" : query.strip();
+		var sql = EVENT_ROWS + "WHERE (" + which[0] + ")\n"
+				+ "  AND (CAST(:term AS text) = '' OR e.name ILIKE '%' || CAST(:term AS text) || '%' OR o.name ILIKE '%' || CAST(:term AS text) || '%')\n"
+				+ "ORDER BY " + which[1] + "\nLIMIT :limit";
+		return jdbc.sql(sql).param("now", clock.instant().atOffset(ZoneOffset.UTC)).param("term", term)
+			.param("limit", Math.clamp(limit <= 0 ? 50 : limit, 1, 200)).query(EventRow.class).list();
+	}
+
+	/**
+	 * One event: who runs it, with their number and email for calling them on the day, and each
+	 * game's progress. Seeing those contacts is recorded, as looking someone up is.
+	 */
+	@Transactional(readOnly = true)
+	public EventDetail event(UUID by, UUID eventId) {
+		staff.require(by);
+		var row = jdbc.sql(EVENT_ROWS + "WHERE e.id = :id").param("now", clock.instant().atOffset(ZoneOffset.UTC)).param("id", eventId)
+			.query(EventRow.class).optional().orElseThrow(() -> BusinessException.notFound("That event isn’t there any more."));
+		happened.record("admin.viewed-event", "event", eventId, by, Map.of());
+		var organisers = jdbc.sql("""
+				SELECT u.id, u.name, nullif(u.phone, '') AS phone, coalesce(u.email, u.sign_in_email) AS email, m.role
+				FROM events e
+				JOIN organisation_memberships m ON m.organisation_id = e.organisation_id
+				JOIN users u ON u.id = m.user_id
+				WHERE e.id = :id AND u.deleted_at IS NULL
+				ORDER BY m.role = 'owner' DESC, u.name
+				""").param("id", eventId).query(Organiser.class).list();
+		var games = jdbc.sql("""
+				SELECT g.id, g.name, g.entry_kind, g.format, g.status,
+				       (SELECT count(*) FROM event_entries x WHERE x.game_id = g.id) AS entries,
+				       (SELECT count(*) FROM event_matches m WHERE m.game_id = g.id AND m.recorded_at IS NOT NULL)
+				       + (SELECT count(*) FROM event_heats h WHERE h.game_id = g.id AND h.recorded_at IS NOT NULL) AS results_in,
+				       (SELECT count(*) FROM event_matches m WHERE m.game_id = g.id)
+				       + (SELECT count(*) FROM event_heats h WHERE h.game_id = g.id) AS results_total
+				FROM event_games g WHERE g.event_id = :id
+				ORDER BY g.name
+				""").param("id", eventId).query(EventGame.class).list();
+		return new EventDetail(row, organisers, games);
+	}
+
+	/** Which games, and in what order: newest made (where spam shows), coming up, been played, or called off. */
+	private static final Map<String, String[]> GAMES_WHEN = Map.of(
+			"new", new String[] { "TRUE", "g.created_at DESC" },
+			"upcoming", new String[] { "g.status <> 'cancelled' AND g.starts_at >= :now", "g.starts_at" },
+			"played", new String[] { "g.status <> 'cancelled' AND g.starts_at < :now", "g.starts_at DESC" },
+			"cancelled", new String[] { "g.status = 'cancelled'", "coalesce(g.cancelled_at, g.created_at) DESC" });
+
+	/** Games, found by their title, where they're played or who hosts them. */
+	@Transactional(readOnly = true)
+	public List<GameRow> games(UUID by, String when, String query, int limit) {
+		staff.require(by);
+		var which = GAMES_WHEN.getOrDefault(when == null ? "new" : when, GAMES_WHEN.get("new"));
+		var term = query == null ? "" : query.strip();
+		var sql = """
+				SELECT g.id, g.title, g.sport, g.format, g.starts_at, g.venue_name, g.venue_area, g.host_id, u.name AS host_name,
+				       coalesce(u.guest, false) AS host_guest, g.visibility,
+				       (SELECT count(*) FROM game_participants p WHERE p.game_id = g.id) AS players, g.capacity, g.status, g.cancel_reason,
+				       g.created_at, (SELECT count(*) FROM game_messages m WHERE m.game_id = g.id) AS messages,
+				       g.competition_id IS NOT NULL AS fixture
+				FROM games g LEFT JOIN users u ON u.id = g.host_id
+				WHERE (CAST(:term AS text) = '' OR g.title ILIKE '%' || CAST(:term AS text) || '%'
+				       OR g.venue_name ILIKE '%' || CAST(:term AS text) || '%' OR u.name ILIKE '%' || CAST(:term AS text) || '%')
+				""" + "  AND (" + which[0] + ")\nORDER BY " + which[1] + "\nLIMIT :limit";
+		return jdbc.sql(sql).param("now", clock.instant().atOffset(ZoneOffset.UTC)).param("term", term)
+			.param("limit", Math.clamp(limit <= 0 ? 50 : limit, 1, 200)).query(GameRow.class).list();
+	}
+
+	/**
+	 * Takes a game down: a fake, spam, something that shouldn't be on PlayChale, when its host won't.
+	 * The games module calls it off and tells everyone in it why; it's recorded against the staff
+	 * member who did it.
+	 */
+	@Transactional
+	public void takeDown(UUID by, UUID gameId, String why) {
+		staff.require(by);
+		moderation.takeDown(gameId, why, by);
+		happened.record("admin.took-down-game", "game", gameId, by, Map.of("why", why == null ? "" : why.strip()));
 	}
 
 	/**

@@ -122,6 +122,20 @@ class GameNotifications {
 		}
 	}
 
+	/** PlayChale took a game down: its host and players hear why, and a venue that had the pitch gets it back. */
+	@EventListener
+	void on(GameEvents.GameTakenDown e) {
+		var game = e.game();
+		for (var person : e.peopleIds()) {
+			notifications.send(person, "game-cancelled", "%s was taken down".formatted(game.title()),
+					"PlayChale took this game down, %s: “%s”".formatted(kickoff(game), e.reason()), "/games", null);
+		}
+		if (e.venueOwnerId() != null && !e.peopleIds().contains(e.venueOwnerId())) {
+			notifications.send(e.venueOwnerId(), "booking", "%s is free again".formatted(e.pitchName() == null ? "A pitch" : e.pitchName()),
+					"%s was taken down by PlayChale · %s".formatted(game.title(), kickoff(game)), "/venues/%s/manage".formatted(e.venueId()), null);
+		}
+	}
+
 	/** The host changed a game: everyone in it hears what's new, and a venue whose pitch booking moved hears that. */
 	@EventListener
 	void on(GameEvents.GameChanged e) {

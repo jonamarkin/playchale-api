@@ -10,8 +10,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -42,10 +46,14 @@ public class Happened {
 
 	private final Clock clock;
 
-	Happened(JdbcClient jdbc, ObjectMapper json, Clock clock) {
+	private final TransactionTemplate ownTransaction;
+
+	Happened(JdbcClient jdbc, ObjectMapper json, Clock clock, TransactionTemplate tx) {
 		this.jdbc = jdbc;
 		this.json = json;
 		this.clock = clock;
+		this.ownTransaction = new TransactionTemplate(tx.getTransactionManager());
+		this.ownTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
 	}
 
 	/**
@@ -75,6 +83,29 @@ public class Happened {
 	public void record(String type, String subjectType, UUID subjectId, UUID actorId, UUID organisationId, UUID competitionId,
 			Map<String, Object> details) {
 		write(type, subjectType, subjectId, actorId, organisationId, competitionId, details);
+	}
+
+	/**
+	 * The same, written once the caller's transaction commits: for an event about rows made in that
+	 * same transaction (a workspace made with its first event), which a transaction of its own can't
+	 * see until then. Nothing is written if the caller's work rolls back. Outside a transaction, now.
+	 */
+	public void recordAfterCommit(String type, String subjectType, UUID subjectId, UUID actorId, UUID organisationId, UUID competitionId,
+			Map<String, Object> details) {
+		if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+			ownTransaction.executeWithoutResult(status -> write(type, subjectType, subjectId, actorId, organisationId, competitionId, details));
+			return;
+		}
+		TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+
+			@Override
+			public void afterCommit() {
+				// After commit the finished transaction's connection is still bound: anything written on it
+				// would never be committed, so it goes in one of its own.
+				ownTransaction.executeWithoutResult(status -> write(type, subjectType, subjectId, actorId, organisationId, competitionId, details));
+			}
+
+		});
 	}
 
 	/**

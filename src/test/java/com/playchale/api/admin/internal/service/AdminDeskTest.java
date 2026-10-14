@@ -1,16 +1,22 @@
 package com.playchale.api.admin.internal.service;
 
+import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
 import com.playchale.api.TestcontainersConfiguration;
+import com.playchale.api.auth.internal.service.GuestHosts;
+import com.playchale.api.events.internal.service.EventService;
 import com.playchale.api.games.internal.domain.GameDetails;
 import com.playchale.api.games.internal.service.GameService;
 import com.playchale.api.games.internal.service.GameTalk;
 import com.playchale.api.shared.TestClock;
 import com.playchale.api.usage.internal.service.UsageCounts;
+import com.playchale.api.users.api.Terms;
 import com.playchale.api.users.api.UserDirectory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -68,6 +74,12 @@ class AdminDeskTest {
 	TestClock clock;
 
 	@Autowired
+	EventService events;
+
+	@Autowired
+	GuestHosts guestHosts;
+
+	@Autowired
 	JdbcClient jdbc;
 
 	UUID owner;
@@ -80,7 +92,7 @@ class AdminDeskTest {
 	void setUp() {
 		jdbc.sql("""
 				TRUNCATE users, sign_in_codes, sessions, games, game_participants, game_messages, notifications, game_results,
-				audit_events, platform_staff, usage_counts, rate_limits CASCADE
+				audit_events, platform_staff, usage_counts, rate_limits, organisations, events, host_keys CASCADE
 				""").update();
 		clock.set(NOW);
 		owner = user("+233244555123", "Ama Owner");
@@ -242,6 +254,187 @@ class AdminDeskTest {
 		assertThat(export).containsKeys("user", "games", "spots", "messages", "payments", "movements", "notifications");
 		assertThat((List<?>) export.get("messages")).hasSize(1);
 		assertThat((List<?>) desk.export(owner, support).get("messages")).as("and only theirs").isEmpty();
+	}
+
+	@Test
+	void theChartHasEveryPeriodQuietOnesAsZerosAndLeavesGuestHostsOut() {
+		guestHosts.start("Esi Owusu", "024 455 5130", "GH", Terms.CURRENT, "10.0.0.1", null);
+		clock.set(NOW.minus(Duration.ofDays(3)));
+		games.create(new GameDetails("football", "5-a-side", "Tuesday 5s", NOW.plus(Duration.ofHours(4)), 60, "unlisted", null, null,
+				"Legon Park", "Legon", null, 10, 0, null, "public", null), player);
+		clock.set(NOW);
+
+		var week = desk.trends(owner, 7);
+		assertThat(week.unit()).isEqualTo("day");
+		assertThat(week.buckets()).extracting(AdminDesk.Bucket::start)
+			.containsExactly("2026-09-19", "2026-09-20", "2026-09-21", "2026-09-22", "2026-09-23", "2026-09-24", "2026-09-25");
+		var today = week.buckets().getLast();
+		assertThat(today.signups()).as("the three players, not the guest host").isEqualTo(3);
+		assertThat(week.buckets().get(3).gamesCreated()).as("made on the 22nd").isOne();
+		assertThat(week.buckets().get(3).activePeople()).as("the host took the first spot").isOne();
+		assertThat(week.buckets().get(4).gamesCreated()).isZero();
+		assertThat(desk.health(owner, 30).signups()).as("the totals agree").isEqualTo(3);
+
+		var season = desk.trends(owner, 90);
+		assertThat(season.unit()).isEqualTo("week");
+		assertThat(season.buckets()).allSatisfy(b -> assertThat(LocalDate.parse(b.start()).getDayOfWeek()).isEqualTo(DayOfWeek.MONDAY));
+		assertThat(season.buckets().stream().mapToLong(AdminDesk.Bucket::gamesCreated).sum()).isOne();
+
+		var year = desk.trends(owner, 365);
+		assertThat(year.unit()).isEqualTo("month");
+		assertThat(year.buckets()).hasSize(13).allSatisfy(b -> assertThat(b.start()).endsWith("-01"));
+
+		assertThatThrownBy(() -> desk.trends(player, 30)).hasMessage("Not found.");
+	}
+
+	@Test
+	void theFunnelGoesFromAVisitToDoingSomethingAndCountsThoseWithoutAnAccount() {
+		var browser = "Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36";
+		usage.count("page", "/games-day", "https://web.whatsapp.com/", browser, "10.0.0.1");
+		usage.count("page", "/events/new", "", browser, "10.0.0.1");
+		usage.count("page", "/games/new", "direct", browser, "10.0.0.2");
+		games.create(new GameDetails("football", "5-a-side", "Saturday 5s", NOW.plus(Duration.ofHours(4)), 60, "unlisted", null, null,
+				"Legon Park", "Legon", null, 10, 0, null, "private", null), player);
+
+		// Two guest hosts; one signs up with the number they gave.
+		var kept = guestHosts.start("Esi Owusu", "024 455 5131", "GH", Terms.CURRENT, "10.0.0.3", null).user().id();
+		guestHosts.start("Kofi Mensah", "024 455 5132", "GH", Terms.CURRENT, "10.0.0.4", null);
+		users.upgradeGuest(kept, "phone", "+233244555131", null);
+
+		var funnel = desk.funnel(owner, 30);
+		assertThat(funnel.visits()).isEqualTo(2);
+		assertThat(funnel.openedForm()).isEqualTo(2);
+		assertThat(funnel.signups()).as("the three players and Esi, now an account; not Kofi").isEqualTo(4);
+		assertThat(funnel.didSomething()).as("Kojo hosts; Esi hosted nothing yet").isOne();
+		assertThat(funnel.guests().hostsStarted()).isEqualTo(2);
+		assertThat(funnel.guests().hostsKept()).isOne();
+
+		assertThatThrownBy(() -> desk.funnel(player, 30)).hasMessage("Not found.");
+	}
+
+	@Test
+	void eventsAreListedWithWhetherTheyreOnTodayAndHowFarTheirResultsHaveGot() {
+		var today = LocalDate.ofInstant(NOW, ZoneOffset.UTC);
+		var live = hillview("Hillview Games Day", today);
+		hillview("Harvest Games", today.plusDays(14));
+		var been = hillview("Easter Games", today.minusDays(30));
+		events.addPeople(live, List.of(new EventService.PersonInput("Ama Boateng", null)), player);
+		jdbc.sql("""
+				INSERT INTO event_people (id, event_id, display_name, source, guest_phone, created_at, updated_at)
+				VALUES (:id, :event, 'Kobby Guest', 'guest', '+233244555140', :now, :now)
+				""").param("id", UUID.randomUUID()).param("event", live).param("now", NOW.atOffset(ZoneOffset.UTC)).update();
+		var draughts = UUID.randomUUID();
+		jdbc.sql("""
+				INSERT INTO event_games (id, event_id, discipline, name, entry_kind, format, scoring, position, created_at, updated_at)
+				VALUES (:id, :event, 'draughts', 'Draughts', 'single', 'knockout', 'outcome', 0, :now, :now)
+				""").param("id", draughts).param("event", live).param("now", NOW.atOffset(ZoneOffset.UTC)).update();
+		for (int slot = 0; slot < 2; slot++) {
+			jdbc.sql("INSERT INTO event_matches (id, game_id, round, slot, recorded_at) VALUES (:id, :game, 1, :slot, :at)")
+				.param("id", UUID.randomUUID()).param("game", draughts).param("slot", slot)
+				.param("at", slot == 0 ? NOW.atOffset(ZoneOffset.UTC) : null).update();
+		}
+
+		var upcoming = desk.events(owner, "upcoming", null, 50);
+		assertThat(upcoming).extracting(AdminDesk.EventRow::name).containsExactly("Hillview Games Day", "Harvest Games");
+		var row = upcoming.getFirst();
+		assertThat(row.live()).isTrue();
+		assertThat(row.organisation()).isEqualTo("Hillview Chapel");
+		assertThat(row.people()).isEqualTo(2);
+		assertThat(row.guests()).isOne();
+		assertThat(row.resultsIn()).isOne();
+		assertThat(row.resultsTotal()).isEqualTo(2);
+		assertThat(upcoming.get(1).live()).isFalse();
+		assertThat(desk.events(owner, "past", null, 50)).extracting(AdminDesk.EventRow::id).containsExactly(been);
+		assertThat(desk.events(owner, "upcoming", "harvest", 50)).extracting(AdminDesk.EventRow::name).containsExactly("Harvest Games");
+		assertThat(desk.events(owner, "upcoming", "hillview chapel", 50)).hasSize(2);
+
+		// Its organisers, to call on the day: seeing their numbers is recorded.
+		var detail = desk.event(support(), live);
+		assertThat(detail.organisers()).singleElement().satisfies(o -> {
+			assertThat(o.name()).isEqualTo("Kojo Player");
+			assertThat(o.phone()).isEqualTo("+233244555125");
+			assertThat(o.role()).isEqualTo("owner");
+		});
+		assertThat(detail.games()).singleElement().satisfies(g -> {
+			assertThat(g.name()).isEqualTo("Draughts");
+			assertThat(g.resultsIn()).isOne();
+			assertThat(g.resultsTotal()).isEqualTo(2);
+		});
+		assertThat(recorded("admin.viewed-event")).isOne();
+		// A first event made with its workspace is in the event stream too.
+		assertThat(recorded("event.created")).isEqualTo(3);
+
+		assertThatThrownBy(() -> desk.events(player, "upcoming", null, 50)).hasMessage("Not found.");
+		assertThatThrownBy(() -> desk.event(player, live)).hasMessage("Not found.");
+	}
+
+	@Test
+	void gamesAreFoundByTitlePlaceOrHostAndAGuestHostIsMarked() {
+		var saturday = games.create(new GameDetails("football", "5-a-side", "Saturday 5s", NOW.plus(Duration.ofHours(4)), 60, "unlisted", null,
+				null, "Legon Park", "Legon", null, 10, 0, null, "public", null), player);
+		games.join(saturday.id(), support);
+		clock.set(NOW.plusSeconds(60));
+		var guest = guestHosts.start("Esi Owusu", "024 455 5133", "GH", Terms.CURRENT, "10.0.0.5", null).user().id();
+		games.create(new GameDetails("football", "5-a-side", "Esi’s kickabout", NOW.plus(Duration.ofDays(1)), 60, "unlisted", null, null,
+				"Osu Park", "Osu", null, 10, 0, null, "private", null), guest);
+
+		var newest = desk.games(owner, "new", null, 50);
+		assertThat(newest).extracting(AdminDesk.GameRow::title).containsExactly("Esi’s kickabout", "Saturday 5s");
+		assertThat(newest.getFirst().hostGuest()).isTrue();
+		assertThat(newest.getFirst().visibility()).isEqualTo("private");
+		assertThat(newest.get(1).players()).isEqualTo(2);
+		assertThat(desk.games(owner, "upcoming", null, 50)).extracting(AdminDesk.GameRow::title).containsExactly("Saturday 5s", "Esi’s kickabout");
+		assertThat(desk.games(owner, "new", "osu", 50)).extracting(AdminDesk.GameRow::title).containsExactly("Esi’s kickabout");
+		assertThat(desk.games(owner, "new", "kojo", 50)).extracting(AdminDesk.GameRow::title).containsExactly("Saturday 5s");
+		assertThat(desk.games(owner, "cancelled", null, 50)).isEmpty();
+		assertThatThrownBy(() -> desk.games(player, "new", null, 50)).hasMessage("Not found.");
+	}
+
+	@Test
+	void aFakeGameIsTakenDownAndEveryoneInItIsToldWhy() {
+		var fake = games.create(new GameDetails("football", "5-a-side", "Free iPhones here", NOW.plus(Duration.ofHours(4)), 60, "unlisted", null,
+				null, "Legon Park", "Legon", null, 10, 0, null, "public", null), player);
+		games.join(fake.id(), support);
+
+		assertThatThrownBy(() -> desk.takeDown(owner, fake.id(), " ")).hasMessageContaining("Say why");
+		assertThatThrownBy(() -> desk.takeDown(player, fake.id(), "Spam")).hasMessage("Not found.");
+		desk.takeDown(owner, fake.id(), "Not a real game: it advertises phones.");
+
+		var row = desk.games(owner, "cancelled", null, 50).getFirst();
+		assertThat(row.status()).isEqualTo("cancelled");
+		assertThat(row.cancelReason()).isEqualTo("Not a real game: it advertises phones.");
+		for (var person : List.of(player, support)) {
+			assertThat(jdbc.sql("SELECT body FROM notifications WHERE user_id = :id AND title = 'Free iPhones here was taken down'")
+				.param("id", person).query(String.class).single()).contains("PlayChale took this game down").contains("advertises phones");
+		}
+		assertThat(recorded("admin.took-down-game")).isOne();
+		assertThat(recorded("game.taken-down")).isOne();
+		assertThatThrownBy(() -> desk.takeDown(owner, fake.id(), "Again")).hasMessage("This game is already called off.");
+
+		var played = games.create(new GameDetails("football", "5-a-side", "Last week", NOW.plus(Duration.ofHours(5)), 60, "unlisted", null, null,
+				"Legon Park", "Legon", null, 10, 0, null, "public", null), player);
+		jdbc.sql("UPDATE games SET status = 'completed' WHERE id = :id").param("id", played.id()).update();
+		assertThatThrownBy(() -> desk.takeDown(owner, played.id(), "Spam")).hasMessageContaining("has a result");
+	}
+
+	/** An event run by Kojo's workspace "Hillview Chapel", made the way a first one is: with its workspace. */
+	private UUID hillview(String name, LocalDate day) {
+		var existing = jdbc.sql("SELECT id FROM organisations WHERE name = 'Hillview Chapel'").query(UUID.class).optional();
+		var input = new EventService.EventInput(name, day, day, "Africa/Accra", "GH", null, List.of(new EventService.GroupInput("Joy Fellowship", null)),
+				null, null, null, null);
+		var made = existing.isPresent() ? events.create(existing.get(), input, player)
+				: events.createWithWorkspace(new EventService.WorkspaceInput("Hillview Chapel", null), input, player);
+		return made.event().id();
+	}
+
+	/** Sam, made support staff by the owner. */
+	private UUID support() {
+		jdbc.sql("INSERT INTO platform_staff (user_id, role) VALUES (:id, 'support') ON CONFLICT DO NOTHING").param("id", support).update();
+		return support;
+	}
+
+	private int recorded(String type) {
+		return jdbc.sql("SELECT count(*) FROM audit_events WHERE event_type = :type").param("type", type).query(Integer.class).single();
 	}
 
 }

@@ -5,6 +5,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.ZoneOffset;
 import java.util.Base64;
+import java.util.Map;
 import java.util.UUID;
 
 import com.playchale.api.auth.internal.domain.Session;
@@ -12,6 +13,7 @@ import com.playchale.api.auth.internal.domain.SessionToken;
 import com.playchale.api.auth.internal.repository.SessionRepository;
 import com.playchale.api.market.Market;
 import com.playchale.api.shared.error.BusinessException;
+import com.playchale.api.shared.events.Happened;
 import com.playchale.api.shared.security.RateLimiter;
 import com.playchale.api.users.api.GuestAccountMerged;
 import com.playchale.api.users.api.GuestHostBecameMember;
@@ -29,6 +31,9 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Making one says whether a number already has an account (it's refused, to sign in instead), so
  * a connection can only make a few: five an hour, twenty a day.
+ *
+ * <p>Starting, and later keeping the games by signing up, go in the event stream, so the admin desk
+ * can say how many hosted without an account and how many of them stayed.
  */
 @Service
 public class GuestHosts {
@@ -49,12 +54,15 @@ public class GuestHosts {
 
 	private final Clock clock;
 
-	GuestHosts(UserDirectory users, SessionRepository sessions, RateLimiter limiter, JdbcClient jdbc, Clock clock) {
+	private final Happened happened;
+
+	GuestHosts(UserDirectory users, SessionRepository sessions, RateLimiter limiter, JdbcClient jdbc, Clock clock, Happened happened) {
 		this.users = users;
 		this.sessions = sessions;
 		this.limiter = limiter;
 		this.jdbc = jdbc;
 		this.clock = clock;
+		this.happened = happened;
 	}
 
 	/** A guest host, signed in on this device: their account, the session's token, and their manage key. */
@@ -83,6 +91,8 @@ public class GuestHosts {
 		var user = users.registerGuestHost(name, e164, market.country(), termsVersion);
 		var token = SessionToken.generate();
 		sessions.save(new Session(token, user.id(), clock.instant(), true));
+		// No actor: the guest isn't committed yet, and the stream writes in a transaction of its own.
+		happened.record("guest-host.started", "user", user.id(), null, Map.of());
 		return new Started(user, token.value(), Session.LIFETIME, newKey(user.id()));
 	}
 
@@ -126,6 +136,7 @@ public class GuestHosts {
 	/** They can sign in now: their sessions are an ordinary account's, and the manage link isn't needed. */
 	@EventListener
 	void on(GuestHostBecameMember e) {
+		happened.record("guest-host.kept", "user", e.userId(), e.userId(), Map.of("how", "signed-up"));
 		sessions.becameMember(e.userId());
 		jdbc.sql("DELETE FROM host_keys WHERE user_id = :user").param("user", e.userId()).update();
 	}
@@ -133,6 +144,7 @@ public class GuestHosts {
 	/** Their games went to the account they had: the guest account's ways in go. */
 	@EventListener
 	void on(GuestAccountMerged e) {
+		happened.record("guest-host.kept", "user", e.into(), e.into(), Map.of("how", "moved-to-account"));
 		sessions.deleteAllOf(e.guestId());
 		jdbc.sql("DELETE FROM host_keys WHERE user_id = :user").param("user", e.guestId()).update();
 	}

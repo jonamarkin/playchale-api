@@ -93,6 +93,16 @@ public final class GameEvents {
 	}
 
 	/**
+	 * PlayChale's staff took the game down (GameModeration). Everyone in it hears why, the host too.
+	 *
+	 * @param peopleIds     the host and every player with an account
+	 * @param venueOwnerId  set when a partner venue's pitch was released
+	 */
+	public record GameTakenDown(GameInfo game, List<UUID> peopleIds, String reason, UUID venueId, UUID venueOwnerId, String pitchName,
+			UUID staffId) {
+	}
+
+	/**
 	 * The host invited players: people they've played with, or a team they're in. Each accepts or
 	 * declines; nobody is put in the game without saying yes.
 	 *

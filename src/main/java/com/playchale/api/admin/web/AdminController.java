@@ -10,6 +10,7 @@ import com.playchale.api.shared.security.CurrentUser;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -89,6 +90,44 @@ class AdminController {
 	@GetMapping("/visits")
 	AdminDesk.Visits visits(CurrentUser me, @RequestParam(defaultValue = "30") int days) {
 		return desk.visits(me.id(), days);
+	}
+
+	/** admin.trends: the overview's numbers period by period, for its chart. */
+	@GetMapping("/trends")
+	AdminDesk.Trends trends(CurrentUser me, @RequestParam(defaultValue = "30") int days) {
+		return desk.trends(me.id(), days);
+	}
+
+	/** admin.funnel: from a visit to doing something, and using PlayChale without an account. */
+	@GetMapping("/funnel")
+	AdminDesk.Funnel funnel(CurrentUser me, @RequestParam(defaultValue = "30") int days) {
+		return desk.funnel(me.id(), days);
+	}
+
+	/** admin.events: upcoming, past or cancelled, found by name or whose they are. */
+	@GetMapping("/events")
+	List<AdminDesk.EventRow> events(CurrentUser me, @RequestParam(defaultValue = "upcoming") String when,
+			@RequestParam(required = false) String query, @RequestParam(defaultValue = "50") int limit) {
+		return desk.events(me.id(), when, query, limit);
+	}
+
+	/** admin.event: who runs it, and how its games are getting on. Looking is recorded. */
+	@GetMapping("/events/{id}")
+	AdminDesk.EventDetail event(CurrentUser me, @PathVariable UUID id) {
+		return desk.event(me.id(), id);
+	}
+
+	/** admin.games: newest made, upcoming, played or called off, found by title, place or host. */
+	@GetMapping("/games")
+	List<AdminDesk.GameRow> games(CurrentUser me, @RequestParam(defaultValue = "new") String when,
+			@RequestParam(required = false) String query, @RequestParam(defaultValue = "50") int limit) {
+		return desk.games(me.id(), when, query, limit);
+	}
+
+	/** admin.takeDownGame: calls a fake or spam game off, telling its host and players why. */
+	@PostMapping("/games/{id}/take-down")
+	void takeDown(CurrentUser me, @PathVariable UUID id, @RequestBody(required = false) Map<String, String> body) {
+		desk.takeDown(me.id(), id, body == null ? null : body.get("why"));
 	}
 
 }
