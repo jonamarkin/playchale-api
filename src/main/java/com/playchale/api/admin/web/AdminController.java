@@ -85,4 +85,10 @@ class AdminController {
 		return desk.health(me.id(), days);
 	}
 
+	/** admin.visits: pages opened and films played on the web app, counted without knowing who. */
+	@GetMapping("/visits")
+	AdminDesk.Visits visits(CurrentUser me, @RequestParam(defaultValue = "30") int days) {
+		return desk.visits(me.id(), days);
+	}
+
 }

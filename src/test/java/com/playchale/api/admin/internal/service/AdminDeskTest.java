@@ -10,6 +10,7 @@ import com.playchale.api.games.internal.domain.GameDetails;
 import com.playchale.api.games.internal.service.GameService;
 import com.playchale.api.games.internal.service.GameTalk;
 import com.playchale.api.shared.TestClock;
+import com.playchale.api.usage.internal.service.UsageCounts;
 import com.playchale.api.users.api.UserDirectory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -61,6 +62,9 @@ class AdminDeskTest {
 	UserDirectory users;
 
 	@Autowired
+	UsageCounts usage;
+
+	@Autowired
 	TestClock clock;
 
 	@Autowired
@@ -76,7 +80,7 @@ class AdminDeskTest {
 	void setUp() {
 		jdbc.sql("""
 				TRUNCATE users, sign_in_codes, sessions, games, game_participants, game_messages, notifications, game_results,
-				audit_events, platform_staff CASCADE
+				audit_events, platform_staff, usage_counts, rate_limits CASCADE
 				""").update();
 		clock.set(NOW);
 		owner = user("+233244555123", "Ama Owner");
@@ -181,6 +185,51 @@ class AdminDeskTest {
 		assertThat(health.gamesPlayed()).isZero();
 		// The host's own spot, and Sam's join — which still happened, though he later left.
 		assertThat(health.joins()).isEqualTo(2);
+		assertThat(health.onboarded()).as("nobody has set up a profile yet").isZero();
+		assertThat(health.eventsCreated()).isZero();
+		assertThat(health.eventResults()).isZero();
+
+		jdbc.sql("UPDATE users SET onboarded = true WHERE id = :id").param("id", player).update();
+		assertThat(desk.health(owner, 30).onboarded()).isOne();
+	}
+
+	@Test
+	void visitsArePagesAndFilmsCountedWithoutKnowingWho() {
+		var browser = "Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36";
+		// A visit from WhatsApp lands on the games-day page and opens Discover; another comes straight in.
+		usage.count("page", "/games-day", "https://web.whatsapp.com/", browser, "10.0.0.1");
+		usage.count("page", "/games", "", browser, "10.0.0.1");
+		usage.count("page", "/games-day", "direct", browser, "10.0.0.2");
+		usage.count("film-start", "gamesday", null, browser, "10.0.0.2");
+		usage.count("film-end", "gamesday", null, browser, "10.0.0.2");
+		// Not counted: a search engine, a headless browser, an address rather than a route, an unknown kind.
+		usage.count("page", "/games-day", "", "Mozilla/5.0 (compatible; Googlebot/2.1)", "10.0.0.3");
+		usage.count("page", "/games-day", "", "Mozilla/5.0 HeadlessChrome/130.0", "10.0.0.3");
+		usage.count("page", "/games/7f3e?phone=0244555123", "", browser, "10.0.0.3");
+		usage.count("click", "/games-day", "", browser, "10.0.0.3");
+
+		var visits = desk.visits(owner, 30);
+		assertThat(visits.opens()).isEqualTo(3);
+		assertThat(visits.arrivals()).isEqualTo(2);
+		assertThat(visits.pages()).first().isEqualTo(new AdminDesk.Page("/games-day", 2, 2));
+		assertThat(visits.sources()).extracting(AdminDesk.Count::name).containsExactlyInAnyOrder("whatsapp.com", "direct");
+		assertThat(visits.films()).containsExactly(new AdminDesk.Film("gamesday", 1, 1));
+		assertThat(visits.days()).singleElement().isEqualTo(new AdminDesk.Day("2026-09-25", 3));
+
+		// Nothing in it says who: the table has no column that could.
+		var columns = jdbc.sql("SELECT column_name FROM information_schema.columns WHERE table_name = 'usage_counts'").query(String.class).list();
+		assertThat(columns).containsExactlyInAnyOrder("day", "kind", "name", "source", "n");
+
+		assertThatThrownBy(() -> desk.visits(player, 30)).hasMessage("Not found.");
+	}
+
+	@Test
+	void oneConnectionCantMakeAPageLookPopular() {
+		var browser = "Mozilla/5.0 (Linux; Android 14) Chrome/130.0 Mobile Safari/537.36";
+		for (int i = 0; i < UsageCounts.PER_CONNECTION_PER_HOUR + 5; i++) {
+			usage.count("page", "/corporate-games", "", browser, "10.0.0.9");
+		}
+		assertThat(desk.visits(owner, 30).opens()).isEqualTo(UsageCounts.PER_CONNECTION_PER_HOUR);
 	}
 
 	@Test

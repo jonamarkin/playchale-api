@@ -85,9 +85,38 @@ public class AdminDesk {
 	public record Message(UUID id, UUID gameId, String gameTitle, UUID saidBy, String saidByName, String body, Instant at) {
 	}
 
-	/** How the app is doing over a window. */
-	public record Health(long signups, long gamesCreated, long gamesPlayed, long gamesCalledOff, long joins, long messages,
-			long activePeople) {
+	/**
+	 * How the app is doing over a window.
+	 *
+	 * @param onboarded    of the signups, those who finished setting up their profile
+	 * @param eventPeople  people put in events (by an organiser, a rep or the link)
+	 * @param eventResults matches and heats with their result put in
+	 */
+	public record Health(long signups, long onboarded, long gamesCreated, long gamesPlayed, long gamesCalledOff, long joins,
+			long messages, long activePeople, long bookings, long eventsCreated, long eventPeople, long eventResults) {
+	}
+
+	/**
+	 * The web app's pages and films over a window (usage_counts): how often, never who.
+	 *
+	 * @param opens    pages opened
+	 * @param arrivals visits: the first page of each, the only one that says where it came from
+	 */
+	public record Visits(long opens, long arrivals, List<Day> days, List<Page> pages, List<Count> sources, List<Film> films) {
+	}
+
+	public record Day(String day, long opens) {
+	}
+
+	/** A page, by its route, with how often it was opened and how often a visit began on it. */
+	public record Page(String name, long opens, long arrivals) {
+	}
+
+	public record Count(String name, long n) {
+	}
+
+	/** A film: how often it started (it plays on its own once in view) and how often it was watched to the end. */
+	public record Film(String name, long started, long finished) {
 	}
 
 	/**
@@ -201,8 +230,46 @@ public class AdminDesk {
 				       (SELECT count(*) FROM game_participants WHERE user_id IS NOT NULL AND joined_at >= :since)
 				       + (SELECT count(*) FROM game_departures WHERE joined_at >= :since)                       AS joins,
 				       (SELECT count(*) FROM game_messages WHERE created_at >= :since)                             AS messages,
-				       (SELECT count(DISTINCT user_id) FROM game_participants WHERE joined_at >= :since)           AS active_people
+				       (SELECT count(DISTINCT user_id) FROM game_participants WHERE joined_at >= :since)           AS active_people,
+				       (SELECT count(*) FROM users WHERE created_at >= :since AND deleted_at IS NULL AND onboarded) AS onboarded,
+				       (SELECT count(*) FROM bookings WHERE created_at >= :since)                                  AS bookings,
+				       (SELECT count(*) FROM events WHERE created_at >= :since)                                    AS events_created,
+				       (SELECT count(*) FROM event_people WHERE created_at >= :since)                              AS event_people,
+				       (SELECT count(*) FROM event_matches WHERE recorded_at >= :since)
+				       + (SELECT count(*) FROM event_heats WHERE recorded_at >= :since)                         AS event_results
 				""").param("since", since).query(Health.class).single();
+	}
+
+	/** The web app's pages and films over the last {@code days}, the busiest first. */
+	@Transactional(readOnly = true)
+	public Visits visits(UUID by, int days) {
+		staff.require(by);
+		var since = clock.instant().minus(Duration.ofDays(Math.clamp(days <= 0 ? 30 : days, 1, 365) - 1L))
+			.atOffset(ZoneOffset.UTC).toLocalDate();
+		var totals = jdbc.sql("""
+				SELECT coalesce(sum(n), 0) AS opens, coalesce(sum(n) FILTER (WHERE source <> ''), 0) AS arrivals
+				FROM usage_counts WHERE kind = 'page' AND day >= :since
+				""").param("since", since).query().singleRow();
+		var perDay = jdbc.sql("""
+				SELECT to_char(day, 'YYYY-MM-DD') AS day, sum(n) AS opens FROM usage_counts
+				WHERE kind = 'page' AND day >= :since GROUP BY day ORDER BY day
+				""").param("since", since).query(Day.class).list();
+		var pages = jdbc.sql("""
+				SELECT name, sum(n) AS opens, coalesce(sum(n) FILTER (WHERE source <> ''), 0) AS arrivals FROM usage_counts
+				WHERE kind = 'page' AND day >= :since GROUP BY name ORDER BY opens DESC, name LIMIT 30
+				""").param("since", since).query(Page.class).list();
+		var sources = jdbc.sql("""
+				SELECT source AS name, sum(n) AS n FROM usage_counts
+				WHERE kind = 'page' AND source <> '' AND day >= :since GROUP BY source ORDER BY n DESC, source LIMIT 20
+				""").param("since", since).query(Count.class).list();
+		var films = jdbc.sql("""
+				SELECT name, coalesce(sum(n) FILTER (WHERE kind = 'film-start'), 0) AS started,
+				       coalesce(sum(n) FILTER (WHERE kind = 'film-end'), 0) AS finished
+				FROM usage_counts WHERE kind IN ('film-start', 'film-end') AND day >= :since
+				GROUP BY name ORDER BY started DESC, name
+				""").param("since", since).query(Film.class).list();
+		return new Visits(((Number) totals.get("opens")).longValue(), ((Number) totals.get("arrivals")).longValue(), perDay, pages,
+				sources, films);
 	}
 
 	/**
