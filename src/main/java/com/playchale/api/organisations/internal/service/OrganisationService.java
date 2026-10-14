@@ -80,6 +80,28 @@ public class OrganisationService implements OrganisationAccess {
 		return get(id, userId);
 	}
 
+	@Override
+	@Transactional
+	public UUID createFor(UUID userId, String name, String country, String colour) {
+		var stem = required(name, 80, "Give the organisation a name.").toLowerCase(Locale.ROOT)
+			.replaceAll("[^a-z0-9]+", "-").replaceAll("^-+|-+$", "");
+		if (stem.length() > 50) {
+			stem = stem.substring(0, 50).replaceAll("-+$", "");
+		}
+		if (stem.isEmpty()) {
+			stem = "workspace";
+		}
+		var slug = stem;
+		for (int n = 2; taken(slug); n++) {
+			slug = stem + "-" + n;
+		}
+		return create(name, slug, country, colour, userId).organisation().id();
+	}
+
+	private boolean taken(String slug) {
+		return jdbc.sql("SELECT count(*) FROM organisations WHERE lower(slug) = lower(:slug)").param("slug", slug).query(Integer.class).single() > 0;
+	}
+
 	@Transactional(readOnly = true)
 	public OrganisationViews.Workspace get(UUID id, UUID userId) {
 		var role = role(id, userId);

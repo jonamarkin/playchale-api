@@ -27,4 +27,9 @@ public record ProfileChanges(String name, String handle, String area, List<Strin
 			String payoutPhone, String email, String avatarSeed) {
 		this(name, handle, area, sports, roles, payoutPhone, email, avatarSeed, null);
 	}
+
+	/** The same changes with a username, for one made for them. */
+	ProfileChanges withHandle(String newHandle) {
+		return new ProfileChanges(name, newHandle, area, sports, roles, payoutPhone, email, avatarSeed, country, areas);
+	}
 }

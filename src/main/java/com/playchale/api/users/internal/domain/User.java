@@ -107,6 +107,15 @@ public class User extends AuditableEntity {
 	/** Their Google account's ID, once they've signed in with Google. */
 	private String googleSub;
 
+	/**
+	 * A guest host: made to host a game without signing up, so it signs in nowhere (its device's
+	 * session and a manage key are its way in). It stops being one the moment it can sign in.
+	 */
+	private boolean guest;
+
+	/** A guest host's number as they typed it (E.164), unchecked: whoever signs in with it gets this account. */
+	private String guestPhone;
+
 	/** The Terms they agreed to ({@link com.playchale.api.users.api.Terms#CURRENT} at the time), and when. */
 	private String termsVersion;
 
@@ -120,6 +129,25 @@ public class User extends AuditableEntity {
 		this.phone = phone;
 		this.country = country;
 		this.tint = tint;
+	}
+
+	/** Someone hosting a game without an account: their name, and the number they gave. They agreed to the Terms. */
+	public static User guestHost(String name, String phone, String country, String tint, String termsVersion, Instant now) {
+		var user = new User(null, country, tint);
+		user.rename(name);
+		user.guest = true;
+		user.guestPhone = phone;
+		user.acceptTerms(termsVersion, now);
+		return user;
+	}
+
+	/**
+	 * A guest host who can sign in now (a phone, email or Google account was just set on them): an
+	 * ordinary account from here, still with their name and games, and not yet set up (no username).
+	 */
+	public void stopBeingGuest() {
+		guest = false;
+		guestPhone = null;
 	}
 
 	/** A brand-new player, on their first sign-in by email. Receipts go to the same address to start with. */
@@ -322,6 +350,7 @@ public class User extends AuditableEntity {
 		phone = null;
 		signInEmail = null;
 		googleSub = null;
+		guestPhone = null;
 		email = null;
 		payoutPhone = null;
 		avatarUrl = null;
@@ -435,6 +464,14 @@ public class User extends AuditableEntity {
 
 	public boolean signsInWithGoogle() {
 		return googleSub != null;
+	}
+
+	public boolean isGuest() {
+		return guest;
+	}
+
+	public String getGuestPhone() {
+		return guestPhone;
 	}
 
 }

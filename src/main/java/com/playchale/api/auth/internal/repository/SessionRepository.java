@@ -18,4 +18,9 @@ public interface SessionRepository extends JpaRepository<Session, String> {
 	@Query("delete from Session s where s.userId = :userId")
 	int deleteAllOf(UUID userId);
 
+	/** A guest host can sign in now: their sessions are an ordinary account's. */
+	@Modifying
+	@Query("update Session s set s.guest = false where s.userId = :userId")
+	int becameMember(UUID userId);
+
 }

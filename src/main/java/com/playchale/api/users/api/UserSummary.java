@@ -19,7 +19,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record UserSummary(UUID id, String phone, String name, String handle, String avatar, String avatarSeed, String tint, String area,
 		List<String> areas, List<String> sports, Map<String, List<String>> roles, Instant createdAt, boolean onboarded, String payoutPhone,
-		String email, String signInEmail, String country, String termsVersion, Boolean google) {
+		String email, String signInEmail, String country, String termsVersion, Boolean google, Boolean guestHost, String guestPhone) {
 
 	/**
 	 * @param area         their main place, the first of {@code areas}
@@ -28,6 +28,9 @@ public record UserSummary(UUID id, String phone, String name, String handle, Str
 	 *                     {"football": ["forward", "midfielder"]}. Keyed in the order of their sports; public.
 	 * @param termsVersion the Terms they agreed to (a date), or null if they haven't yet; private
 	 * @param google       whether they can sign in with Google; private
+	 * @param guestHost    a guest host (hosting without an account): true, else left out; public, so a
+	 *                     game can say its host takes cash and their name has no profile to link to
+	 * @param guestPhone   a guest host's number as they gave it; private
 	 */
 	public UserSummary {
 		areas = areas == null ? List.of() : List.copyOf(areas);
@@ -42,7 +45,8 @@ public record UserSummary(UUID id, String phone, String name, String handle, Str
 	 * the web app only ever shows to the player themselves.
 	 */
 	public UserSummary toPublic() {
-		return new UserSummary(id, "", name, handle, avatar, avatarSeed, tint, area, areas, sports, roles, createdAt, onboarded, null, null, null, country, null, null);
+		return new UserSummary(id, "", name, handle, avatar, avatarSeed, tint, area, areas, sports, roles, createdAt, onboarded, null, null, null, country, null, null,
+				guestHost, null);
 	}
 
 	/** Everything to the player themselves; the public view to anyone else. */

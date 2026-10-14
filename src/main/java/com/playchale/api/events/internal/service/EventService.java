@@ -171,6 +171,25 @@ public class EventService {
 		return reader.detail(id, userId);
 	}
 
+	/** Who's running a first event, for someone with no workspace yet: a church's name, a company's. */
+	public record WorkspaceInput(String name, String colour) {
+	}
+
+	/**
+	 * A first event and the workspace it belongs to, in one go: someone setting up a games day types
+	 * who's running it rather than building a workspace first. One transaction, so an event that's
+	 * refused (a missing name, say) leaves no empty workspace behind, and trying again makes one.
+	 */
+	@Transactional
+	public EventViews.Detail createWithWorkspace(WorkspaceInput workspace, EventInput input, UUID userId) {
+		if (workspace == null || workspace.name() == null || workspace.name().isBlank()) {
+			throw BusinessException.invalid("Say who’s running it: your church, school or company.");
+		}
+		var country = input.country() == null || input.country().isBlank() ? "GH" : input.country();
+		var organisationId = organisations.createFor(userId, workspace.name().strip(), country, workspace.colour());
+		return create(organisationId, input, userId);
+	}
+
 	/** Running an event again: its new name and days, and whether the people's names come too. */
 	public record CopyInput(String name, LocalDate startsOn, LocalDate endsOn, Boolean people) {
 	}
@@ -510,7 +529,7 @@ public class EventService {
 		return reader.detail(eventId, userId);
 	}
 
-	private void moveSingles(UUID personId, String name, UUID groupId) {
+	void moveSingles(UUID personId, String name, UUID groupId) {
 		jdbc.sql("""
 				UPDATE event_entries e SET name = :name, group_id = :group FROM event_entry_people ep, event_games g
 				WHERE ep.entry_id = e.id AND g.id = e.game_id AND ep.person_id = :person AND g.entry_kind = 'single'
@@ -767,7 +786,7 @@ public class EventService {
 			.orElseThrow(() -> BusinessException.notFound("That link doesn’t work any more. Ask the organisers for a new one."));
 	}
 
-	private static String sha256(String text) {
+	static String sha256(String text) {
 		try {
 			return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8)));
 		}
@@ -864,7 +883,7 @@ public class EventService {
 		return reader.detail(eventId, userId);
 	}
 
-	private void setGames(UUID eventId, UUID personId, List<UUID> wanted) {
+	void setGames(UUID eventId, UUID personId, List<UUID> wanted) {
 		var want = new LinkedHashSet<>(wanted);
 		var person = entries.people(eventId, List.of(personId)).getFirst();
 		for (var gameId : reader.gamesOf(personId)) {
@@ -883,13 +902,13 @@ public class EventService {
 		}
 	}
 
-	private UUID byCode(String code) {
+	UUID byCode(String code) {
 		var clean = code == null ? "" : code.strip();
 		return jdbc.sql("SELECT id FROM events WHERE join_code = :code").param("code", clean).query(UUID.class).optional()
 			.orElseThrow(() -> BusinessException.notFound("That link doesn’t work any more. Ask the organisers for a new one."));
 	}
 
-	private List<UUID> groupIds(UUID eventId) {
+	List<UUID> groupIds(UUID eventId) {
 		return jdbc.sql("SELECT id FROM event_groups WHERE event_id = :event").param("event", eventId).query(UUID.class).list();
 	}
 
@@ -1029,7 +1048,7 @@ public class EventService {
 	}
 
 	/** A random code for a link, letters and digits only, so it survives being read out or retyped. */
-	private static String code(int bytes) {
+	static String code(int bytes) {
 		var raw = new byte[bytes];
 		RANDOM.nextBytes(raw);
 		return Base64.getUrlEncoder().withoutPadding().encodeToString(raw).replace('-', 'x').replace('_', 'y');

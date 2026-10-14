@@ -284,13 +284,40 @@ public class AuthService {
 	 */
 	@Transactional(noRollbackFor = BusinessException.class)
 	public SignedIn signIn(String typedPhone, String typedEmail, String code, String country) {
+		return signIn(typedPhone, typedEmail, code, country, null);
+	}
+
+	/**
+	 * As above, on a device that may be hosting as a guest ({@code currentToken}, its session): a
+	 * guest host signing in with a number or email nobody has becomes that account, the same one, so
+	 * their games stay theirs; signing in to an account they already had, the games move there.
+	 */
+	@Transactional(noRollbackFor = BusinessException.class)
+	public SignedIn signIn(String typedPhone, String typedEmail, String code, String country, String currentToken) {
 		var from = recipient(typedPhone, typedEmail);
 		var now = clock.instant();
 		check(from, code, now);
 
-		// The code row stays locked until commit, so two sign-ins at once can't both register them.
-		var user = from.bySms() ? users.registerOrFind(from.address(), from.country())
-				: users.registerOrFindByEmail(from.address(), Market.get(country).country());
+		var guest = guestSession(currentToken);
+		var method = from.bySms() ? "phone" : "email";
+		UserSummary user;
+		if (guest != null) {
+			var existing = users.signsInWith(method, from.address()).filter(id -> !id.equals(guest));
+			if (existing.isPresent()) {
+				// The guest account's sessions go with it (GuestHosts, on GuestAccountMerged).
+				users.mergeGuest(guest, existing.get());
+				user = users.find(existing.get()).orElseThrow();
+			}
+			else {
+				sessions.deleteById(new SessionToken(currentToken).hash());
+				user = users.upgradeGuest(guest, method, from.address(), null);
+			}
+		}
+		else {
+			// The code row stays locked until commit, so two sign-ins at once can't both register them.
+			user = from.bySms() ? users.registerOrFind(from.address(), from.country())
+					: users.registerOrFindByEmail(from.address(), Market.get(country).country());
+		}
 		var token = SessionToken.generate();
 		sessions.save(new Session(token, user.id(), now));
 		verified(user.id(), from);
@@ -330,11 +357,34 @@ public class AuthService {
 	 */
 	@Transactional
 	public SignedIn signInWithGoogle(String credential, String country) {
+		return signInWithGoogle(credential, country, null);
+	}
+
+	/** As above, on a device that may be hosting as a guest: as {@link #signIn(String, String, String, String, String)} does. */
+	@Transactional
+	public SignedIn signInWithGoogle(String credential, String country, String currentToken) {
 		if (!google.enabled()) {
 			throw BusinessException.conflict("Signing in with Google isn’t available yet. Use a code instead.");
 		}
 		var who = googleTokens.verify(credential);
-		var user = users.registerOrFindByGoogle(who.sub(), who.email(), Market.get(country).country());
+		var guest = guestSession(currentToken);
+		UserSummary user;
+		if (guest != null) {
+			var existing = users.signsInWith("google", who.sub())
+				.or(() -> who.email() == null ? Optional.empty() : users.signsInWith("email", who.email().toLowerCase(Locale.ROOT)))
+				.filter(id -> !id.equals(guest));
+			if (existing.isPresent()) {
+				user = users.registerOrFindByGoogle(who.sub(), who.email(), Market.get(country).country());
+				users.mergeGuest(guest, user.id());
+			}
+			else {
+				sessions.deleteById(new SessionToken(currentToken).hash());
+				user = users.upgradeGuest(guest, "google", who.sub(), who.email() == null ? null : who.email().toLowerCase(Locale.ROOT));
+			}
+		}
+		else {
+			user = users.registerOrFindByGoogle(who.sub(), who.email(), Market.get(country).country());
+		}
 		var token = SessionToken.generate();
 		sessions.save(new Session(token, user.id(), clock.instant()));
 		// Google only hands over an email it has verified (GoogleIdTokens checks).
@@ -347,14 +397,32 @@ public class AuthService {
 	/** The player a session token belongs to, while the session is live. Runs on every signed-in request. */
 	@Transactional
 	public Optional<UUID> userIdFor(String token) {
+		return sessionFor(token).map(SessionInfo::userId);
+	}
+
+	/** Whose a live session is, and whether it's a guest host's (who can do only what GuestHostsAllowed marks). */
+	public record SessionInfo(UUID userId, boolean guest) {
+	}
+
+	@Transactional
+	public Optional<SessionInfo> sessionFor(String token) {
 		if (token == null || token.isEmpty()) {
 			return Optional.empty();
 		}
 		var now = clock.instant();
 		return sessions.findByTokenHashAndExpiresAtAfter(new SessionToken(token).hash(), now).map(session -> {
 			session.seen(now);
-			return session.getUserId();
+			return new SessionInfo(session.getUserId(), session.isGuest());
 		});
+	}
+
+	/** The guest host whose live session this is, or null. */
+	private UUID guestSession(String token) {
+		if (token == null || token.isEmpty()) {
+			return null;
+		}
+		return sessions.findByTokenHashAndExpiresAtAfter(new SessionToken(token).hash(), clock.instant())
+			.filter(Session::isGuest).map(Session::getUserId).orElse(null);
 	}
 
 	@Transactional(readOnly = true)

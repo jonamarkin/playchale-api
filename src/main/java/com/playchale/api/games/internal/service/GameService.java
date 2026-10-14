@@ -227,7 +227,18 @@ public class GameService {
 	/** As above. {@code timezone} is where a game at a typed-in place is played, as the host's app sends it (IANA). */
 	@Transactional
 	public GameResponse create(GameDetails details, String timezone, UUID homeTeamId, UUID awayTeamId, UUID host) {
-		var place = new Place(countryOf(host), timezone);
+		return create(details, null, timezone, homeTeamId, awayTeamId, host);
+	}
+
+	/**
+	 * As above, with the country a game at a typed-in place is in, as the form that set it up sends it:
+	 * its prices were typed in that country's money, which needn't be the host's (a form filled in
+	 * before signing up guesses it from the phone). None, or one PlayChale doesn't run in: the host's.
+	 */
+	@Transactional
+	public GameResponse create(GameDetails details, String country, String timezone, UUID homeTeamId, UUID awayTeamId, UUID host) {
+		guestHostRules(details, homeTeamId != null || awayTeamId != null, host);
+		var place = new Place(placeCountry(country, host), timezone);
 		if (homeTeamId == null && awayTeamId == null) {
 			return views.of(createGame(details, place, host), host);
 		}
@@ -367,6 +378,9 @@ public class GameService {
 	@Transactional
 	public GameResponse change(UUID gameId, Change change, UUID host) {
 		var game = hosted(gameId, host);
+		if ("public".equals(change.visibility()) && users.isGuest(host)) {
+			throw BusinessException.invalid("Without an account, a game is invite only. Sign up to list it in Discover.");
+		}
 		var now = clock.instant();
 		var fromStart = game.getStartsAt();
 		var fromMinutes = game.getDurationMinutes();
@@ -664,8 +678,29 @@ public class GameService {
 	 * A repeating game's first game (GameSeriesService): an ordinary one, where the host's app says it is.
 	 * Not a friendly: a team game doesn't repeat on its own.
 	 */
-	Game createFirstOfSeries(GameDetails details, String timezone, UUID host) {
-		return createGame(details, new Place(countryOf(host), timezone), host, null);
+	Game createFirstOfSeries(GameDetails details, String country, String timezone, UUID host) {
+		guestHostRules(details, false, host);
+		return createGame(details, new Place(placeCountry(country, host), timezone), host, null);
+	}
+
+	/**
+	 * What a guest host (hosting without an account) can't do: list a game in Discover (only an
+	 * account can, so made-up games stay out of it), book a partner venue's pitch (a real slot, with
+	 * nobody checked behind it), or play a team against another.
+	 */
+	private void guestHostRules(GameDetails details, boolean friendly, UUID host) {
+		if (!users.isGuest(host)) {
+			return;
+		}
+		if (!"private".equals(details.visibility())) {
+			throw BusinessException.invalid("Without an account, a game is invite only. Sign up to list it in Discover.");
+		}
+		if (Game.LISTED.equals(details.venueKind())) {
+			throw BusinessException.invalid("Booking a partner venue’s pitch needs an account. Sign up, or type where you’re playing.");
+		}
+		if (friendly) {
+			throw BusinessException.invalid("A team game needs an account. Sign up to set one up.");
+		}
 	}
 
 	/** A repeating game's next game (GameSeriesService): created as any other, belonging to it. */
@@ -828,6 +863,11 @@ public class GameService {
 	/** The host's country: where a game at a typed-in place is, unless it says otherwise. */
 	private String countryOf(UUID userId) {
 		return users.find(userId).map(UserSummary::country).filter(Market::exists).orElse(Market.DEFAULT);
+	}
+
+	/** Where a game at a typed-in place is: the country its form said, else the host's. */
+	private String placeCountry(String country, UUID host) {
+		return country != null && Market.exists(country) ? country : countryOf(host);
 	}
 
 	/**

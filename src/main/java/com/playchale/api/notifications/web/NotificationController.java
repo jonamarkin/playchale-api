@@ -5,6 +5,7 @@ import java.util.List;
 import com.playchale.api.notifications.internal.service.NotificationResponse;
 import com.playchale.api.notifications.internal.service.NotificationService;
 import com.playchale.api.shared.security.CurrentUser;
+import com.playchale.api.shared.security.GuestHostsAllowed;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -22,12 +23,14 @@ class NotificationController {
 
 	/** notifications.list */
 	@GetMapping("/notifications")
+	@GuestHostsAllowed
 	List<NotificationResponse> list(CurrentUser me) {
 		return notifications.list(me.id());
 	}
 
 	/** notifications.markAllRead */
 	@PostMapping("/notifications/read-all")
+	@GuestHostsAllowed
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	void markAllRead(CurrentUser me) {
 		notifications.markAllRead(me.id());

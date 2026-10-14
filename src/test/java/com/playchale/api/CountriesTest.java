@@ -109,6 +109,17 @@ class CountriesTest {
 	}
 
 	@Test
+	void aGameSetUpBeforeSigningUpKeepsTheMoneyItsFormWasIn() {
+		// The form was filled in signed out, priced in cedis from the phone's guess; the host's account is in Britain.
+		var game = games.create(hackney(5_000), "GH", "Africa/Accra", null, null, chidi);
+		assertThat(game.country()).isEqualTo("GH");
+		assertThat(game.currency()).isEqualTo("GHS");
+		// A country PlayChale doesn't run in, or none: the host's.
+		assertThat(games.create(hackney(5_000), "ZZ", "Europe/London", null, null, chidi).currency()).isEqualTo("GBP");
+		assertThat(games.create(hackney(5_000), null, "Europe/London", null, null, chidi).currency()).isEqualTo("GBP");
+	}
+
+	@Test
 	void aGameAnywhereIsInItsCountrysMoneyAndLocalTime() {
 		assertThatThrownBy(() -> games.create(hackney(5_000), "Mars/Olympus", null, null, chidi)).hasMessage("Pick a time zone from the list.");
 

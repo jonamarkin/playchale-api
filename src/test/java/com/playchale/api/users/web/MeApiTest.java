@@ -97,6 +97,41 @@ class MeApiTest {
 	}
 
 	@Test
+	void signingUpWithJustANameGetsAUsernameMadeFromIt() throws Exception {
+		var kwame = TestSignIn.as(mvc, "024 455 5123");
+		mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON)
+			.content("{\"name\":\"Kwame Asante\",\"termsVersion\":\"%s\"}".formatted(Terms.CURRENT)))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.onboarded").value(true))
+			.andExpect(jsonPath("$.handle").value("kwame_asante"));
+
+		// Another Kwame Asante: the same, with four digits.
+		var another = TestSignIn.as(mvc, "024 455 5124");
+		var second = onboard(another, "Kwame Asante");
+		assertThat(second).matches("kwame_asante_\\d{4}");
+
+		// Ghanaian letters are spelled out; a name with no Latin letters, or one passing for PlayChale, gets a plain one.
+		assertThat(onboard(TestSignIn.as(mvc, "024 455 5125"), "Adwoa Ɔforiwaa")).isEqualTo("adwoa_oforiwaa");
+		assertThat(onboard(TestSignIn.as(mvc, "024 455 5126"), "张伟")).matches("player_\\d{4}");
+		assertThat(onboard(TestSignIn.as(mvc, "024 455 5127"), "Admin")).matches("player_\\d{4}");
+
+		// A username they choose is still theirs to choose.
+		assertThat(onboard(TestSignIn.as(mvc, "024 455 5128"), "Esi", "esi_plays")).isEqualTo("esi_plays");
+	}
+
+	private String onboard(Cookie who, String name) throws Exception {
+		return onboard(who, name, null);
+	}
+
+	private String onboard(Cookie who, String name, String handle) throws Exception {
+		var body = handle == null ? "{\"name\":\"%s\",\"termsVersion\":\"%s\"}".formatted(name, Terms.CURRENT)
+				: "{\"name\":\"%s\",\"handle\":\"%s\",\"termsVersion\":\"%s\"}".formatted(name, handle, Terms.CURRENT);
+		var answer = mvc.perform(post("/me/onboarding").cookie(who).contentType(MediaType.APPLICATION_JSON).content(body))
+			.andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+		return answer.replaceAll(".*\"handle\":\"([^\"]+)\".*", "$1");
+	}
+
+	@Test
 	void aShuffledFaceIsSavedAndPublic() throws Exception {
 		var kwame = TestSignIn.as(mvc, "024 455 5123");
 		mvc.perform(post("/me/onboarding").cookie(kwame).contentType(MediaType.APPLICATION_JSON)

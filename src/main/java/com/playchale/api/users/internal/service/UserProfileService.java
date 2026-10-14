@@ -31,11 +31,14 @@ public class UserProfileService {
 
 	private final Clock clock;
 
-	UserProfileService(UserRepository users, List<AccountHolds> holds, ApplicationEventPublisher events, Clock clock) {
+	private final Handles handles;
+
+	UserProfileService(UserRepository users, List<AccountHolds> holds, ApplicationEventPublisher events, Clock clock, Handles handles) {
 		this.users = users;
 		this.holds = holds;
 		this.events = events;
 		this.clock = clock;
+		this.handles = handles;
 	}
 
 	/**
@@ -65,10 +68,16 @@ public class UserProfileService {
 		return save(user);
 	}
 
-	/** profiles.completeOnboarding: the same changes, agreeing to the Terms, and then they're in. */
+	/**
+	 * profiles.completeOnboarding: the same changes, agreeing to the Terms, and then they're in. Signing
+	 * up asks only for a name, so with no username given (and none yet) one is made from the name.
+	 */
 	@Transactional
 	public UserSummary completeOnboarding(UUID userId, ProfileChanges changes, String termsVersion) {
 		var user = load(userId);
+		if ((changes.handle() == null || changes.handle().isBlank()) && user.getHandle().isBlank()) {
+			changes = changes.withHandle(handles.forName(changes.name() != null ? changes.name() : user.getName(), userId));
+		}
 		apply(user, changes);
 		user.finishOnboarding();
 		user.acceptTerms(currentTerms(termsVersion), clock.instant());

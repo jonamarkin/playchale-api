@@ -90,6 +90,10 @@ public class PaymentService implements InitializingBean {
 		}
 		var provider = providers.getObject();
 		var share = games.shareDue(gameId, me);
+		// A host without an account has nowhere for money to go: their players pay them in cash.
+		if (users.isGuest(share.hostId())) {
+			throw BusinessException.conflict("This host hasn’t got an account, so they take cash: pay them at the game.");
+		}
 		// Paystack here takes cedis: a game anywhere else is paid to its host directly.
 		if (!IN_APP_CURRENCY.equals(share.currency())) {
 			throw BusinessException.conflict("Paying in the app isn’t available in this country yet. Pay the host directly, and they’ll mark you as paid.");

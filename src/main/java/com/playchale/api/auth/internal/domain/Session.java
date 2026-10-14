@@ -37,6 +37,9 @@ public class Session implements Persistable<String> {
 
 	private Instant lastSeenAt;
 
+	/** A guest host's session: it can do only what a guest host can (GuestHostsAllowed). */
+	private boolean guest;
+
 	/**
 	 * The ID is set by us, not generated, so Spring Data can't tell a new session from a stored one
 	 * by looking for a null ID. Without this flag save() would SELECT before every INSERT.
@@ -49,11 +52,21 @@ public class Session implements Persistable<String> {
 
 	/** A new session for a player who just proved they hold their phone. */
 	public Session(SessionToken token, UUID userId, Instant now) {
+		this(token, userId, now, false);
+	}
+
+	/** A new session; {@code guest} for a guest host's, on the device they host from. */
+	public Session(SessionToken token, UUID userId, Instant now, boolean guest) {
 		this.tokenHash = token.hash();
 		this.userId = userId;
 		this.createdAt = now;
 		this.expiresAt = now.plus(LIFETIME);
 		this.lastSeenAt = now;
+		this.guest = guest;
+	}
+
+	public boolean isGuest() {
+		return guest;
 	}
 
 	/** Notes that the device was used, which lets old sessions be tidied up later. */

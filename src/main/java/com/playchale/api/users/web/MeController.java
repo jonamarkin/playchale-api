@@ -3,6 +3,7 @@ package com.playchale.api.users.web;
 import java.util.Optional;
 
 import com.playchale.api.shared.security.CurrentUser;
+import com.playchale.api.shared.security.GuestHostsAllowed;
 import com.playchale.api.users.api.UserSummary;
 import com.playchale.api.users.internal.service.UserProfileService;
 import com.playchale.api.users.web.dto.HandleAvailability;
@@ -51,6 +52,7 @@ class MeController {
 
 	/** profiles.deleteAccount → 204. The web app then signs out. */
 	@DeleteMapping("/me")
+	@GuestHostsAllowed
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	void deleteAccount(CurrentUser me) {
 		profiles.deleteAccount(me.id());

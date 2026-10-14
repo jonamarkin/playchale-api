@@ -128,6 +128,31 @@ class EventsApiTest {
 	}
 
 	@Test
+	void aFirstEventIsSetUpWithItsWorkspaceInOneGo() throws Exception {
+		// Someone with no workspace types who's running it; the workspace and its address are made for them.
+		var event = ok(send(post("/events"), outsider, """
+				{"workspace":{"name":"Hillview Chapel"},"event":{"name":"Youth Games Day","startsOn":"2030-07-04","country":"GH"}}
+				"""), 201);
+		assertThat(event.at("/viewer/role").asString()).isEqualTo("admin");
+		assertThat(event.at("/organisation/name").asString()).isEqualTo("Hillview Chapel");
+		var slug = jdbc.sql("SELECT slug FROM organisations WHERE id = :id").param("id", java.util.UUID.fromString(event.at("/event/organisationId").asString()))
+			.query(String.class).single();
+		// The setUp's workspace already has "hillview-chapel".
+		assertThat(slug).isEqualTo("hillview-chapel-2");
+		var role = jdbc.sql("SELECT role FROM organisation_memberships WHERE organisation_id = :id")
+			.param("id", java.util.UUID.fromString(event.at("/event/organisationId").asString())).query(String.class).single();
+		assertThat(role).isEqualTo("owner");
+
+		// Refused: no empty workspace is left behind.
+		var before = jdbc.sql("SELECT count(*) FROM organisations").query(Integer.class).single();
+		send(post("/events"), outsider, "{\"workspace\":{\"name\":\"St Mary’s\"},\"event\":{\"name\":\"\",\"startsOn\":\"2030-07-04\"}}")
+			.andExpect(status().isUnprocessableEntity());
+		send(post("/events"), outsider, "{\"workspace\":{\"name\":\" \"},\"event\":{\"name\":\"Sports day\",\"startsOn\":\"2030-07-04\"}}")
+			.andExpect(status().isUnprocessableEntity());
+		assertThat(jdbc.sql("SELECT count(*) FROM organisations").query(Integer.class).single()).isEqualTo(before);
+	}
+
+	@Test
 	void namesAreTypedInOrPastedWithTheirGroups() throws Exception {
 		var event = ok(send(post("/events/" + eventId + "/people"), admin, """
 				{"people":[{"name":"Kofi Mensah","groupId":"%s"},{"name":"  Esi   Boateng ","groupId":"%s"},{"name":"Kofi Mensah"},

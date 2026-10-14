@@ -18,5 +18,12 @@ public interface OrganisationAccess {
 
 	/** Their seat in the workspace (owner, admin or official), or empty if they have none. */
 	Optional<String> roleOf(UUID organisationId, UUID userId);
+
+	/**
+	 * A new workspace that {@code userId} owns, its address made from the name (and numbered when
+	 * taken): for someone setting up their first event, who never needs to see the address. The
+	 * caller's transaction holds it, so an event that then fails leaves no empty workspace behind.
+	 */
+	UUID createFor(UUID userId, String name, String country, String colour);
 }
 

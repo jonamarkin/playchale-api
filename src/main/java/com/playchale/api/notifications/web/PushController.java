@@ -5,6 +5,7 @@ import java.util.List;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.playchale.api.notifications.internal.service.PushService;
 import com.playchale.api.shared.security.CurrentUser;
+import com.playchale.api.shared.security.GuestHostsAllowed;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -44,12 +45,14 @@ class PushController {
 
 	/** push.settings */
 	@GetMapping("/me/push")
+	@GuestHostsAllowed
 	PushService.Settings settings(CurrentUser me) {
 		return push.settings(me.id());
 	}
 
 	/** push.subscribe */
 	@PostMapping("/me/push/subscriptions")
+	@GuestHostsAllowed
 	PushService.Settings subscribe(CurrentUser me, @RequestBody Subscription request) {
 		var keys = request.keys() == null ? new Subscription.Keys(null, null) : request.keys();
 		return push.subscribe(me.id(), request.endpoint(), keys.p256dh(), keys.auth());
@@ -57,12 +60,14 @@ class PushController {
 
 	/** push.unsubscribe */
 	@PostMapping("/me/push/unsubscriptions")
+	@GuestHostsAllowed
 	PushService.Settings unsubscribe(CurrentUser me, @RequestBody Endpoint request) {
 		return push.unsubscribe(me.id(), request.endpoint());
 	}
 
 	/** push.mute */
 	@PatchMapping("/me/push")
+	@GuestHostsAllowed
 	PushService.Settings mute(CurrentUser me, @RequestBody Muted request) {
 		return push.mute(me.id(), request.muted());
 	}

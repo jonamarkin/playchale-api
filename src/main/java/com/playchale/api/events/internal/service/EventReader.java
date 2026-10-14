@@ -128,7 +128,7 @@ class EventReader {
 		var groups = groups(eventId);
 		var linked = new HashSet<UUID>();
 		var people = jdbc.sql("""
-				SELECT id, display_name, group_id, user_id, source, fee_paid_via, fee_paid_at FROM event_people
+				SELECT id, display_name, group_id, user_id, source, fee_paid_via, fee_paid_at, guest_phone FROM event_people
 				WHERE event_id = :event ORDER BY lower(display_name), created_at
 				""").param("event", eventId).query((rs, n) -> {
 				var userId = (UUID) rs.getObject("user_id");
@@ -137,7 +137,8 @@ class EventReader {
 				}
 				var paidAt = rs.getObject("fee_paid_at", java.time.OffsetDateTime.class);
 				return new EventViews.Person((UUID) rs.getObject("id"), rs.getString("display_name"), (UUID) rs.getObject("group_id"),
-						userId, null, rs.getString("source"), rs.getString("fee_paid_via"), paidAt == null ? null : paidAt.toInstant());
+						userId, null, rs.getString("source"), rs.getString("fee_paid_via"), paidAt == null ? null : paidAt.toInstant(),
+						rs.getString("guest_phone"));
 			}).list();
 
 		var coordinatorRows = jdbc.sql("""
@@ -148,7 +149,7 @@ class EventReader {
 		var accounts = users.findAll(linked);
 		people = people.stream().map(p -> p.userId() == null || !accounts.containsKey(p.userId()) ? p
 				: new EventViews.Person(p.id(), p.name(), p.groupId(), p.userId(), accounts.get(p.userId()).avatar(), p.source(), p.feePaidVia(),
-						p.feePaidAt())).toList();
+						p.feePaidAt(), p.guestPhone())).toList();
 
 		var coordinators = new HashMap<UUID, List<EventViews.Coordinator>>();
 		var mine = new ArrayList<UUID>();
@@ -214,7 +215,7 @@ class EventReader {
 		var ownPerson = viewer == null ? null : viewer.personId();
 		var shownPeople = role == null ? List.<EventViews.Person>of()
 				: admin ? people
-						: people.stream().map(p -> p.id().equals(ownPerson) || represents.contains(p.groupId()) ? p : p.withoutFee()).toList();
+						: people.stream().map(p -> (p.id().equals(ownPerson) || represents.contains(p.groupId()) ? p : p.withoutFee()).withoutPhone()).toList();
 		// A group's fee and reps are the admins' and its own reps' business.
 		var fullGroups = admin || !represents.isEmpty() ? groupsInFull(eventId) : List.<EventViews.Group>of();
 		var shownGroups = admin ? fullGroups
@@ -408,7 +409,18 @@ class EventReader {
 			mine = new EventViews.Mine(personId, groupId, gamesOf(personId));
 		}
 		return new EventViews.JoinPreview(info.id(), info.name(), brand(row), info.startsOn(), info.endsOn(), info.venue(), info.status(),
-				info.registrationOpen(), groups(eventId), games, mine);
+				info.registrationOpen(), groups(eventId), games, mine, info.country());
+	}
+
+	/** A guest's place, by their person: the event as its link shows it, with their games. */
+	EventViews.GuestPlace guestPlace(UUID eventId, UUID personId) {
+		var row = jdbc.sql("SELECT display_name, group_id FROM event_people WHERE id = :id").param("id", personId)
+			.query((rs, n) -> new Object[] { rs.getString(1), rs.getObject(2) }).single();
+		var preview = preview(eventId, null);
+		var mine = new EventViews.Mine(personId, (UUID) row[1], gamesOf(personId));
+		var event = new EventViews.JoinPreview(preview.id(), preview.name(), preview.organisation(), preview.startsOn(), preview.endsOn(),
+				preview.venue(), preview.status(), preview.registrationOpen(), preview.groups(), preview.games(), mine, preview.country());
+		return new EventViews.GuestPlace(event, (String) row[0], info(eventId).publicPath());
 	}
 
 	/** The games someone is in, or has asked to be in. */

@@ -75,7 +75,8 @@ public class Leaderboard {
 		for (int i = 0; i < rows.size(); i++) {
 			var row = rows.get(i);
 			var player = people.get(row.userId());
-			if (player == null) {
+			// A guest host has no profile to rank: their games count once they sign up.
+			if (player == null || Boolean.TRUE.equals(player.guestHost())) {
 				continue;
 			}
 			var score = scoreOf(row, measure);

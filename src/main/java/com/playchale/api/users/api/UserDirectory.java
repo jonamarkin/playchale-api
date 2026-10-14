@@ -43,4 +43,28 @@ public interface UserDirectory {
 	/** Stops a player signing in with their phone or email. They must have the other. */
 	UserSummary removeSignInMethod(UUID userId, String method);
 
+	/**
+	 * Someone hosting a game without an account: a guest host, under their name and the number they
+	 * gave (E.164, unchecked), who agreed to the Terms ({@code termsVersion}, the current ones).
+	 * Refused if the number has an account (they sign in with it instead), or is already hosting as a
+	 * guest on another phone.
+	 */
+	UserSummary registerGuestHost(String name, String phone, String country, String termsVersion);
+
+	/** Whether this is a guest host, who hosts invite-only games and nothing else until they sign up. */
+	boolean isGuest(UUID id);
+
+	/**
+	 * A guest host signing in on the device they host from, with a phone ("phone"), email ("email")
+	 * or Google account ("google", its sub, with its verified {@code email}) that has no account: the
+	 * same account, theirs to sign in with now (GuestHostBecameMember).
+	 */
+	UserSummary upgradeGuest(UUID guestId, String method, String address, String email);
+
+	/**
+	 * A guest host signing in to an account they already had: what the guest account holds moves to
+	 * {@code into} (GuestAccountMerged), and the guest account is retired.
+	 */
+	void mergeGuest(UUID guestId, UUID into);
+
 }

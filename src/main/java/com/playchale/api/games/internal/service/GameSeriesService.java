@@ -73,7 +73,13 @@ public class GameSeriesService {
 	/** games.create with "repeats": the first game, and the series that carries it on. */
 	@Transactional
 	public GameResponse start(GameDetails details, String timezone, String frequency, Integer weekOfMonth, UUID host) {
-		var first = gameService.createFirstOfSeries(details, timezone, host);
+		return start(details, null, timezone, frequency, weekOfMonth, host);
+	}
+
+	/** As above, with the country a game at a typed-in place is in (see GameService.create). */
+	@Transactional
+	public GameResponse start(GameDetails details, String country, String timezone, String frequency, Integer weekOfMonth, UUID host) {
+		var first = gameService.createFirstOfSeries(details, country, timezone, host);
 		begin(first, frequency, weekOfMonth);
 		return views.of(first, host);
 	}

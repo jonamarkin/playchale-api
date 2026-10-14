@@ -560,9 +560,8 @@ public class Game extends AuditableEntity {
 	 * the host's to fill) and never a team's: a friendly is played by its two squads.
 	 */
 	public Participant joinAsGuest(String name, String phone, String email, String claimHash, Instant now) {
-		if (!isPublic()) {
-			throw BusinessException.conflict("This game is private. Ask the host to add you.");
-		}
+		// An invite-only game too: invite only means anyone with its link, and a guest host's friends
+		// (it can only host invite-only games) join this way.
 		if (isFriendly()) {
 			throw BusinessException.conflict("This game is between two teams. Ask a captain to add you.");
 		}

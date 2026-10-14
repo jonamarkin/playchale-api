@@ -33,6 +33,7 @@ import com.playchale.api.games.web.dto.GameChangeRequest;
 import com.playchale.api.games.web.dto.NewGameRequest;
 import com.playchale.api.games.web.dto.ResultRequest;
 import com.playchale.api.shared.security.CurrentUser;
+import com.playchale.api.shared.security.GuestHostsAllowed;
 import jakarta.validation.Valid;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -88,12 +89,14 @@ class GameController {
 
 	/** games.update: the host changes a game still to come. */
 	@PatchMapping("/games/{id}")
+	@GuestHostsAllowed
 	GameResponse update(@PathVariable UUID id, @Valid @RequestBody GameChangeRequest request, CurrentUser me) {
 		return games.change(id, request.toChange(), me.id());
 	}
 
 	/** games.mine */
 	@GetMapping("/me/games")
+	@GuestHostsAllowed
 	List<GameResponse> mine(CurrentUser me) {
 		return games.mine(me.id());
 	}
@@ -106,26 +109,31 @@ class GameController {
 
 	/** games.get: 404 when it doesn't exist, which the web app reads as null. */
 	@GetMapping("/games/{id}")
+	@GuestHostsAllowed
 	GameResponse get(@PathVariable UUID id, Optional<CurrentUser> me) {
 		return games.get(id, me.map(CurrentUser::id).orElse(null));
 	}
 
 	/** games.create */
 	@PostMapping("/games")
+	@GuestHostsAllowed
 	@ResponseStatus(HttpStatus.CREATED)
 	GameResponse create(CurrentUser me, @Valid @RequestBody NewGameRequest request) {
 		var repeats = request.repeats();
 		if (repeats == null || repeats.frequency() == null) {
-			return games.create(request.toDetails(clock.instant()), request.timezone(), request.homeTeamId(), request.awayTeamId(), me.id());
+			return games.create(request.toDetails(clock.instant()), request.country(), request.timezone(), request.homeTeamId(), request.awayTeamId(),
+					me.id());
 		}
 		if (request.homeTeamId() != null || request.awayTeamId() != null) {
 			throw BusinessException.invalid("A team game can’t repeat on its own. Set it up once, then use “Same again next week”.");
 		}
-		return series.start(request.toDetails(clock.instant()), request.timezone(), repeats.frequency(), repeats.weekOfMonth(), me.id());
+		return series.start(request.toDetails(clock.instant()), request.country(), request.timezone(), repeats.frequency(), repeats.weekOfMonth(),
+				me.id());
 	}
 
 	/** games.repeat */
 	@PostMapping("/games/{id}/repeat")
+	@GuestHostsAllowed
 	@ResponseStatus(HttpStatus.CREATED)
 	GameResponse repeat(CurrentUser me, @PathVariable UUID id) {
 		return games.repeat(id, me.id());
@@ -145,12 +153,14 @@ class GameController {
 
 	/** games.removePlayer: a player's ID, or "guest:<token>" for a held spot. */
 	@DeleteMapping("/games/{id}/players/{player}")
+	@GuestHostsAllowed
 	GameResponse removePlayer(CurrentUser me, @PathVariable UUID id, @PathVariable String player) {
 		return games.removePlayer(id, player, me.id());
 	}
 
 	/** games.cancel */
 	@PostMapping("/games/{id}/cancellation")
+	@GuestHostsAllowed
 	GameResponse cancel(CurrentUser me, @PathVariable UUID id, @RequestBody(required = false) CancelRequest request) {
 		return games.cancel(id, request == null ? null : request.reason(), me.id());
 	}
@@ -184,6 +194,7 @@ class GameController {
 
 	/** games.addGuest */
 	@PostMapping("/games/{id}/guests")
+	@GuestHostsAllowed
 	@ResponseStatus(HttpStatus.CREATED)
 	GuestResponse addGuest(CurrentUser me, @PathVariable UUID id, @RequestBody GuestRequest request) {
 		var added = games.addGuest(id, request.name(), request.phone(), me.id());
@@ -219,12 +230,14 @@ class GameController {
 
 	/** games.remind */
 	@PostMapping("/games/{id}/reminders")
+	@GuestHostsAllowed
 	RemindResponse remind(CurrentUser me, @PathVariable UUID id, @RequestBody(required = false) RemindRequest request) {
 		return new RemindResponse(games.remind(id, request == null ? null : request.userIds(), me.id()));
 	}
 
 	/** games.recordResult: recording again corrects it. */
 	@PutMapping("/games/{id}/result")
+	@GuestHostsAllowed
 	GameResponse recordResult(CurrentUser me, @PathVariable UUID id, @Valid @RequestBody ResultRequest request) {
 		return results.record(id, request.toInput(), me.id());
 	}
@@ -243,30 +256,35 @@ class GameController {
 
 	/** games.markPaidCash */
 	@PostMapping("/games/{id}/players/{player}/cash")
+	@GuestHostsAllowed
 	GameResponse markPaidCash(CurrentUser me, @PathVariable UUID id, @PathVariable String player) {
 		return games.markPaidCash(id, player, me.id());
 	}
 
 	/** games.messages */
 	@GetMapping("/games/{id}/messages")
+	@GuestHostsAllowed
 	List<GameMessageResponse> messages(CurrentUser me, @PathVariable UUID id) {
 		return talk.list(id, me.id());
 	}
 
 	/** games.say */
 	@PostMapping("/games/{id}/messages")
+	@GuestHostsAllowed
 	List<GameMessageResponse> say(CurrentUser me, @PathVariable UUID id, @RequestBody SayRequest request) {
 		return talk.say(id, request.body(), me.id());
 	}
 
 	/** games.removeMessage */
 	@DeleteMapping("/games/{id}/messages/{messageId}")
+	@GuestHostsAllowed
 	List<GameMessageResponse> removeMessage(CurrentUser me, @PathVariable UUID id, @PathVariable UUID messageId) {
 		return talk.remove(id, messageId, me.id());
 	}
 
 	/** games.markAttendance */
 	@PostMapping("/games/{id}/players/{player}/attendance")
+	@GuestHostsAllowed
 	GameResponse markAttendance(CurrentUser me, @PathVariable UUID id, @PathVariable String player,
 			@RequestBody AttendanceRequest request) {
 		return games.markAttendance(id, player, request.showedUp(), me.id());

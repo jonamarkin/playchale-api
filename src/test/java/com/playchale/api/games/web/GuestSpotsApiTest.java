@@ -94,9 +94,10 @@ class GuestSpotsApiTest {
 	}
 
 	@Test
-	void aPrivateGameIsTheHostsToFill() throws Exception {
+	void anInviteOnlyGameTakesGuestsWithItsLink() throws Exception {
+		// Invite only means anyone with the link: not in Discover, but open to whoever was sent it.
 		var id = game("2030-06-02T16:00:00Z", 0, "private");
-		guestJoins(id, KOFI).andExpect(status().isConflict()).andExpect(jsonPath("$.error.message").value("This game is private. Ask the host to add you."));
+		guestJoins(id, KOFI).andExpect(status().isCreated());
 	}
 
 	@Test

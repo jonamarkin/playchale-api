@@ -88,11 +88,17 @@ public final class EventViews {
 
 	/** Someone taking part. {@code userId} only when they joined with their own account. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
-	public record Person(UUID id, String name, UUID groupId, UUID userId, String avatar, String source, String feePaidVia, Instant feePaidAt) {
+	public record Person(UUID id, String name, UUID groupId, UUID userId, String avatar, String source, String feePaidVia, Instant feePaidAt,
+			String guestPhone) {
 
 		/** The same person, without whether they've paid: for anyone but an admin, or the person themselves. */
 		Person withoutFee() {
-			return new Person(id, name, groupId, userId, avatar, source, null, null);
+			return new Person(id, name, groupId, userId, avatar, source, null, null, guestPhone);
+		}
+
+		/** The same person, without a guest's number: that's for the organisers only. */
+		Person withoutPhone() {
+			return new Person(id, name, groupId, userId, avatar, source, feePaidVia, feePaidAt, null);
 		}
 	}
 
@@ -257,7 +263,19 @@ public final class EventViews {
 	/** The event behind a join link, before joining. */
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record JoinPreview(UUID id, String name, Brand organisation, LocalDate startsOn, LocalDate endsOn, Venue venue, String status,
-			boolean registrationOpen, List<Group> groups, List<JoinGame> games, Mine mine) {
+			boolean registrationOpen, List<Group> groups, List<JoinGame> games, Mine mine, String country) {
+	}
+
+	/**
+	 * A guest's own place in an event, on the phone that signed up: the event as its join link shows
+	 * it, with their name, group and games in {@code event.mine}, and its public page if it has one.
+	 */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record GuestPlace(JoinPreview event, String name, String publicPath) {
+	}
+
+	/** A guest sign-up, as made: the token their phone keeps (given only now), and their place. */
+	public record GuestJoined(String token, UUID personId) {
 	}
 
 }

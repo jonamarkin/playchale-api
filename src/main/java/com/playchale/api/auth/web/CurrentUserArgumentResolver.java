@@ -7,6 +7,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import com.playchale.api.shared.security.CurrentUser;
+import com.playchale.api.shared.security.GuestHostsAllowed;
 import com.playchale.api.shared.security.RateLimiter;
 import com.playchale.api.auth.internal.service.AuthService;
 import com.playchale.api.shared.error.BusinessException;
@@ -68,19 +69,29 @@ class CurrentUserArgumentResolver implements HandlerMethodArgumentResolver, WebM
 			WebDataBinderFactory binderFactory) {
 		var request = webRequest.getNativeRequest(HttpServletRequest.class);
 		@SuppressWarnings("unchecked")
-		var me = (Optional<CurrentUser>) request.getAttribute(ATTRIBUTE);
-		if (me == null) {
+		var session = (Optional<AuthService.SessionInfo>) request.getAttribute(ATTRIBUTE);
+		if (session == null) {
 			var cookie = WebUtils.getCookie(request, SessionCookies.NAME);
-			me = auth.userIdFor(cookie == null ? null : cookie.getValue()).map(CurrentUser::new);
-			request.setAttribute(ATTRIBUTE, me);
-			if (me.isPresent() && !READS.contains(request.getMethod())) {
-				withinLimits(me.get().id());
+			session = auth.sessionFor(cookie == null ? null : cookie.getValue());
+			request.setAttribute(ATTRIBUTE, session);
+			if (session.isPresent() && !READS.contains(request.getMethod())) {
+				withinLimits(session.get().userId());
 			}
 		}
+		// A guest host (hosting without an account) gets only what's marked for them: anywhere else
+		// they're someone signed out, or asked to sign up.
+		var guestKeptOut = session.map(AuthService.SessionInfo::guest).orElse(false) && !allowsGuests(parameter);
+		var me = guestKeptOut ? Optional.<CurrentUser>empty() : session.map(s -> new CurrentUser(s.userId()));
 		if (parameter.getParameterType() == Optional.class) {
 			return me;
 		}
-		return me.orElseThrow(() -> BusinessException.unauthenticated("Please sign in to continue."));
+		return me.orElseThrow(() -> BusinessException.unauthenticated(guestKeptOut
+				? "Sign up to do that: it takes a minute, and the games you host come with you."
+				: "Please sign in to continue."));
+	}
+
+	private static boolean allowsGuests(MethodParameter parameter) {
+		return parameter.hasMethodAnnotation(GuestHostsAllowed.class) || parameter.getContainingClass().isAnnotationPresent(GuestHostsAllowed.class);
 	}
 
 	private void withinLimits(UUID userId) {

@@ -7,11 +7,14 @@ import java.util.UUID;
 import com.playchale.api.events.internal.domain.GameSettings;
 import com.playchale.api.events.internal.domain.ResultRules;
 import com.playchale.api.events.internal.service.EventGameService;
+import com.playchale.api.events.internal.service.EventGuestService;
 import com.playchale.api.events.internal.service.EventPlayService;
 import com.playchale.api.events.internal.service.EventService;
 import com.playchale.api.events.internal.service.EventSponsorService;
 import com.playchale.api.events.internal.service.EventViews;
+import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.shared.security.CurrentUser;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -42,11 +45,14 @@ class EventController {
 
 	private final EventSponsorService sponsors;
 
-	EventController(EventService events, EventGameService games, EventPlayService play, EventSponsorService sponsors) {
+	private final EventGuestService guests;
+
+	EventController(EventService events, EventGameService games, EventPlayService play, EventSponsorService sponsors, EventGuestService guests) {
 		this.events = events;
 		this.games = games;
 		this.play = play;
 		this.sponsors = sponsors;
+		this.guests = guests;
 	}
 
 	record PlacingsRequest(List<EventPlayService.Placing> placings) {
@@ -75,6 +81,19 @@ class EventController {
 	@ResponseStatus(HttpStatus.CREATED)
 	EventViews.Detail create(CurrentUser me, @PathVariable UUID organisationId, @RequestBody EventService.EventInput request) {
 		return events.create(organisationId, request, me.id());
+	}
+
+	/** A first event with its workspace: {"workspace": {"name", "colour"?}, "event": {…}}. */
+	record EventWithWorkspace(EventService.WorkspaceInput workspace, EventService.EventInput event) {
+	}
+
+	@PostMapping("/events")
+	@ResponseStatus(HttpStatus.CREATED)
+	EventViews.Detail createWithWorkspace(CurrentUser me, @RequestBody EventWithWorkspace request) {
+		if (request.event() == null) {
+			throw BusinessException.invalid("Give the event a name and a day.");
+		}
+		return events.createWithWorkspace(request.workspace(), request.event(), me.id());
 	}
 
 	@GetMapping("/me/events")
@@ -260,9 +279,47 @@ class EventController {
 
 	/* Joining with the link, and the signed-in player's own games */
 
+	/** Open without signing in: someone without an account can sign up as a guest. */
 	@GetMapping("/events/join/{code}")
-	EventViews.JoinPreview preview(CurrentUser me, @PathVariable String code) {
-		return events.preview(code, me.id());
+	EventViews.JoinPreview preview(Optional<CurrentUser> me, @PathVariable String code) {
+		return events.preview(code, me.map(CurrentUser::id).orElse(null));
+	}
+
+	record GuestJoinRequest(String name, String phone, UUID groupId, List<UUID> gameIds) {
+	}
+
+	/** Signing up without an account: their name, number, group and games. The token comes back once. */
+	@PostMapping("/events/join/{code}/guests")
+	@ResponseStatus(HttpStatus.CREATED)
+	EventViews.GuestJoined joinAsGuest(Optional<CurrentUser> me, @PathVariable String code, @RequestBody GuestJoinRequest request,
+			HttpServletRequest http) {
+		if (me.isPresent()) {
+			throw BusinessException.conflict("You’re signed in, so join as yourself.");
+		}
+		return guests.join(code, request.name(), request.phone(), request.groupId(), request.gameIds(), http.getRemoteAddr());
+	}
+
+	/** A guest's place, by the token their phone keeps: their games, to change while sign-ups are open, or leave. */
+	@GetMapping("/events/guest-places/{token}")
+	EventViews.GuestPlace guestPlace(@PathVariable String token) {
+		return guests.place(token);
+	}
+
+	@PutMapping("/events/guest-places/{token}")
+	EventViews.GuestPlace changeGuestPlace(@PathVariable String token, @RequestBody JoinRequest request) {
+		return guests.change(token, request.groupId(), request.gameIds());
+	}
+
+	@DeleteMapping("/events/guest-places/{token}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	void leaveAsGuest(@PathVariable String token) {
+		guests.leave(token);
+	}
+
+	/** Signed in on the phone that signed up as a guest: the place becomes the account's. */
+	@PostMapping("/events/guest-places/{token}/claim")
+	EventViews.Detail claimGuestPlace(CurrentUser me, @PathVariable String token) {
+		return guests.claim(token, me.id());
 	}
 
 	@PostMapping("/events/join/{code}")

@@ -9,6 +9,7 @@ import com.playchale.api.games.internal.service.GameSeriesService;
 import com.playchale.api.games.web.dto.GameRequests.RepeatsRequest;
 import com.playchale.api.games.web.dto.GameRequests.SeriesChangeRequest;
 import com.playchale.api.shared.security.CurrentUser;
+import com.playchale.api.shared.security.GuestHostsAllowed;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -32,6 +33,7 @@ class SeriesController {
 
 	/** series.startFrom: the host's game, repeating from now on. Returns the game to show: the next one, if it opened straight away. */
 	@PostMapping("/games/{id}/series")
+	@GuestHostsAllowed
 	@ResponseStatus(HttpStatus.CREATED)
 	GameResponse startFrom(CurrentUser me, @PathVariable UUID id, @RequestBody RepeatsRequest repeats) {
 		return series.startFrom(id, repeats.frequency(), repeats.weekOfMonth(), me.id());
@@ -39,24 +41,28 @@ class SeriesController {
 
 	/** series.mine */
 	@GetMapping("/me/series")
+	@GuestHostsAllowed
 	List<SeriesResponse> mine(CurrentUser me) {
 		return series.mine(me.id());
 	}
 
 	/** series.change */
 	@PatchMapping("/series/{id}")
+	@GuestHostsAllowed
 	SeriesResponse change(CurrentUser me, @PathVariable UUID id, @RequestBody SeriesChangeRequest change) {
 		return series.change(id, change.toChange(), me.id());
 	}
 
 	/** series.stop */
 	@PostMapping("/series/{id}/stop")
+	@GuestHostsAllowed
 	SeriesResponse stop(CurrentUser me, @PathVariable UUID id) {
 		return series.stop(id, me.id());
 	}
 
 	/** series.restart */
 	@PostMapping("/series/{id}/restart")
+	@GuestHostsAllowed
 	SeriesResponse restart(CurrentUser me, @PathVariable UUID id) {
 		return series.restart(id, me.id());
 	}
