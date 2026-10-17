@@ -11,6 +11,8 @@ import com.playchale.api.TestcontainersConfiguration;
 import com.playchale.api.integration.email.Email;
 import com.playchale.api.integration.email.EmailSender;
 import com.playchale.api.reports.internal.service.ReportService;
+import com.playchale.api.shared.config.PlaychaleProperties;
+import com.playchale.api.shared.scheduling.ClusterLock;
 import com.playchale.api.shared.TestClock;
 import com.playchale.api.users.api.UserDirectory;
 import com.playchale.api.venues.internal.domain.DayHours;
@@ -19,6 +21,7 @@ import com.playchale.api.venues.internal.domain.VenueDetails;
 import com.playchale.api.venues.internal.service.VenueService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -89,6 +92,15 @@ class DeskAlertsTest {
 	@Autowired
 	ReportService reports;
 
+	@Autowired
+	ClusterLock lock;
+
+	@Autowired
+	PlaychaleProperties playchale;
+
+	@Autowired
+	ObjectProvider<EmailSender> senders;
+
 	UUID owner;
 
 	UUID player;
@@ -136,6 +148,16 @@ class DeskAlertsTest {
 		clock.set(NOW.plus(Duration.ofMinutes(30)));
 		alerts.send();
 		assertThat(outbox.sent).hasSize(2);
+	}
+
+	@Test
+	void switchedOffNoStaffEmailGoesWhateverIsWaiting() {
+		listVenue("Dansoman Astro");
+		reports.send(player, "user", owner, "abuse", null);
+		var off = new DeskAlerts(jdbc, lock, clock, senders, playchale, new AdminProperties("https://admin.playchale.com", false));
+		off.send();
+		assertThat(outbox.sent).isEmpty();
+		assertThat(jdbc.sql("SELECT count(*) FROM desk_alerts").query(Integer.class).single()).as("nothing counted as sent").isZero();
 	}
 
 	private void listVenue(String name) {

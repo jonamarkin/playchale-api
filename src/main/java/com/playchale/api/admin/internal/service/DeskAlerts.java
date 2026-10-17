@@ -27,6 +27,9 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>Looked at every minute, sent at most every {@link #GAP}, and only for things that came in since
  * the last email: a burst of reports is one email, and nothing new is no email. Each round is a row
  * in desk_alerts, so the spacing holds across restarts and copies of the API.
+ *
+ * <p>PLAYCHALE_ADMIN_ALERTS=false switches them off. Switched on again, the first email covers what
+ * came in while they were off.
  */
 @Component
 class DeskAlerts {
@@ -64,7 +67,7 @@ class DeskAlerts {
 	@Scheduled(initialDelayString = "PT2M", fixedDelayString = "PT1M")
 	@Transactional
 	public void send() {
-		if (!lock.tryLock("desk-alerts")) {
+		if (!admin.alerts() || !lock.tryLock("desk-alerts")) {
 			return;
 		}
 		var now = clock.instant();
