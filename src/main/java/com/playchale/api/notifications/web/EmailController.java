@@ -23,7 +23,7 @@ class EmailController {
 	}
 
 	/** {"muted": [...]} | {"marketing": true} | {"digest": "weekly"} — any one of the three. */
-	record Change(List<String> muted, Boolean marketing, String digest) {
+	record Change(List<String> muted, Boolean marketing, String digest, Boolean weekend) {
 	}
 
 	/** {"token": "..."} */
@@ -52,6 +52,9 @@ class EmailController {
 		}
 		if (change.digest() != null) {
 			settings = email.setDigest(me.id(), change.digest());
+		}
+		if (change.weekend() != null) {
+			settings = email.setWeekend(me.id(), change.weekend());
 		}
 		return settings;
 	}

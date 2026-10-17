@@ -19,4 +19,7 @@ public interface EmailPreferenceRepository extends JpaRepository<EmailPreference
 	@Query("SELECT p.userId FROM EmailPreference p WHERE p.marketing = true AND p.digest = 'weekly'")
 	List<UUID> digestUserIds();
 
+	@Query("SELECT p.userId FROM EmailPreference p WHERE p.marketing = true AND p.weekend = true")
+	List<UUID> weekendUserIds();
+
 }

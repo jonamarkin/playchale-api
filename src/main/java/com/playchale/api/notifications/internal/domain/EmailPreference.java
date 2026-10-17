@@ -39,6 +39,9 @@ public class EmailPreference {
 
 	private String digest = "weekly";
 
+	/** Friday's "this weekend near you", inside marketing like the digest. On unless they turn it off. */
+	private boolean weekend = true;
+
 	private Instant optedInAt;
 
 	private Instant optedOutAt;
@@ -80,10 +83,16 @@ public class EmailPreference {
 		this.updatedAt = now;
 	}
 
+	public void setWeekend(boolean wanted, Instant now) {
+		this.weekend = wanted;
+		this.updatedAt = now;
+	}
+
 	/** Everything consent-gated, off at once: what the link in an email does. */
 	public void unsubscribeAll(Instant now) {
 		setMarketing(false, now);
 		setDigest("off", now);
+		setWeekend(false, now);
 	}
 
 	/** A new token, so links already in people's inboxes stop working. */
@@ -110,6 +119,10 @@ public class EmailPreference {
 
 	public boolean wantsDigest() {
 		return "weekly".equals(digest);
+	}
+
+	public boolean isWeekend() {
+		return weekend;
 	}
 
 	public Instant getOptedInAt() {

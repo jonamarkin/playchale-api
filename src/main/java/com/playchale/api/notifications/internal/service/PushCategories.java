@@ -9,13 +9,13 @@ import java.util.Map;
  */
 final class PushCategories {
 
-	static final List<String> ALL = List.of("games", "payments", "results", "teams", "bookings");
+	static final List<String> ALL = List.of("games", "payments", "results", "teams", "bookings", "nearby");
 
 	private static final Map<String, String> BY_KIND = Map.ofEntries(Map.entry("game-invite", "games"), Map.entry("player-joined", "games"),
 			Map.entry("game-full", "games"), Map.entry("removed-from-game", "games"), Map.entry("game-cancelled", "games"),
 			Map.entry("game-moved", "games"), Map.entry("series", "games"), Map.entry("invite-declined", "games"), Map.entry("game-message", "games"), Map.entry("event", "games"), Map.entry("payment-reminder", "payments"),
 			Map.entry("payment-received", "payments"), Map.entry("result-added", "results"), Map.entry("result-disputed", "results"),
-			Map.entry("squad-request", "teams"), Map.entry("squad-reply", "teams"), Map.entry("booking", "bookings"));
+			Map.entry("squad-request", "teams"), Map.entry("squad-reply", "teams"), Map.entry("booking", "bookings"), Map.entry("nearby", "nearby"));
 
 	private PushCategories() {
 	}

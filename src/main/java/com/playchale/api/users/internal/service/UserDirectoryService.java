@@ -3,6 +3,7 @@ package com.playchale.api.users.internal.service;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -42,6 +43,12 @@ class UserDirectoryService implements UserDirectory {
 	@Transactional(readOnly = true)
 	public Optional<UserSummary> find(UUID id) {
 		return users.findById(id).map(UserDirectoryService::summary);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<UserSummary> members() {
+		return users.findMembers().stream().map(UserDirectoryService::summary).toList();
 	}
 
 	@Override

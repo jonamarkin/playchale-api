@@ -1,6 +1,7 @@
 package com.playchale.api.users.api;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,6 +16,12 @@ public interface UserDirectory {
 	 * no player are simply missing from the map.
 	 */
 	Map<UUID, UserSummary> findAll(Collection<UUID> ids);
+
+	/**
+	 * Everyone with a set-up account (not a guest host, not closed), for telling them about games near
+	 * them. Read whole: fine for thousands of players; page it before there are hundreds of thousands.
+	 */
+	List<UserSummary> members();
 
 	/** The player with a public handle, ignoring case. Players without a handle yet can't be found this way. */
 	Optional<UserSummary> findByHandle(String handle);

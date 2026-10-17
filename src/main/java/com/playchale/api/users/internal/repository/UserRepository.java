@@ -1,5 +1,6 @@
 package com.playchale.api.users.internal.repository;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -11,6 +12,9 @@ import org.springframework.data.repository.query.Param;
 public interface UserRepository extends JpaRepository<User, UUID> {
 
 	Optional<User> findByPhone(String phone);
+
+	@Query("select u from User u where u.onboarded = true and u.guest = false and u.deletedAt is null")
+	List<User> findMembers();
 
 	/** Stored lower-case, so an exact match is enough. */
 	Optional<User> findBySignInEmail(String email);

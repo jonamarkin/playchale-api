@@ -40,10 +40,11 @@ public class EmailService {
 	 * @param muted      the categories kept out of their inbox
 	 * @param marketing  whether they agreed to email about PlayChale itself
 	 * @param digest     "weekly" or "off"
+	 * @param weekend    Friday's "this weekend near you", within marketing
 	 * @param address    where it would go, or null if we have no address for them
 	 * @param categories every category there is, so the web app doesn't hard-code the list
 	 */
-	public record Settings(List<String> muted, boolean marketing, String digest, String address, List<String> categories) {
+	public record Settings(List<String> muted, boolean marketing, String digest, boolean weekend, String address, List<String> categories) {
 	}
 
 	/**
@@ -68,7 +69,8 @@ public class EmailService {
 		var preference = preferences.findById(me);
 		var address = addressOf(users.find(me).orElse(null));
 		return new Settings(preference.map(EmailPreference::getMuted).orElse(List.of()), preference.map(EmailPreference::isMarketing).orElse(false),
-				preference.map(EmailPreference::getDigest).orElse("weekly"), address, EmailCategories.ALL);
+				preference.map(EmailPreference::getDigest).orElse("weekly"), preference.map(EmailPreference::isWeekend).orElse(true), address,
+				EmailCategories.ALL);
 	}
 
 	/** Keeps whole categories out of their inbox. An unknown category is a mistake worth saying out loud. */
@@ -96,6 +98,12 @@ public class EmailService {
 			throw BusinessException.invalid("The digest is either weekly or off.");
 		}
 		row(me).setDigest(choice, clock.instant());
+		return settings(me);
+	}
+
+	@Transactional
+	public Settings setWeekend(UUID me, boolean wanted) {
+		row(me).setWeekend(wanted, clock.instant());
 		return settings(me);
 	}
 
@@ -127,6 +135,11 @@ public class EmailService {
 	@Transactional(readOnly = true)
 	public List<UUID> marketingAudience() {
 		return preferences.marketingUserIds();
+	}
+
+	/** Everyone who'd take Friday's "this weekend near you" by email: marketing, and that one left on. */
+	public List<UUID> weekendAudience() {
+		return preferences.weekendUserIds();
 	}
 
 	/** Everyone who agreed to the weekly digest. Agreeing to marketing is the gate; the digest is the choice within it. */

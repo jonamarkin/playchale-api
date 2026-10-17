@@ -1,0 +1,16 @@
+<!--
+  Friday's "this weekend near you" (WeekendNudge): the open games in this person's sports and places,
+  read from what's really on. Never sent when there's nothing near them. {{games}} is one game a
+  line (white-space:pre-line turns the newlines into breaks); {{more}} says how many more, or nothing.
+-->
+<h1 class="pc-ink" style="margin:0 0 8px;font-size:24px;line-height:32px;font-weight:600;letter-spacing:-0.01em;color:#0b1716;">{{greeting}}</h1>
+<p class="pc-body" style="margin:0 0 22px;font-size:16px;line-height:24px;color:#2a3635;">Open games in your sports and places, with room for you. Tap one to join.</p>
+<p class="pc-body" style="margin:0 0 10px;font-size:16px;line-height:28px;color:#2a3635;white-space:pre-line;">{{games}}</p>
+<p class="pc-mute" style="margin:0 0 26px;font-size:14px;line-height:21px;color:#64716f;">{{more}}</p>
+<table role="presentation" cellpadding="0" cellspacing="0">
+  <tr>
+    <td style="background:#0c3a3a;border-radius:999px;">
+      <a href="{{actionUrl}}" style="display:inline-block;padding:14px 26px;font-family:'Onest',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:16px;font-weight:500;color:#7cf0c8;text-decoration:none;">See this weekend’s games</a>
+    </td>
+  </tr>
+</table>

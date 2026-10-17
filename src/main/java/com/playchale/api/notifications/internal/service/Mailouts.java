@@ -152,8 +152,11 @@ public class Mailouts {
 
 	/** Why they got it. Said plainly, because "you are receiving this because" is the first thing people look for. */
 	private static String footerFor(Letter letter) {
-		return "digest".equals(letter.kind()) ? "You get this because you asked PlayChale for a weekly round-up."
-				: "You get this because you asked to hear from PlayChale.";
+		return switch (letter.kind()) {
+			case "digest" -> "You get this because you asked PlayChale for a weekly round-up.";
+			case "weekend" -> "You get this because you asked to hear from PlayChale about games near you at the weekend.";
+			default -> "You get this because you asked to hear from PlayChale.";
+		};
 	}
 
 	/** The plain-text copy, for mail apps that don't show HTML and for spam filters, which expect one. */
