@@ -32,6 +32,7 @@ import com.playchale.api.games.internal.domain.GameInvite;
 import com.playchale.api.games.internal.domain.GameSeries;
 import com.playchale.api.games.internal.domain.InviteId;
 import com.playchale.api.games.internal.domain.Participant;
+import com.playchale.api.games.internal.domain.PayTo;
 import com.playchale.api.games.internal.domain.SeriesRule;
 import com.playchale.api.games.internal.repository.GameInviteRepository;
 import com.playchale.api.games.internal.repository.GameRepository;
@@ -394,9 +395,13 @@ public class GameService {
 				game.getPitchName(), staffId));
 	}
 
-	/** What the host can change about a game (GameService.change). {@code venue} only counts for a place that isn't a partner venue. */
+	/**
+	 * What the host can change about a game (GameService.change). {@code venue} only counts for a place
+	 * that isn't a partner venue. {@code payTo} null leaves how to pay as it is (an app from before it
+	 * was asked); sent empty, it's cleared.
+	 */
 	public record Change(String format, String title, String notes, Instant startsAt, int durationMinutes, Integer capacity, long totalCost,
-			String pricing, String visibility, VenueChange venue) {
+			String pricing, String visibility, VenueChange venue, PayTo payTo) {
 	}
 
 	/** Where a game at a typed-in place is now: its name, area, and a pin or a map link. */
@@ -440,9 +445,15 @@ public class GameService {
 		}
 		var details = new GameDetails(game.getSport(), change.format(), change.title(), change.startsAt(), change.durationMinutes(),
 				game.getVenueKind(), game.getVenueId(), game.getPitchId(), game.getVenueName(), game.getVenueArea(), game.getMapUrl(),
-				change.capacity(), totalCost, pricing, change.visibility(), change.notes());
+				change.capacity(), totalCost, pricing, change.visibility(), change.notes(), null,
+				change.payTo() == null ? game.payTo() : change.payTo());
+		var payingBefore = game.payTo();
 		var paidNames = game.paidUp().stream().map(p -> p.isGuest() ? p.getGuestName() : firstName(p.getUserId())).toList();
 		var changed = game.change(details, paidNames, now);
+		// A repeating game's next weeks are paid for the same way.
+		if (game.getSeriesId() != null && !Objects.equals(payingBefore, game.payTo())) {
+			series.findById(game.getSeriesId()).ifPresent(s -> s.payWith(game.payTo()));
+		}
 		var place = false;
 		if (Game.UNLISTED.equals(game.getVenueKind()) && change.venue() != null) {
 			var to = change.venue();
@@ -576,7 +587,8 @@ public class GameService {
 		var saved = games.saveAndFlush(game);
 		events.publishEvent(new GameEvents.GuestJoined(info(saved), spot.getGuestName(), saved.filled(),
 				saved.getCapacity()));
-		return new GuestAdded(views.of(saved, null), token, spotId(saved, token));
+		// They're in, so they're told how to pay, as a player in the game would be.
+		return new GuestAdded(views.of(saved, null).withPayTo(GameViews.payTo(saved)), token, spotId(saved, token));
 	}
 
 	/** A new spot's ID, once saved: the saved game holds the stored copy of it, found by its token. */

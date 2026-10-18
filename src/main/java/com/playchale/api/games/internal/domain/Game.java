@@ -130,6 +130,13 @@ public class Game extends AuditableEntity {
 
 	private String notes;
 
+	/** How to pay, while players pay outside the app ({@link PayTo}): only on a game that costs something. */
+	private String payToPhone;
+
+	private String payToName;
+
+	private String payToNote;
+
 	private String status;
 
 	private Instant cancelledAt;
@@ -239,6 +246,7 @@ public class Game extends AuditableEntity {
 			throw BusinessException.invalid("Keep the notes under 1,000 characters.");
 		}
 		this.notes = notes.isEmpty() ? null : notes;
+		payTo(details.totalCost() == 0 ? null : PayTo.checked(details.payTo(), market));
 		this.participants.add(Participant.player(this, hostId, totalCost == 0, now));
 		syncStatus();
 	}
@@ -286,6 +294,7 @@ public class Game extends AuditableEntity {
 		this.format = checked.format;
 		this.title = checked.title;
 		this.notes = checked.notes;
+		payTo(checked.payTo());
 		this.startsAt = checked.startsAt;
 		this.durationMinutes = checked.durationMinutes;
 		this.capacity = checked.capacity;
@@ -989,6 +998,17 @@ public class Game extends AuditableEntity {
 		return notes;
 	}
 
+	/** How to pay, or null when the host hasn't said (or it's free). */
+	public PayTo payTo() {
+		return payToPhone == null && payToName == null && payToNote == null ? null : new PayTo(payToPhone, payToName, payToNote);
+	}
+
+	private void payTo(PayTo payTo) {
+		this.payToPhone = payTo == null ? null : payTo.phone();
+		this.payToName = payTo == null ? null : payTo.name();
+		this.payToNote = payTo == null ? null : payTo.note();
+	}
+
 	public String getStatus() {
 		return status;
 	}
@@ -1033,7 +1053,7 @@ public class Game extends AuditableEntity {
 	/** Everything needed to set the same game up again. */
 	public GameDetails details() {
 		return new GameDetails(sport, format, title, startsAt, durationMinutes, venueKind, venueId, pitchId, venueName,
-				venueArea, mapUrl, capacity, totalCost, pricing, visibility, notes, pin);
+				venueArea, mapUrl, capacity, totalCost, pricing, visibility, notes, pin, payTo());
 	}
 
 }

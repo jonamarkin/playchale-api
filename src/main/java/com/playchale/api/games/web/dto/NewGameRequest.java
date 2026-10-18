@@ -14,12 +14,13 @@ import jakarta.validation.constraints.NotNull;
  * {@code awayTeamId} (the team they're challenging) it's a friendly between the two.
  * {@code timezone} is where a game at a typed-in place is played (IANA), as the host's app sends it; a
  * partner venue's is its own. With {@code repeats} it's the first game of a repeating one. {@code country}
- * is where a typed-in place is, and so the money its prices are in; none means the host's.
+ * is where a typed-in place is, and so the money its prices are in; none means the host's. {@code payTo}
+ * is how to pay, while players pay outside the app.
  */
 public record NewGameRequest(String sport, String format, String title, @NotNull(message = "Pick a time in the future.") Instant startsAt,
 		int durationMinutes, @NotNull(message = "Say where you’re playing.") @Valid VenueRefRequest venue, Integer capacity,
 		long totalCost, String pricing, String visibility, String notes, UUID homeTeamId, UUID awayTeamId, String timezone,
-		GameRequests.RepeatsRequest repeats, String country) {
+		GameRequests.RepeatsRequest repeats, String country, GameRequests.PayToRequest payTo) {
 
 	/**
 	 * The web app's VenueRef: {kind: "listed", venueId, name, area, pitchId?, pitchName?} or {kind: "unlisted", name, area?,
@@ -32,7 +33,7 @@ public record NewGameRequest(String sport, String format, String title, @NotNull
 	public GameDetails toDetails(Instant now) {
 		return new GameDetails(sport, format, title, startsAt, durationMinutes, "listed".equals(venue.kind()) ? "listed" : "unlisted",
 				venue.venueId(), venue.pitchId(), venue.name(), venue.area(), venue.mapUrl(), capacity, totalCost, pricing, visibility, notes,
-				"listed".equals(venue.kind()) ? null : Pin.from(venue.pin(), null, now));
+				"listed".equals(venue.kind()) ? null : Pin.from(venue.pin(), null, now), payTo == null ? null : payTo.toPayTo());
 	}
 
 }

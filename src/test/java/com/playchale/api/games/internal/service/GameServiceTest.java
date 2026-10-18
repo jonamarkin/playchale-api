@@ -14,6 +14,7 @@ import java.util.concurrent.Executors;
 
 import com.playchale.api.TestcontainersConfiguration;
 import com.playchale.api.games.internal.domain.GameDetails;
+import com.playchale.api.games.internal.domain.PayTo;
 import com.playchale.api.notifications.internal.service.NotificationResponse;
 import com.playchale.api.notifications.internal.service.NotificationService;
 import com.playchale.api.shared.TestClock;
@@ -264,6 +265,36 @@ class GameServiceTest {
 		var yawNow = users.find(yaw).orElseThrow();
 		assertThat(yawNow.name()).isEqualTo("Yaw from church");
 		assertThat(yawNow.onboarded()).as("they still finish setting up, and can change it there").isFalse();
+	}
+
+	@Test
+	void howToPayIsForPlayersInTheGameAndKeptWhenItsRepeatedOrEdited() {
+		var game = games.create(new GameDetails("football", "5-a-side", "Saturday 5s", KICKOFF, 60, "unlisted", null, null, "Legon Park", "Legon",
+				null, 10, 10_000, null, "public", null, null, new PayTo(" 024 455 5199 ", " Ama Mensah (treasurer) ", "Or cash to Kofi at the gate")),
+				kwame);
+		assertThat(game.payTo()).isEqualTo(new GameResponse.PayToResponse("+233244555199", "Ama Mensah (treasurer)", "Or cash to Kofi at the gate"));
+		assertThat(games.get(game.id(), kojo).payTo()).as("not for someone who isn't in it").isNull();
+		games.join(game.id(), kojo);
+		assertThat(games.get(game.id(), kojo).payTo().phone()).isEqualTo("+233244555199");
+		var guest = games.joinAsGuest(game.id(), "Yaw", "024 455 5188", null, "127.0.0.1");
+		assertThat(guest.game().payTo().name()).as("a guest is told as they take a spot").isEqualTo("Ama Mensah (treasurer)");
+
+		// An app from before it was asked sends none: it stays. Repeating keeps it. Sent empty, it's gone.
+		var unsaid = new GameService.Change("5-a-side", "Saturday 5s", null, KICKOFF, 60, 10, 10_000, null, "public", null, null);
+		assertThat(games.change(game.id(), unsaid, kwame).payTo()).isNotNull();
+		assertThat(games.repeat(game.id(), kwame).payTo().phone()).as("repeating keeps it").isEqualTo("+233244555199");
+		var emptied = new GameService.Change("5-a-side", "Saturday 5s", null, KICKOFF, 60, 10, 10_000, null, "public", null, new PayTo("", " ", null));
+		assertThat(games.change(game.id(), emptied, kwame).payTo()).isNull();
+	}
+
+	@Test
+	void howToPayNeedsARealNumberAndAFreeGameHasNone() {
+		assertThatThrownBy(() -> games.create(new GameDetails("football", "5-a-side", "Saturday 5s", KICKOFF, 60, "unlisted", null, null,
+				"Legon Park", null, null, 10, 10_000, null, "public", null, null, new PayTo("12345", null, null)), kwame))
+			.hasMessage("Enter a valid Ghana mobile number to pay to, or leave it blank.");
+		var free = games.create(new GameDetails("football", "5-a-side", "Saturday 5s", KICKOFF, 60, "unlisted", null, null, "Legon Park", null,
+				null, 10, 0, null, "public", null, null, new PayTo("024 455 5199", "Ama", null)), kwame);
+		assertThat(free.payTo()).isNull();
 	}
 
 	@Test

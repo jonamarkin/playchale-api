@@ -15,7 +15,8 @@ import com.playchale.api.users.api.UserSummary;
  * number, whose {@code totalCost} is then each player's price). {@code hostPayoutPhone} is where to send the host your share,
  * shown only to players in the game. {@code country} and {@code timezone} are where it's played: its
  * money is in that country's currency, and kick-off is in that local time. {@code distanceKm} is how
- * far it is from where the viewer asked, when Discover is sorted nearest first.
+ * far it is from where the viewer asked, when Discover is sorted nearest first. {@code payTo} is how
+ * the host said to pay, shown only to players in the game (and to a guest as they join).
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record GameResponse(UUID id, String sport, String format, String title, Instant startsAt, int durationMinutes,
@@ -23,13 +24,25 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 		List<ParticipantResponse> participants, String status, ResultResponse result, FixtureRef fixture, Instant createdAt,
 		Instant cancelledAt, String cancelReason, UserSummary host, List<PlayerResponse> players, FixtureTeamsResponse fixtureTeams,
 		long share, Integer spotsLeft, String hostPayoutPhone, List<InviteResponse> invites, FriendlyResponse friendly, String country,
-		String timezone, SeriesRef series, Double distanceKm) {
+		String timezone, SeriesRef series, Double distanceKm, PayToResponse payTo) {
 
 	/** The same game, this far from the viewer. */
 	public GameResponse withDistance(double km) {
 		return new GameResponse(id, sport, format, title, startsAt, durationMinutes, venue, capacity, totalCost, pricing, currency, visibility,
 				hostId, notes, participants, status, result, fixture, createdAt, cancelledAt, cancelReason, host, players, fixtureTeams, share,
-				spotsLeft, hostPayoutPhone, invites, friendly, country, timezone, series, Math.round(km * 10) / 10.0);
+				spotsLeft, hostPayoutPhone, invites, friendly, country, timezone, series, Math.round(km * 10) / 10.0, payTo);
+	}
+
+	/** The same game, with how to pay: for a guest who has just taken a spot. */
+	public GameResponse withPayTo(PayToResponse payTo) {
+		return new GameResponse(id, sport, format, title, startsAt, durationMinutes, venue, capacity, totalCost, pricing, currency, visibility,
+				hostId, notes, participants, status, result, fixture, createdAt, cancelledAt, cancelReason, host, players, fixtureTeams, share,
+				spotsLeft, hostPayoutPhone, invites, friendly, country, timezone, series, distanceKm, payTo);
+	}
+
+	/** How to pay while players pay outside the app: a number to send it to, the name on it, anything else. Any may be missing. */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record PayToResponse(String phone, String name, String note) {
 	}
 
 	/**

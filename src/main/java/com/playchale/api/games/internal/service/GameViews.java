@@ -193,7 +193,13 @@ class GameViews {
 				g.getStatus(), result == null ? null : result(result), fixture, g.getCreatedAt(), g.getCancelledAt(), g.getCancelReason(),
 				host == null ? null : host.as(viewer), players, fixtureTeams, g.share(), g.spotsLeft(),
 				host != null && viewer != null && g.spotOf(viewer).isPresent() ? host.payoutPhone() : null, invites, friendly, g.getCountry(),
-				g.getTimezone(), series, null);
+				g.getTimezone(), series, null, viewer != null && g.spotOf(viewer).isPresent() ? payTo(g) : null);
+	}
+
+	/** How the host said to pay for it, or null. */
+	static GameResponse.PayToResponse payTo(Game g) {
+		var payTo = g.payTo();
+		return payTo == null ? null : new GameResponse.PayToResponse(payTo.phone(), payTo.name(), payTo.note());
 	}
 
 	private static GameResponse.ResultResponse result(GameResult r) {

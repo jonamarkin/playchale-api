@@ -86,6 +86,13 @@ public class GameSeries extends AuditableEntity {
 
 	private String notes;
 
+	/** How to pay for the games it opens ({@link PayTo}), as on the latest of them the host changed. */
+	private String payToPhone;
+
+	private String payToName;
+
+	private String payToNote;
+
 	@JdbcTypeCode(SqlTypes.CHAR)
 	@Column(length = 2)
 	private String country;
@@ -152,6 +159,7 @@ public class GameSeries extends AuditableEntity {
 		this.pricing = details.pricing();
 		this.visibility = details.visibility();
 		this.notes = details.notes();
+		payWith(first.payTo());
 		this.country = first.getCountry();
 		this.timezone = first.getTimezone();
 		follow(rule);
@@ -167,7 +175,19 @@ public class GameSeries extends AuditableEntity {
 	/** The game to open at {@code startsAt}, as the host set the series up. */
 	public GameDetails detailsAt(Instant startsAt) {
 		return new GameDetails(sport, format, title, startsAt, durationMinutes, venueKind, venueId, pitchId, venueName, venueArea, mapUrl,
-				capacity, totalCost, pricing, visibility, notes, pin);
+				capacity, totalCost, pricing, visibility, notes, pin, payTo());
+	}
+
+	/** How to pay for the games it opens, or null. */
+	public PayTo payTo() {
+		return payToPhone == null && payToName == null && payToNote == null ? null : new PayTo(payToPhone, payToName, payToNote);
+	}
+
+	/** The host changed how to pay on one of its games (already checked there): the next ones say the same. */
+	public void payWith(PayTo payTo) {
+		this.payToPhone = payTo == null ? null : payTo.phone();
+		this.payToName = payTo == null ? null : payTo.name();
+		this.payToNote = payTo == null ? null : payTo.note();
 	}
 
 	/** Whether it's time to open the next game. */
@@ -258,7 +278,7 @@ public class GameSeries extends AuditableEntity {
 				zone());
 		var details = new GameDetails(sport, format, change.title() == null || change.title().isBlank() ? title : change.title().strip(),
 				now.plus(LEAD).plus(Duration.ofDays(1)), change.durationMinutes(), venueKind, venueId, pitchId, venueName, venueArea, mapUrl,
-				change.capacity(), change.totalCost(), change.pricing(), change.visibility(), change.notes(), pin);
+				change.capacity(), change.totalCost(), change.pricing(), change.visibility(), change.notes(), pin, payTo());
 		Game.check(details, hostId, Market.get(country), now);
 		this.title = details.title();
 		this.durationMinutes = details.durationMinutes();

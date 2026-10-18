@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.UUID;
 
 import com.playchale.api.games.api.GameResponse;
+import com.playchale.api.games.internal.domain.PayTo;
 import com.playchale.api.games.internal.domain.SeriesChange;
 import com.playchale.api.shared.error.BusinessException;
 
@@ -59,6 +60,15 @@ public final class GameRequests {
 	}
 
 	/** {"token": "..."} from the claim link. */
+	/** The web app's PayTo: how to pay for a game while players pay outside the app. Any part may be blank. */
+	public record PayToRequest(String phone, String name, String note) {
+
+		public PayTo toPayTo() {
+			return new PayTo(phone, name, note);
+		}
+
+	}
+
 	public record ClaimRequest(String token) {
 	}
 

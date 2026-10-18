@@ -14,6 +14,7 @@ import com.playchale.api.TestVenues;
 import com.playchale.api.TestcontainersConfiguration;
 import com.playchale.api.games.api.GameResponse;
 import com.playchale.api.games.internal.domain.GameDetails;
+import com.playchale.api.games.internal.domain.PayTo;
 import com.playchale.api.games.internal.domain.SeriesChange;
 import com.playchale.api.notifications.internal.service.NotificationResponse;
 import com.playchale.api.notifications.internal.service.NotificationService;
@@ -167,6 +168,19 @@ class GameSeriesTest {
 		opener.openDue();
 		assertThat(gamesOf(id)).as("then exactly one more, a week on").containsExactly(KICKOFF, KICKOFF.plus(WEEK));
 		assertThat(titlesFor(kwame)).anyMatch(t -> t.startsWith("Saturday 5s is set for"));
+	}
+
+	@Test
+	void theNextGamesArePaidForAsTheHostLastSaid() {
+		var first = series.start(new GameDetails("football", "5-a-side", "Saturday 5s", KICKOFF, 60, "unlisted", null, null, "Legon Park", "Legon",
+				null, 10, 10_000, null, "public", null, null, new PayTo("024 455 5199", "Ama Mensah", null)), "Africa/Accra", "weekly", null, kwame);
+		games.change(first.id(), new GameService.Change("5-a-side", "Saturday 5s", null, KICKOFF, 60, 10, 10_000, null, "public", null,
+				new PayTo("024 455 5124", "Kojo Owusu", "Cash is fine too")), kwame);
+
+		afterEndOf(KICKOFF);
+		var next = games.get(latestOf(first.series().id()), kwame);
+		assertThat(next.startsAt()).isEqualTo(KICKOFF.plus(WEEK));
+		assertThat(next.payTo()).isEqualTo(new GameResponse.PayToResponse("+233244555124", "Kojo Owusu", "Cash is fine too"));
 	}
 
 	@Test

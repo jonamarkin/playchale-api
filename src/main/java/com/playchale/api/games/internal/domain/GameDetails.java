@@ -16,10 +16,11 @@ import com.playchale.api.shared.maps.Pin;
  *                  times the spots); null means "split"
  * @param venuePin  where an unlisted venue is on the map: as sent (checked and dated), or as it was
  *                  kept on the game this one repeats
+ * @param payTo     how to pay while players pay outside the app, or null
  */
 public record GameDetails(String sport, String format, String title, Instant startsAt, int durationMinutes,
 		String venueKind, UUID venueId, UUID pitchId, String venueName, String venueArea, String venueMapUrl, Integer capacity, long totalCost,
-		String pricing, String visibility, String notes, Pin venuePin) {
+		String pricing, String visibility, String notes, Pin venuePin, PayTo payTo) {
 
 	/** Without a pin. */
 	public GameDetails(String sport, String format, String title, Instant startsAt, int durationMinutes, String venueKind, UUID venueId,
@@ -29,16 +30,24 @@ public record GameDetails(String sport, String format, String title, Instant sta
 				pricing, visibility, notes, null);
 	}
 
+	/** Without how to pay. */
+	public GameDetails(String sport, String format, String title, Instant startsAt, int durationMinutes, String venueKind, UUID venueId,
+			UUID pitchId, String venueName, String venueArea, String venueMapUrl, Integer capacity, long totalCost, String pricing, String visibility,
+			String notes, Pin venuePin) {
+		this(sport, format, title, startsAt, durationMinutes, venueKind, venueId, pitchId, venueName, venueArea, venueMapUrl, capacity, totalCost,
+				pricing, visibility, notes, venuePin, null);
+	}
+
 	/** The same, called something else: a friendly is named after its teams when the host leaves it blank. */
 	public GameDetails withTitle(String title) {
 		return new GameDetails(sport, format, title, startsAt, durationMinutes, venueKind, venueId, pitchId, venueName, venueArea, venueMapUrl,
-				capacity, totalCost, pricing, visibility, notes, venuePin);
+				capacity, totalCost, pricing, visibility, notes, venuePin, payTo);
 	}
 
 	/** The same game at another time: how a host repeats last week's. */
 	public GameDetails startingAt(Instant startsAt) {
 		return new GameDetails(sport, format, title, startsAt, durationMinutes, venueKind, venueId, pitchId, venueName, venueArea, venueMapUrl,
-				capacity, totalCost, pricing, visibility, notes, venuePin);
+				capacity, totalCost, pricing, visibility, notes, venuePin, payTo);
 	}
 
 }
