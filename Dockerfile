@@ -2,12 +2,12 @@
 #   docker build -t playchale-api .
 # CI builds and publishes it on every push to main (.github/workflows/ci.yml).
 
-# Base images come from AWS's public mirror of Docker's official images (the same images, under
-# public.ecr.aws/docker/library), not Docker Hub: Docker Hub allows only a few anonymous pulls an hour
-# per IP address, and CI's shared machines run out of them ("429 Too Many Requests").
+# Base images come from Google's mirror of Docker's official images (the same images, under
+# mirror.gcr.io/library), not Docker Hub or AWS's public mirror: both limit anonymous pulls per IP
+# address, and CI's shared machines run out ("429 Too Many Requests", "Data limit exceeded").
 
 # 1. Build the jar. Tests run in CI before this, so they're skipped here.
-FROM public.ecr.aws/docker/library/eclipse-temurin:21-jdk AS build
+FROM mirror.gcr.io/library/eclipse-temurin:21-jdk AS build
 WORKDIR /src
 COPY .mvn .mvn
 COPY mvnw pom.xml ./
@@ -18,7 +18,7 @@ RUN ./mvnw -B -q -DskipTests package \
 
 # 2. Run it. Only the Java runtime and the app; layers ordered from least to most often changed, so a
 # code change only replaces the last, small layer.
-FROM public.ecr.aws/docker/library/eclipse-temurin:21-jre
+FROM mirror.gcr.io/library/eclipse-temurin:21-jre
 WORKDIR /app
 RUN useradd --system --uid 10001 playchale
 COPY --from=build /extracted/dependencies/ ./
