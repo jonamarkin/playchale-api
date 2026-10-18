@@ -157,6 +157,16 @@ class UserDirectoryService implements UserDirectory {
 
 	@Override
 	@Transactional
+	public void nameIfUnnamed(UUID userId, String guestName) {
+		var name = guestName == null ? "" : guestName.strip();
+		if (name.isEmpty() || name.length() > 60) {
+			return;
+		}
+		users.findById(userId).filter(u -> u.getName().isBlank() && !u.isDeleted()).ifPresent(u -> u.rename(name));
+	}
+
+	@Override
+	@Transactional
 	public UserSummary upgradeGuest(UUID guestId, String method, String address, String email) {
 		var guest = users.findById(guestId).filter(User::isGuest).orElseThrow(() -> BusinessException.notFound("That guest account isn’t there any more."));
 		return summary(becomeMember(guest, method, address, email));

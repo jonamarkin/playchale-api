@@ -253,6 +253,20 @@ class GameServiceTest {
 	}
 
 	@Test
+	void someoneWhoSignsInBeforeSayingTheirNameKeepsTheirGuestNameOnTheRoster() {
+		var game = games.create(unlisted(10, 0), kwame);
+		games.addGuest(game.id(), "Yaw from church", "024 455 5199", kwame);
+		// They sign in with that number and stop before the name step.
+		var yaw = users.registerOrFind("+233244555199", "GH").id();
+		assertThat(games.claimHeldFor(yaw, "+233244555199", null)).isEqualTo(1);
+
+		assertThat(games.get(game.id(), kwame).players()).extracting(GameResponse.PlayerResponse::name).contains("Yaw from church");
+		var yawNow = users.find(yaw).orElseThrow();
+		assertThat(yawNow.name()).isEqualTo("Yaw from church");
+		assertThat(yawNow.onboarded()).as("they still finish setting up, and can change it there").isFalse();
+	}
+
+	@Test
 	void aPricePerPlayerIsExactlyWhatEachPlayerPays() {
 		// GH₵ 12.30 to take part, 10 spots: a split would round up to the market's step; a price doesn't.
 		var game = games.create(new GameDetails("football", "5-a-side", "Saturday 5s", KICKOFF, 60, "unlisted", null, null, "Legon Park", null,

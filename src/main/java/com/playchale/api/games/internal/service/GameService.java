@@ -656,7 +656,10 @@ public class GameService {
 	 */
 	private void claimInto(Game game, Participant spot, UUID me, String phone) {
 		var guestKey = spot.playerKey();
+		var guestName = spot.getGuestName();
 		game.claim(spot, me, phone);
+		// Signed in but no name yet: the roster keeps showing the one they gave as a guest.
+		users.nameIfUnnamed(me, guestName);
 		game.playFor(me, sideFor(game, me));
 		var started = game.hasStarted(clock.instant());
 		var played = results.existsById(game.getId());

@@ -477,6 +477,8 @@ class AdminDeskTest {
 				null, "Legon Park", "Legon", null, 10, 0, null, "public", null), player);
 		var said = talk.say(fake.id(), "Call me for cheap jerseys", player).getLast();
 		reports.send(support, "game", fake.id(), "spam", "Selling phones");
+		// A moment later, so the two are in the order they came.
+		clock.set(NOW.plusSeconds(1));
 		reports.send(owner, "game", fake.id(), "unsafe", null);
 		reports.send(support, "message", said.id(), "spam", null);
 		reports.send(support, "user", player, "abuse", "Keeps messaging me");

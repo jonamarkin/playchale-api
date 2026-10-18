@@ -58,6 +58,12 @@ public interface UserDirectory {
 	 */
 	UserSummary registerGuestHost(String name, String phone, String country, String termsVersion);
 
+	/**
+	 * Someone who joined a game as a guest and has now signed in, but hasn't said their name yet:
+	 * they're shown by the name they gave as a guest until they do. A name they chose is never changed.
+	 */
+	void nameIfUnnamed(UUID userId, String guestName);
+
 	/** Whether this is a guest host, who hosts invite-only games and nothing else until they sign up. */
 	boolean isGuest(UUID id);
 
