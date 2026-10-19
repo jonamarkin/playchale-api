@@ -263,8 +263,9 @@ class GameNotifications {
 		for (var player : e.players()) {
 			var body = player.outcome() == null
 					? "%s added the score: %d–%d%s.".formatted(firstName(game.hostId()), e.homeScore(), e.awayScore(), sets)
-					: "You %s %d–%d%s. Your stats are updated.".formatted(OUTCOME.get(player.outcome()), player.scoreFor(),
-							player.scoreAgainst(), sets);
+					// It counts straight away; if it's wrong, they say so on the game.
+					: "You %s %d–%d%s. Your stats are updated. Not right? Tell %s from the game.".formatted(OUTCOME.get(player.outcome()),
+							player.scoreFor(), player.scoreAgainst(), sets, firstName(game.hostId()));
 			notifications.send(player.playerId(), "result-added", title, body, "/games/%s".formatted(game.gameId()), game.hostId());
 		}
 	}

@@ -121,8 +121,8 @@ class ResultServiceTest {
 		assertThat(done.result().scorers()).singleElement().satisfies(s -> assertThat(s.goals()).isEqualTo(2));
 
 		assertThat(notificationsFor(kojo).getFirst().title()).isEqualTo("Result: 5-a-side football");
-		assertThat(notificationsFor(kojo).getFirst().body()).isEqualTo("You won 3–1. Your stats are updated.");
-		assertThat(notificationsFor(ama).getFirst().body()).isEqualTo("You lost 1–3. Your stats are updated.");
+		assertThat(notificationsFor(kojo).getFirst().body()).isEqualTo("You won 3–1. Your stats are updated. Not right? Tell Kwame from the game.");
+		assertThat(notificationsFor(ama).getFirst().body()).isEqualTo("You lost 1–3. Your stats are updated. Not right? Tell Kwame from the game.");
 
 		results.confirm(game.id(), kojo);
 		results.dispute(game.id(), "It was 3-2", ama);
