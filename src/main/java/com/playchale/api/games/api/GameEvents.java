@@ -117,9 +117,11 @@ public final class GameEvents {
 	/**
 	 * A repeating game opened its next game and invited the last one's players.
 	 *
-	 * @param invited how many were invited (they're told by {@link PlayersInvited})
+	 * @param invited     how many were invited (they're told by {@link PlayersInvited})
+	 * @param guestPhones the last game's guests' numbers (E.164): they have no account to be invited
+	 *                    with, so they're told by text
 	 */
-	public record SeriesGameOpened(GameInfo game, UUID seriesId, int invited) {
+	public record SeriesGameOpened(GameInfo game, UUID seriesId, int invited, List<String> guestPhones) {
 	}
 
 	/**

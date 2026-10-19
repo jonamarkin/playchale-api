@@ -27,7 +27,7 @@ class PlayerTotalsQuery implements PlayerTotals {
 		this.jdbc = jdbc;
 	}
 
-	private record Row(UUID userId, int games, int wins, int goals, int assists, int points, int sets) {
+	private record Row(UUID userId, int games, int wins, int draws, int losses, int goals, int assists, int points, int sets) {
 	}
 
 	@Override
@@ -60,6 +60,9 @@ class PlayerTotalsQuery implements PlayerTotals {
 				         count(*)                                                                  AS games,
 				         count(*) FILTER (WHERE (rp.side = 'home' AND r.home_score > r.away_score)
 				                             OR (rp.side = 'away' AND r.away_score > r.home_score)) AS wins,
+				         count(*) FILTER (WHERE r.home_score = r.away_score)                       AS draws,
+				         count(*) FILTER (WHERE (rp.side = 'home' AND r.home_score < r.away_score)
+				                             OR (rp.side = 'away' AND r.away_score < r.home_score)) AS losses,
 				         coalesce(sum(rp.goals), 0)   AS goals,
 				         coalesce(sum(rp.assists), 0) AS assists,
 				         coalesce(sum(rp.points), 0)  AS points,
@@ -90,7 +93,7 @@ class PlayerTotalsQuery implements PlayerTotals {
 			.param("limit", Math.clamp(filter.limit() <= 0 ? 20 : filter.limit(), 1, MAX))
 			.query(Row.class)
 			.list();
-		return rows.stream().map(r -> new Totals(r.userId(), r.games(), r.wins(), r.goals(), r.assists(), r.points(), r.sets())).toList();
+		return rows.stream().map(r -> new Totals(r.userId(), r.games(), r.wins(), r.draws(), r.losses(), r.goals(), r.assists(), r.points(), r.sets())).toList();
 	}
 
 	@Override

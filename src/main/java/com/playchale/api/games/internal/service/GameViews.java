@@ -77,9 +77,13 @@ class GameViews {
 	}
 
 	List<GameResponse> of(Collection<Game> games, UUID viewer) {
+		var allInvites = games.isEmpty() ? List.<GameInvite>of() : invites.ofGames(games.stream().map(Game::getId).toList());
+		// How many are asked and haven't answered: anyone may see the number, so a game whose players
+		// are still being asked (a weekly one, just opened) doesn't look empty.
+		var asked = allInvites.stream().filter(GameInvite::isPending).collect(Collectors.groupingBy(GameInvite::getGameId, Collectors.counting()));
 		// Invites the viewer may see: all of them in games they host, their own anywhere else.
-		var invitesByGame = viewer == null || games.isEmpty() ? Map.<UUID, List<GameInvite>>of()
-				: invites.ofGames(games.stream().map(Game::getId).toList()).stream()
+		var invitesByGame = viewer == null ? Map.<UUID, List<GameInvite>>of()
+				: allInvites.stream()
 					.filter(i -> i.getUserId().equals(viewer) || games.stream().anyMatch(g -> g.getId().equals(i.getGameId()) && g.isHost(viewer)))
 					.collect(Collectors.groupingBy(GameInvite::getGameId));
 		var ids = Stream.concat(games.stream()
@@ -115,7 +119,7 @@ class GameViews {
 				g.getCompetitionId() == null ? Map.of() : teamsByLeague.getOrDefault(g.getCompetitionId(), Map.of()), places,
 				invites(invitesByGame.get(g.getId()), people, teamNames, viewer), friendly(g, standingTeams),
 				g.getCompetitionId() != null && organised.contains(g.getCompetitionId()),
-				g.getSeriesId() == null ? null : seriesRefs.get(g.getSeriesId()))).toList();
+				g.getSeriesId() == null ? null : seriesRefs.get(g.getSeriesId()), asked.getOrDefault(g.getId(), 0L).intValue())).toList();
 	}
 
 	/** The repeating games these games belong to, and whether the viewer asked not to be invited to each, in two queries. */
@@ -164,7 +168,7 @@ class GameViews {
 
 	private GameResponse view(Game g, UUID viewer, Map<UUID, UserSummary> people, GameResult result,
 			Map<UUID, FixtureTeams.TeamCard> teams, Map<UUID, VenueLocation> places, List<GameResponse.InviteResponse> invites,
-			GameResponse.FriendlyResponse friendly, boolean organiser, GameResponse.SeriesRef series) {
+			GameResponse.FriendlyResponse friendly, boolean organiser, GameResponse.SeriesRef series, int asked) {
 		var hostView = g.isHost(viewer);
 		var place = g.getVenueId() != null ? places.get(g.getVenueId()) : new VenueLocation(g.getMapUrl(), g.getPin());
 		var pin = place == null || place.pin() == null ? null : place.pin().view();
@@ -193,7 +197,7 @@ class GameViews {
 				g.getStatus(), result == null ? null : result(result), fixture, g.getCreatedAt(), g.getCancelledAt(), g.getCancelReason(),
 				host == null ? null : host.as(viewer), players, fixtureTeams, g.share(), g.spotsLeft(),
 				host != null && viewer != null && g.spotOf(viewer).isPresent() ? host.payoutPhone() : null, invites, friendly, g.getCountry(),
-				g.getTimezone(), series, null, viewer != null && g.spotOf(viewer).isPresent() ? payTo(g) : null);
+				g.getTimezone(), series, null, viewer != null && g.spotOf(viewer).isPresent() ? payTo(g) : null, asked == 0 ? null : asked);
 	}
 
 	/** How the host said to pay for it, or null. */

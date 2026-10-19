@@ -112,7 +112,31 @@ class LeaderboardTest {
 		assertThat(goals.get(1).assists()).as("assists travel with the player, whatever the table is sorted by").isEqualTo(2);
 
 		// Ama lost both and never scored, so she is on no goals table — and on the games one.
-		assertThat(namesOf(leaderboard.top(null, null, null, Leaderboard.Period.ALL, "games", 10))).contains("Ama Serwaa");
+		var byGames = leaderboard.top(null, null, null, Leaderboard.Period.ALL, "games", 10);
+		assertThat(namesOf(byGames)).contains("Ama Serwaa");
+		assertThat(byGames).filteredOn(row -> row.player().name().equals("Ama Serwaa")).singleElement()
+			.satisfies(row -> assertThat(List.of(row.wins(), row.draws(), row.losses())).containsExactly(0, 0, 2));
+	}
+
+	@Test
+	void aDrawIsAGamePlayedNotAWinAndTheGamesTableStillShowsEveryone() {
+		clock.set(NOW.minus(Duration.ofHours(26)));
+		var game = games.create(new GameDetails("football", "5-a-side", null, clock.instant().plus(Duration.ofHours(1)), 60, "unlisted", null,
+				null, "A pitch", "Osu, Accra", null, 10, 0, null, "public", null), kwame);
+		games.join(game.id(), ama);
+		clock.set(NOW.minus(Duration.ofHours(24)));
+		results.record(game.id(), new ResultInput(2, 2, List.of(kwame.toString()), List.of(ama.toString()), null, null, null), kwame);
+		clock.set(NOW);
+
+		assertThat(leaderboard.top(null, null, null, Leaderboard.Period.ALL, "wins", 10)).as("nobody won").isEmpty();
+		var played = leaderboard.top(null, null, null, Leaderboard.Period.ALL, "games", 10);
+		assertThat(namesOf(played)).containsExactlyInAnyOrder("Kwame Mensah", "Ama Serwaa");
+		assertThat(played).allSatisfy(row -> {
+			assertThat(row.games()).isEqualTo(1);
+			assertThat(row.wins()).isZero();
+			assertThat(row.draws()).isEqualTo(1);
+			assertThat(row.losses()).isZero();
+		});
 	}
 
 	@Test

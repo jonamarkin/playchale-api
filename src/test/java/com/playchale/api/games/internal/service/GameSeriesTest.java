@@ -3,6 +3,7 @@ package com.playchale.api.games.internal.service;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -16,9 +17,11 @@ import com.playchale.api.games.api.GameResponse;
 import com.playchale.api.games.internal.domain.GameDetails;
 import com.playchale.api.games.internal.domain.PayTo;
 import com.playchale.api.games.internal.domain.SeriesChange;
+import com.playchale.api.integration.sms.SmsSender;
 import com.playchale.api.notifications.internal.service.NotificationResponse;
 import com.playchale.api.notifications.internal.service.NotificationService;
 import com.playchale.api.shared.TestClock;
+import com.playchale.api.shared.config.PlaychaleProperties;
 import com.playchale.api.users.api.UserDirectory;
 import com.playchale.api.users.internal.service.UserProfileService;
 import com.playchale.api.venues.internal.domain.DayHours;
@@ -54,6 +57,27 @@ class GameSeriesTest {
 		@Primary
 		TestClock testClock() {
 			return new TestClock();
+		}
+
+		@Bean
+		@Primary
+		Texts texts() {
+			return new Texts();
+		}
+
+	}
+
+	/** Keeps every text instead of sending it. */
+	static class Texts implements SmsSender {
+
+		final List<String> sent = new ArrayList<>();
+
+		String last;
+
+		@Override
+		public void send(String phone, String message) {
+			sent.add(phone);
+			last = message;
 		}
 
 	}
@@ -94,6 +118,12 @@ class GameSeriesTest {
 
 	@Autowired
 	JdbcClient jdbc;
+
+	@Autowired
+	Texts texts;
+
+	@Autowired
+	PlaychaleProperties properties;
 
 	UUID kwame;
 
@@ -181,6 +211,27 @@ class GameSeriesTest {
 		var next = games.get(latestOf(first.series().id()), kwame);
 		assertThat(next.startsAt()).isEqualTo(KICKOFF.plus(WEEK));
 		assertThat(next.payTo()).isEqualTo(new GameResponse.PayToResponse("+233244555124", "Kojo Owusu", "Cash is fine too"));
+	}
+
+	@Test
+	void lastTimesGuestsAreTextedTheLinkAndAnyoneSeesHowManyAreAsked() {
+		texts.sent.clear();
+		var first = weekly();
+		var id = first.series().id();
+		games.join(first.id(), kojo);
+		games.addGuest(first.id(), "Kofi from work", "024 455 5199", kwame);
+		games.addGuest(first.id(), "No number", null, kwame);
+
+		afterEndOf(KICKOFF);
+		var next = latestOf(id);
+		// The guest has no account to be invited with: a text with the link instead. Once.
+		assertThat(texts.sent).containsExactly("+233244555199");
+		assertThat(texts.last).isEqualTo("PlayChale: Saturday 5s is on again, Sat 10:00am at Legon Park. Join: %s/games/%s"
+			.formatted(properties.webApp().replaceFirst("^https?://", ""), next));
+		// Someone who wasn't there sees the game isn't empty: one asked, not yet answered.
+		assertThat(games.get(next, adwoa).askedCount()).isEqualTo(1);
+		games.join(next, kojo);
+		assertThat(games.get(next, adwoa).askedCount()).isNull();
 	}
 
 	@Test

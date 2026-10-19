@@ -1,6 +1,5 @@
 package com.playchale.api.notifications.internal.service;
 
-import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -52,7 +51,7 @@ class GameReminders {
 	static final int UNTIL_HOUR = 21;
 
 	/** One SMS. */
-	static final int SMS_LENGTH = 160;
+	static final int SMS_LENGTH = SmsText.LENGTH;
 
 	private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("h:mm a", Locale.ENGLISH);
 
@@ -184,47 +183,9 @@ class GameReminders {
 		}
 	}
 
-	/**
-	 * The text: "PlayChale: Saturday 5s is tomorrow, 6:00pm at Legon Park. Details: playchale.com/games/…",
-	 * in plain characters and one SMS, the title and place shortened to fit.
-	 */
+	/** The text: "PlayChale: Saturday 5s is tomorrow, 6:00pm at Legon Park. Details: playchale.com/games/…", one SMS. */
 	static String text(String title, String time, String venue, String url) {
-		var link = url.replaceFirst("^https?://", "");
-		var when = time.replace(" ", "");
-		var fixed = "PlayChale: %s is tomorrow, " + when + " at %s. Details: " + plain(link);
-		var room = SMS_LENGTH - (fixed.length() - 4);
-		var place = plain(venue);
-		var name = plain(title);
-		// The place gives way first, down to a few words; then the title. Cut between words, so it
-		// still reads ("at Accra Sports Stadium", not "at Accra Spo...").
-		if (name.length() + place.length() > room) {
-			place = shorten(place, Math.max(24, room - name.length()));
-		}
-		if (name.length() + place.length() > room) {
-			name = shorten(name, Math.max(1, room - place.length()));
-		}
-		return fixed.formatted(name, place);
-	}
-
-	/** At most {@code max} characters, cut at the last space that fits (mid-word only for one long word). */
-	private static String shorten(String s, int max) {
-		if (s.length() <= max) {
-			return s;
-		}
-		var cut = s.substring(0, max);
-		var space = cut.lastIndexOf(' ');
-		return (space > 0 ? cut.substring(0, space) : cut).replaceAll("[\\s,.;:\\-]+$", "");
-	}
-
-	/**
-	 * Only characters every phone sends as plain text: accents taken off, curly quotes and dashes made
-	 * straight, anything else left out.
-	 */
-	static String plain(String s) {
-		var straight = (s == null ? "" : s).replace('‘', '\'').replace('’', '\'').replace('“', '"').replace('”', '"').replace('–', '-')
-			.replace('—', '-').replace('·', '-').replace('…', '.');
-		var bare = Normalizer.normalize(straight, Normalizer.Form.NFKD).replaceAll("\\p{M}", "");
-		return bare.replaceAll("[^A-Za-z0-9 .,:;!?'\"()&@#%*+=/_\\-]", "").replaceAll("\\s+", " ").strip();
+		return SmsText.fit("PlayChale: %s is tomorrow, " + time.replace(" ", "") + " at %s. Details: " + SmsText.link(url), title, venue);
 	}
 
 }

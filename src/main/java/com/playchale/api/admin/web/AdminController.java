@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.playchale.api.admin.internal.service.AdminDesk;
+import com.playchale.api.admin.internal.service.ShareStats;
 import com.playchale.api.admin.internal.service.Staff;
 import com.playchale.api.shared.security.CurrentUser;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,9 +33,36 @@ class AdminController {
 
 	private final Staff staff;
 
-	AdminController(AdminDesk desk, Staff staff) {
+	private final ShareStats share;
+
+	AdminController(AdminDesk desk, Staff staff, ShareStats share) {
 		this.desk = desk;
 		this.staff = staff;
+		this.share = share;
+	}
+
+	/** admin.share.game: a played game's result, for a share image. */
+	@GetMapping("/share/games/{id}")
+	ShareStats.Result shareGame(CurrentUser me, @PathVariable UUID id) {
+		return share.result(me.id(), id);
+	}
+
+	/** admin.share.recap: the last {@code days} (7 unless said), for a share image. */
+	@GetMapping("/share/recap")
+	ShareStats.Recap shareRecap(CurrentUser me, @RequestParam(defaultValue = "7") int days) {
+		return share.recap(me.id(), days);
+	}
+
+	/** admin.share.milestone: how many have joined and played, for a share image. */
+	@GetMapping("/share/milestone")
+	ShareStats.Milestone shareMilestone(CurrentUser me) {
+		return share.milestone(me.id());
+	}
+
+	/** admin.share.upcoming: games anyone can still join in the next {@code days}, for a share image. */
+	@GetMapping("/share/upcoming")
+	List<ShareStats.Upcoming> shareUpcoming(CurrentUser me, @RequestParam(defaultValue = "7") int days) {
+		return share.upcoming(me.id(), days);
 	}
 
 	/** admin.me: whether this person works here, and as what. The web app asks before showing anything. */

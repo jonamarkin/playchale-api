@@ -57,7 +57,8 @@ public class Leaderboard {
 	 *
 	 * @param place 1 for the top, and shared by players who are level on the metric
 	 */
-	public record Standing(int place, UserSummary player, int games, int wins, int goals, int assists, int points, int sets) {
+	public record Standing(int place, UserSummary player, int games, int wins, int draws, int losses, int goals, int assists, int points,
+			int sets) {
 	}
 
 	@Transactional(readOnly = true)
@@ -85,7 +86,7 @@ public class Leaderboard {
 				place = i + 1;
 				previous = score;
 			}
-			standings.add(new Standing(place, player.toPublic(), row.games(), row.wins(), row.goals(), row.assists(), row.points(), row.sets()));
+			standings.add(new Standing(place, player.toPublic(), row.games(), row.wins(), row.draws(), row.losses(), row.goals(), row.assists(), row.points(), row.sets()));
 		}
 		return List.copyOf(standings);
 	}

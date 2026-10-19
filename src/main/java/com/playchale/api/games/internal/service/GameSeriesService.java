@@ -163,7 +163,7 @@ public class GameSeriesService {
 		var game = gameService.createForSeries(details, s.getCountry(), s.getTimezone(), s.getHostId(), s.getId());
 		var invited = gameService.inviteRegulars(game, regulars(s, last));
 		s.opened(game);
-		events.publishEvent(new GameEvents.SeriesGameOpened(GameService.info(game), s.getId(), invited));
+		events.publishEvent(new GameEvents.SeriesGameOpened(GameService.info(game), s.getId(), invited, guestPhones(last)));
 		return Optional.of(game);
 	}
 
@@ -180,6 +180,15 @@ public class GameSeriesService {
 			.map(Participant::getUserId)
 			.filter(Objects::nonNull)
 			.filter(id -> !id.equals(s.getHostId()) && !optedOut.contains(id))
+			.toList();
+	}
+
+	/** The last game's guests who left a number: they can't be invited, so they're told by text. */
+	private static List<String> guestPhones(Game last) {
+		if (last == null) {
+			return List.of();
+		}
+		return last.getParticipants().stream().filter(Participant::isGuest).map(Participant::getGuestPhone).filter(Objects::nonNull).distinct()
 			.toList();
 	}
 

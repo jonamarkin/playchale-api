@@ -37,8 +37,8 @@ public interface PlayerTotals {
 	record Filter(String sport, String country, String area, Instant since, Metric metric, int limit) {
 	}
 
-	/** One player's totals over the games the filter allowed. */
-	record Totals(UUID userId, int games, int wins, int goals, int assists, int points, int sets) {
+	/** One player's totals over the games the filter allowed: every game is a win, a draw (level) or a loss. */
+	record Totals(UUID userId, int games, int wins, int draws, int losses, int goals, int assists, int points, int sets) {
 	}
 
 	/** The players at the top, best first. Only verified results count, as a profile's record does. */

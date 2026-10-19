@@ -80,9 +80,13 @@ public class PlayerProfileService {
 	}
 
 	private static PlayerStats stats(List<PlayedGame> games) {
-		return new PlayerStats(games.size(), (int) games.stream().filter(g -> "W".equals(g.outcome())).count(),
+		return new PlayerStats(games.size(), count(games, "W"), count(games, "D"), count(games, "L"),
 				games.stream().mapToInt(PlayedGame::goals).sum(), games.stream().mapToInt(PlayedGame::assists).sum(),
 				games.stream().mapToInt(PlayedGame::points).sum(), games.stream().mapToInt(PlayedGame::setsWon).sum());
+	}
+
+	private static int count(List<PlayedGame> games, String outcome) {
+		return (int) games.stream().filter(g -> outcome.equals(g.outcome())).count();
 	}
 
 	/** The latest results, oldest first. {@code games} is in date order. */
