@@ -9,12 +9,15 @@ import java.time.Duration;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Profile;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Phone notifications are on when both VAPID keys are set (see {@link PushProperties}); then there's
@@ -34,6 +37,17 @@ class PushConfig {
 		var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).followRedirects(HttpClient.Redirect.NEVER).build();
 		log.info("Phone notifications are on");
 		return new WebPushSender(http, new Vapid(push), clock);
+	}
+
+	/**
+	 * The app's notifications, through Expo. On unless PLAYCHALE_PUSH_EXPO=false; it needs no keys
+	 * (PLAYCHALE_PUSH_EXPO_ACCESS_TOKEN is optional, for Expo's stricter "enhanced security").
+	 */
+	@Bean
+	@ConditionalOnProperty(name = "playchale.push.expo", havingValue = "true", matchIfMissing = true)
+	AppPushSender expoPushSender(ObjectMapper json, @Value("${playchale.push.expo-access-token:}") String accessToken) {
+		var http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).followRedirects(HttpClient.Redirect.NEVER).build();
+		return new ExpoPushSender(http, json, accessToken);
 	}
 
 	/**

@@ -32,4 +32,16 @@ class SessionTest {
 		assertThat(session.getLastSeenAt()).isEqualTo(NOW.plus(Duration.ofMinutes(61)));
 	}
 
+	@Test
+	void aSessionInUseCarriesOnAndOneLeftAloneEnds() {
+		var session = new Session(SessionToken.generate(), UUID.randomUUID(), NOW);
+		// Used ten days in: most of its life is left, so its end doesn't move.
+		session.seen(NOW.plus(Duration.ofDays(10)));
+		assertThat(session.getExpiresAt()).isEqualTo(NOW.plus(Session.LIFETIME));
+		// Used twenty days in: under half is left, so it runs a full lifetime from then.
+		var later = NOW.plus(Duration.ofDays(20));
+		session.seen(later);
+		assertThat(session.getExpiresAt()).isEqualTo(later.plus(Session.LIFETIME));
+	}
+
 }

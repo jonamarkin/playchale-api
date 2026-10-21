@@ -18,6 +18,7 @@ import tools.jackson.databind.ObjectMapper;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -87,6 +88,36 @@ class AuthApiTest {
 
 		mvc.perform(delete("/auth/session").cookie(session)).andExpect(status().isNoContent());
 		mvc.perform(get("/auth/session").cookie(session)).andExpect(content().string("null"));
+	}
+
+	@Test
+	void thePhoneAppSignsInWithATokenItSendsBackAsABearer() throws Exception {
+		mvc.perform(post("/auth/codes").contentType(MediaType.APPLICATION_JSON).content("{\"phone\":\"024 455 5124\"}"))
+			.andExpect(status().isOk());
+		var signIn = mvc.perform(post("/auth/app/sessions").contentType(MediaType.APPLICATION_JSON)
+			.content("{\"phone\":\"024 455 5124\",\"code\":\"123456\"}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.user.phone").value("+233244555124"))
+			.andExpect(jsonPath("$.expiresAt").exists())
+			.andReturn()
+			.getResponse();
+		// The app keeps the token itself: no cookie.
+		assertThat(signIn.getHeader("Set-Cookie")).isNull();
+		var token = json.readTree(signIn.getContentAsString()).get("token").asString();
+		var bearer = "Bearer " + token;
+
+		mvc.perform(get("/auth/session").header("Authorization", bearer))
+			.andExpect(jsonPath("$.phone").value("+233244555124"));
+		mvc.perform(patch("/me").header("Authorization", bearer).contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Kojo App\"}"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.name").value("Kojo App"));
+		mvc.perform(get("/auth/session").header("Authorization", "Bearer not-a-real-token")).andExpect(content().string("null"));
+		mvc.perform(patch("/me").header("Authorization", "Bearer not-a-real-token").contentType(MediaType.APPLICATION_JSON)
+			.content("{\"name\":\"Nobody\"}"))
+			.andExpect(status().isUnauthorized());
+
+		mvc.perform(delete("/auth/session").header("Authorization", bearer)).andExpect(status().isNoContent());
+		mvc.perform(get("/auth/session").header("Authorization", bearer)).andExpect(content().string("null"));
 	}
 
 	@Test

@@ -47,6 +47,7 @@ class NotificationAccountDeletion {
 		emailPreferences.deleteById(e.userId());
 		jdbc.sql("DELETE FROM mailout_recipients WHERE user_id = :user").param("user", e.userId()).update();
 		jdbc.sql("DELETE FROM text_preferences WHERE user_id = :user").param("user", e.userId()).update();
+		jdbc.sql("DELETE FROM app_push_tokens WHERE user_id = :user").param("user", e.userId()).update();
 	}
 
 }

@@ -20,11 +20,11 @@ import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import org.springframework.web.util.WebUtils;
 
 /**
  * Fills in {@link CurrentUser} and {@code Optional<CurrentUser>} controller parameters from the
- * session cookie, for every module's controllers.
+ * session: the cookie the web app carries, or the bearer token the phone app sends
+ * ({@link SessionCookies#tokenOf}), for every module's controllers.
  *
  * <p>It also limits how fast one account can change things. An account is free to make, so without
  * this a script could create games, invite and add people, and post messages as fast as the server
@@ -71,8 +71,7 @@ class CurrentUserArgumentResolver implements HandlerMethodArgumentResolver, WebM
 		@SuppressWarnings("unchecked")
 		var session = (Optional<AuthService.SessionInfo>) request.getAttribute(ATTRIBUTE);
 		if (session == null) {
-			var cookie = WebUtils.getCookie(request, SessionCookies.NAME);
-			session = auth.sessionFor(cookie == null ? null : cookie.getValue());
+			session = auth.sessionFor(SessionCookies.tokenOf(request));
 			request.setAttribute(ATTRIBUTE, session);
 			if (session.isPresent() && !READS.contains(request.getMethod())) {
 				withinLimits(session.get().userId());

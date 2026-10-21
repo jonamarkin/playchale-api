@@ -69,10 +69,18 @@ public class Session implements Persistable<String> {
 		return guest;
 	}
 
-	/** Notes that the device was used, which lets old sessions be tidied up later. */
+	/**
+	 * Notes that the device was used, which lets old sessions be tidied up later. One in use carries
+	 * on: with under half its life left, it runs a full {@link #LIFETIME} from now, so a phone that
+	 * opens the app at least once a month stays signed in. (A web cookie ends on its own date, which
+	 * this doesn't move.)
+	 */
 	public void seen(Instant now) {
 		if (lastSeenAt.isBefore(now.minus(SEEN_PRECISION))) {
 			lastSeenAt = now;
+			if (expiresAt.isBefore(now.plus(LIFETIME.dividedBy(2)))) {
+				expiresAt = now.plus(LIFETIME);
+			}
 		}
 	}
 

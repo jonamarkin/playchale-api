@@ -39,6 +39,10 @@ class PushController {
 	record Endpoint(String endpoint) {
 	}
 
+	/** {"token": "ExponentPushToken[…]", "platform": "android" | "ios"}: a phone with the app. */
+	record Device(String token, String platform) {
+	}
+
 	/** {"muted": ["payments", ...]} */
 	record Muted(List<String> muted) {
 	}
@@ -63,6 +67,18 @@ class PushController {
 	@GuestHostsAllowed
 	PushService.Settings unsubscribe(CurrentUser me, @RequestBody Endpoint request) {
 		return push.unsubscribe(me.id(), request.endpoint());
+	}
+
+	/** push.registerDevice: from the phone app. */
+	@PostMapping("/me/push/devices")
+	PushService.Settings registerDevice(CurrentUser me, @RequestBody Device request) {
+		return push.registerDevice(me.id(), request.token(), request.platform());
+	}
+
+	/** push.forgetDevice: from the phone app, on signing out or turning them off. */
+	@PostMapping("/me/push/device-removals")
+	PushService.Settings forgetDevice(CurrentUser me, @RequestBody Device request) {
+		return push.forgetDevice(me.id(), request.token());
 	}
 
 	/** push.mute */

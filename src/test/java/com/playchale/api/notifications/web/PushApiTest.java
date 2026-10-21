@@ -38,7 +38,7 @@ class PushApiTest {
 
 	@BeforeEach
 	void emptyTables() {
-		jdbc.sql("TRUNCATE users, sign_in_codes, sessions, push_subscriptions, push_preferences CASCADE").update();
+		jdbc.sql("TRUNCATE users, sign_in_codes, sessions, push_subscriptions, push_preferences, app_push_tokens CASCADE").update();
 	}
 
 	@Test
@@ -61,6 +61,23 @@ class PushApiTest {
 			.andExpect(jsonPath("$.muted[0]").value("payments"));
 		mvc.perform(post("/me/push/unsubscriptions").cookie(kojo).contentType(MediaType.APPLICATION_JSON)
 			.content("{\"endpoint\":\"https://fcm.googleapis.com/fcm/send/abc\"}"))
+			.andExpect(jsonPath("$.devices").value(0));
+	}
+
+	@Test
+	void thePhoneAppRegistersItselfWithItsBearerToken() throws Exception {
+		mvc.perform(post("/auth/codes").contentType(MediaType.APPLICATION_JSON).content("{\"phone\":\"024 455 5125\"}"));
+		var signedIn = mvc.perform(post("/auth/app/sessions").contentType(MediaType.APPLICATION_JSON)
+			.content("{\"phone\":\"024 455 5125\",\"code\":\"123456\"}"))
+			.andReturn().getResponse().getContentAsString();
+		var bearer = "Bearer " + signedIn.replaceAll(".*\"token\":\"([^\"]+)\".*", "$1");
+		var device = "{\"token\":\"ExponentPushToken[abc123]\",\"platform\":\"android\"}";
+
+		mvc.perform(post("/me/push/devices").contentType(MediaType.APPLICATION_JSON).content(device)).andExpect(status().isUnauthorized());
+		mvc.perform(post("/me/push/devices").header("Authorization", bearer).contentType(MediaType.APPLICATION_JSON).content(device))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.devices").value(1));
+		mvc.perform(post("/me/push/device-removals").header("Authorization", bearer).contentType(MediaType.APPLICATION_JSON).content(device))
 			.andExpect(jsonPath("$.devices").value(0));
 	}
 

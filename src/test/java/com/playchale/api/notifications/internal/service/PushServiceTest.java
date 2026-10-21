@@ -16,6 +16,7 @@ import java.util.UUID;
 import com.playchale.api.TestcontainersConfiguration;
 import com.playchale.api.games.internal.domain.GameDetails;
 import com.playchale.api.games.internal.service.GameService;
+import com.playchale.api.integration.push.AppPushSender;
 import com.playchale.api.integration.push.PushSender;
 import com.playchale.api.integration.push.PushTarget;
 import com.playchale.api.users.api.UserDirectory;
@@ -60,8 +61,32 @@ class PushServiceTest {
 
 	}
 
+	/** What would have gone to the app's phones, through Expo. */
+	static class RecordingAppSender implements AppPushSender {
+
+		final List<String> sent = new ArrayList<>();
+
+		final Set<String> gone = new HashSet<>();
+
+		@Override
+		public PushSender.Delivery send(String token, String title, String body, String link) {
+			if (gone.contains(token)) {
+				return PushSender.Delivery.GONE;
+			}
+			sent.add(token + " " + title + " " + link);
+			return PushSender.Delivery.SENT;
+		}
+
+	}
+
 	@TestConfiguration
 	static class Fakes {
+
+		@Bean
+		@Primary
+		RecordingAppSender recordingAppSender() {
+			return new RecordingAppSender();
+		}
 
 		@Bean
 		@Primary
@@ -87,6 +112,9 @@ class PushServiceTest {
 	RecordingPushSender sender;
 
 	@Autowired
+	RecordingAppSender app;
+
+	@Autowired
 	GameService games;
 
 	@Autowired
@@ -101,10 +129,12 @@ class PushServiceTest {
 
 	@BeforeEach
 	void setUp() {
-		jdbc.sql("TRUNCATE users, sign_in_codes, sessions, games, game_participants, game_invites, notifications, push_subscriptions, push_preferences CASCADE")
+		jdbc.sql("TRUNCATE users, sign_in_codes, sessions, games, game_participants, game_invites, notifications, push_subscriptions, push_preferences, app_push_tokens CASCADE")
 			.update();
 		sender.sent.clear();
 		sender.gone.clear();
+		app.sent.clear();
+		app.gone.clear();
 		kwame = user("+233244555123", "Kwame Mensah");
 		kojo = user("+233244555124", "Kojo Owusu");
 	}
@@ -179,6 +209,38 @@ class PushServiceTest {
 		sender.gone.add(PHONE);
 		games.invite(game, List.of(kojo), kwame);
 		assertThat(push.settings(kojo).devices()).as("a phone the push service no longer knows is forgotten").isZero();
+	}
+
+	private static final String APP = "ExponentPushToken[kojos-android-1234]";
+
+	@Test
+	void aPhoneWithTheAppGetsThemTooAndGoesWhenTheAppIsRemoved() {
+		assertThatThrownBy(() -> push.registerDevice(kojo, "https://intranet.example/hook", "android"))
+			.hasMessage("That isn’t the app’s notification token.");
+		assertThatThrownBy(() -> push.registerDevice(kojo, APP, "blackberry")).hasMessage("Say which kind of phone: android or ios.");
+		assertThat(push.registerDevice(kojo, APP, "android").devices()).isEqualTo(1);
+		assertThat(push.registerDevice(kojo, APP, "android").devices()).as("the same phone again").isEqualTo(1);
+
+		var game = game();
+		games.invite(game, List.of(kojo), kwame);
+		assertThat(app.sent).containsExactly(APP + " Kwame invited you to Saturday 5s /games/" + game);
+
+		// Kept off the phone: the app too.
+		push.mute(kojo, List.of("games"));
+		games.invite(game, List.of(kojo), kwame);
+		assertThat(app.sent).hasSize(1);
+		push.mute(kojo, List.of());
+
+		// Someone else signs in on the phone: it's theirs now.
+		push.registerDevice(kwame, APP, "android");
+		assertThat(push.settings(kojo).devices()).isZero();
+		assertThat(push.forgetDevice(kwame, APP).devices()).isZero();
+
+		// The app removed: Expo says so, and the phone is forgotten.
+		push.registerDevice(kojo, APP, "android");
+		app.gone.add(APP);
+		games.invite(game, List.of(kojo), kwame);
+		assertThat(push.settings(kojo).devices()).isZero();
 	}
 
 }

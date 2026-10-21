@@ -1,5 +1,7 @@
 package com.playchale.api.auth.web;
 
+import java.time.Clock;
+import java.time.Instant;
 import java.util.Map;
 import java.util.Optional;
 
@@ -38,10 +40,13 @@ class AuthController {
 
 	private final SessionCookies cookies;
 
-	AuthController(AuthService auth, GuestHosts guests, SessionCookies cookies) {
+	private final Clock clock;
+
+	AuthController(AuthService auth, GuestHosts guests, SessionCookies cookies, Clock clock) {
 		this.auth = auth;
 		this.guests = guests;
 		this.cookies = cookies;
+		this.clock = clock;
 	}
 
 	/** auth.options: which ways of signing in are set up. */
@@ -69,6 +74,29 @@ class AuthController {
 	}
 
 	record GoogleSignInRequest(String credential, String country) {
+	}
+
+	/**
+	 * Signed in on the phone app: the player, and the session token it sends back as
+	 * {@code Authorization: Bearer}. No cookie: the app keeps the token in the phone's secure storage.
+	 */
+	record AppSession(UserSummary user, String token, Instant expiresAt) {
+	}
+
+	/** auth.verifyOtp and auth.verifyEmailCode, from the phone app. */
+	@PostMapping("/app/sessions")
+	AppSession signInOnApp(@Valid @RequestBody SignInRequest request) {
+		return appSession(auth.signIn(request.phone(), request.email(), request.code(), request.country(), null));
+	}
+
+	/** auth.signInWithGoogle, from the phone app. */
+	@PostMapping("/app/google")
+	AppSession signInWithGoogleOnApp(@RequestBody GoogleSignInRequest request) {
+		return appSession(auth.signInWithGoogle(request.credential(), request.country(), null));
+	}
+
+	private AppSession appSession(AuthService.SignedIn signedIn) {
+		return new AppSession(signedIn.user(), signedIn.token(), clock.instant().plus(signedIn.validFor()));
 	}
 
 	/** auth.signInWithGoogle: the ID token from Google's button; the signed-in player, plus the session cookie. */
@@ -133,10 +161,10 @@ class AuthController {
 		return Map.of("manageKey", guests.replaceKey(me.id()));
 	}
 
-	/** auth.signOut: 204, and the cookie is cleared. */
+	/** auth.signOut: 204, and the cookie is cleared. The phone app signs out with its bearer token. */
 	@DeleteMapping("/session")
-	ResponseEntity<Void> signOut(@CookieValue(name = SessionCookies.NAME, required = false) String token) {
-		auth.signOut(token);
+	ResponseEntity<Void> signOut(HttpServletRequest http) {
+		auth.signOut(SessionCookies.tokenOf(http));
 		return ResponseEntity.noContent().header(HttpHeaders.SET_COOKIE, cookies.clear().toString()).build();
 	}
 

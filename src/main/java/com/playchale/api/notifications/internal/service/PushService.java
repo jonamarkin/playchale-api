@@ -5,10 +5,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.UUID;
 
+import com.playchale.api.integration.push.AppPushSender;
 import com.playchale.api.integration.push.PushSender;
 import com.playchale.api.integration.push.PushTarget;
+import com.playchale.api.notifications.internal.domain.AppPushToken;
 import com.playchale.api.notifications.internal.domain.PushPreference;
 import com.playchale.api.notifications.internal.domain.PushSubscription;
+import com.playchale.api.notifications.internal.repository.AppPushTokenRepository;
 import com.playchale.api.notifications.internal.repository.PushPreferenceRepository;
 import com.playchale.api.notifications.internal.repository.PushSubscriptionRepository;
 import com.playchale.api.shared.error.BusinessException;
@@ -34,6 +37,10 @@ public class PushService {
 
 	private final ObjectProvider<PushSender> sender;
 
+	private final AppPushTokenRepository appTokens;
+
+	private final ObjectProvider<AppPushSender> appSender;
+
 	private final ObjectMapper json;
 
 	/** Delivery's own short writes: never a transaction held open while waiting on a push service. */
@@ -42,10 +49,13 @@ public class PushService {
 	private final Clock clock;
 
 	PushService(PushSubscriptionRepository subscriptions, PushPreferenceRepository preferences, ObjectProvider<PushSender> sender,
-			ObjectMapper json, PlatformTransactionManager transactions, Clock clock) {
+			AppPushTokenRepository appTokens, ObjectProvider<AppPushSender> appSender, ObjectMapper json, PlatformTransactionManager transactions,
+			Clock clock) {
 		this.subscriptions = subscriptions;
 		this.preferences = preferences;
 		this.sender = sender;
+		this.appTokens = appTokens;
+		this.appSender = appSender;
 		this.json = json;
 		this.write = new TransactionTemplate(transactions);
 		this.write.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -55,7 +65,7 @@ public class PushService {
 	/**
 	 * @param publicKey what browsers subscribe with; null when phone notifications aren't set up here
 	 * @param muted     the kinds kept off this person's phones
-	 * @param devices   how many of their browsers get them
+	 * @param devices   how many of their browsers and phones with the app get them
 	 */
 	public record Settings(String publicKey, List<String> muted, long devices) {
 	}
@@ -64,7 +74,34 @@ public class PushService {
 	@Transactional(readOnly = true)
 	public Settings settings(UUID me) {
 		var push = sender.getIfAvailable();
-		return new Settings(push == null ? null : push.publicKey(), muted(me), subscriptions.countByUserId(me));
+		return new Settings(push == null ? null : push.publicKey(), muted(me), subscriptions.countByUserId(me) + appTokens.countByUserId(me));
+	}
+
+	/**
+	 * push.registerDevice: this phone with the app, for the signed-in player. A phone someone else
+	 * used moves to them, as a browser does.
+	 */
+	@Transactional
+	public Settings registerDevice(UUID me, String token, String platform) {
+		if (appSender.getIfAvailable() == null) {
+			throw BusinessException.conflict("Phone notifications aren’t switched on for PlayChale yet.");
+		}
+		if (!AppPushSender.isToken(token)) {
+			throw BusinessException.invalid("That isn’t the app’s notification token.");
+		}
+		if (!"android".equals(platform) && !"ios".equals(platform)) {
+			throw BusinessException.invalid("Say which kind of phone: android or ios.");
+		}
+		appTokens.findByToken(token).ifPresentOrElse(t -> t.renew(me, platform),
+				() -> appTokens.save(new AppPushToken(me, token, platform, clock.instant())));
+		return settings(me);
+	}
+
+	/** push.forgetDevice: this phone stops getting them (signing out of the app, or turning them off). */
+	@Transactional
+	public Settings forgetDevice(UUID me, String token) {
+		appTokens.deleteMine(me, token == null ? "" : token);
+		return settings(me);
 	}
 
 	/** push.subscribe: this browser, for the signed-in player. A browser someone else used moves to them. */
@@ -105,14 +142,19 @@ public class PushService {
 		return settings(me);
 	}
 
-	/** A saved notification to each of the player's phones, unless they keep that kind off them. Runs after it's committed. */
+	/**
+	 * A saved notification to each of the player's browsers and phones with the app, unless they keep
+	 * that kind off them. Runs after it's committed.
+	 */
 	void deliver(NotificationSaved n) {
-		var push = sender.getIfAvailable();
-		if (push == null) {
-			return;
-		}
 		var category = PushCategories.of(n.kind());
 		if (category != null && muted(n.userId()).contains(category)) {
+			return;
+		}
+		var link = n.link() == null ? "/me/notifications" : n.link();
+		toApps(n, link);
+		var push = sender.getIfAvailable();
+		if (push == null) {
 			return;
 		}
 		var phones = subscriptions.findByUserId(n.userId());
@@ -122,13 +164,28 @@ public class PushService {
 		var message = new LinkedHashMap<String, String>();
 		message.put("title", n.title());
 		message.put("body", n.body());
-		message.put("link", n.link() == null ? "/me/notifications" : n.link());
+		message.put("link", link);
 		message.put("tag", n.id().toString());
 		var payload = json.writeValueAsString(message);
 		for (var phone : phones) {
 			switch (push.send(new PushTarget(phone.getEndpoint(), phone.getP256dh(), phone.getAuth()), payload)) {
 				case GONE -> write.executeWithoutResult(t -> subscriptions.deleteById(phone.getId()));
 				case SENT -> write.executeWithoutResult(t -> subscriptions.findById(phone.getId()).ifPresent(p -> p.sent(clock.instant())));
+				case FAILED -> {
+				}
+			}
+		}
+	}
+
+	private void toApps(NotificationSaved n, String link) {
+		var app = appSender.getIfAvailable();
+		if (app == null) {
+			return;
+		}
+		for (var phone : appTokens.findByUserId(n.userId())) {
+			switch (app.send(phone.getToken(), n.title(), n.body(), link)) {
+				case GONE -> write.executeWithoutResult(t -> appTokens.deleteById(phone.getId()));
+				case SENT -> write.executeWithoutResult(t -> appTokens.findById(phone.getId()).ifPresent(p -> p.sent(clock.instant())));
 				case FAILED -> {
 				}
 			}
