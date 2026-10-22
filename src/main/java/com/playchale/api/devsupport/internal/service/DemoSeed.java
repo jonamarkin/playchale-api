@@ -481,6 +481,20 @@ class DemoSeed {
 		if (g.result() != null) {
 			insertResult(g.id(), g.result());
 		}
+		// Friday 5s: the players voted Kwame player of the match, and voting has closed. His first.
+		if (g.id().equals("g-osu-last")) {
+			insertVotes(g.id(), List.of("u-kojo", "u-kofi", "u-yaw", "u-nii"), "u-kwame", g.result().recordedAt());
+		}
+	}
+
+	/** Everyone picked the same player; voting closed a day after the result and the players were told. */
+	private void insertVotes(String gameId, List<String> voters, String pick, Instant recordedAt) {
+		for (var voter : voters) {
+			jdbc.sql("INSERT INTO result_votes (game_id, voter_id, player_key, voted_at) VALUES (:game, :voter, :key, :at)")
+				.param("game", id(gameId)).param("voter", id(voter)).param("key", id(pick).toString()).param("at", utc(recordedAt.plusSeconds(1800)))
+				.update();
+		}
+		jdbc.sql("UPDATE game_results SET votes_announced_at = votes_close_at WHERE game_id = :game").param("game", id(gameId)).update();
 	}
 
 	private void insertResult(String gameId, Result r) {
@@ -906,6 +920,8 @@ class DemoSeed {
 				minutesAgo(60 * 26), true);
 		note("u-kwame", "result-added", "Result: Friday 5s", "You won 5–3. Your stats are updated.", "/games/%s".formatted(id("g-osu-last")),
 				"u-kojo", minutesAgo(60 * 24 * 6 - 120), true);
+		note("u-kwame", "result-added", "You’re player of the match", "Voted by the players in Friday 5s. Share your match card.",
+				"/games/%s?card=1".formatted(id("g-osu-last")), null, minutesAgo(60 * 24 * 5 - 120), false);
 		note("u-kojo", "payment-received", "Kwame paid GHS 25", "Saturday 5-a-side · 5 of 7 paid", "/games/%s".formatted(id("g-osu-sat")),
 				"u-kwame", minutesAgo(130), false);
 		note("u-adwoa", "booking", "Kwame booked Pitch A", "Midweek 5s · Halfway Line Turf", "/venues/%s/manage".formatted(id("v-osu")), "u-kwame",
@@ -918,7 +934,7 @@ class DemoSeed {
 				VALUES (gen_random_uuid(), :user, :kind, :title, :body, :link, :actor, :at, :read)
 				""")
 			.param("user", id(user)).param("kind", kind).param("title", title).param("body", body).param("link", link)
-			.param("actor", id(actor)).param("at", utc(at)).param("read", read ? utc(at) : null)
+			.param("actor", actor == null ? null : id(actor)).param("at", utc(at)).param("read", read ? utc(at) : null)
 			.update();
 	}
 
