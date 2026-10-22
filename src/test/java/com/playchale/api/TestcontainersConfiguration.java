@@ -21,5 +21,10 @@ public class TestcontainersConfiguration {
 	public static final DockerImageName POSTGRES = DockerImageName.parse("mirror.gcr.io/library/postgres:17")
 		.asCompatibleSubstituteFor("postgres");
 
+	@Bean
+	@ServiceConnection
+	PostgreSQLContainer postgresContainer() {
+		return new PostgreSQLContainer(POSTGRES);
+	}
 
 }
