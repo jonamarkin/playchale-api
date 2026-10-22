@@ -30,7 +30,8 @@ class PlayerProfileApiTest {
 	/** The web app's PlayerProfile type (webapp/app/types/domain.ts). If this changes, both must. */
 	private static final Set<String> PROFILE_FIELDS = Set.of("user", "stats", "form", "bySport", "teams");
 
-	private static final Set<String> STATS_FIELDS = Set.of("games", "wins", "draws", "losses", "goals", "assists", "points", "setsWon");
+	private static final Set<String> STATS_FIELDS = Set.of("games", "wins", "draws", "losses", "goals", "assists", "points", "setsWon",
+			"playerOfTheMatch");
 
 	@Autowired
 	MockMvc mvc;

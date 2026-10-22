@@ -12,9 +12,10 @@ public interface PlayedGames {
 	 *
 	 * @param scoreFor their side's score (sets won, for set-based sports)
 	 * @param sets     set by set with their side first; empty unless the sport is played in sets
+	 * @param playerOfTheMatch the players voted them player of the match (alone or level), once voting closed
 	 */
 	record PlayedGame(UUID gameId, String title, String sport, String format, Instant startsAt, String venueName, int scoreFor,
-			int scoreAgainst, int goals, int assists, int points, List<Set> sets) {
+			int scoreAgainst, int goals, int assists, int points, List<Set> sets, boolean playerOfTheMatch) {
 
 		/** "W", "D" or "L". */
 		public String outcome() {

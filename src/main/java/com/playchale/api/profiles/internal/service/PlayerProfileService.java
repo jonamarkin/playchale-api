@@ -58,7 +58,8 @@ public class PlayerProfileService {
 		return played.by(userId).stream()
 			.map(g -> new MatchRecord(g.gameId(), g.title(), g.sport(), g.format(), g.startsAt(), g.venueName(), g.outcome(), g.scoreFor(),
 					g.scoreAgainst(), g.goals(), g.assists(), g.points(),
-					g.sets().isEmpty() ? null : g.sets().stream().map(s -> new MatchRecord.SetScore(s.home(), s.away())).toList()))
+					g.sets().isEmpty() ? null : g.sets().stream().map(s -> new MatchRecord.SetScore(s.home(), s.away())).toList(),
+					g.playerOfTheMatch() ? Boolean.TRUE : null))
 			.toList();
 	}
 
@@ -82,7 +83,8 @@ public class PlayerProfileService {
 	private static PlayerStats stats(List<PlayedGame> games) {
 		return new PlayerStats(games.size(), count(games, "W"), count(games, "D"), count(games, "L"),
 				games.stream().mapToInt(PlayedGame::goals).sum(), games.stream().mapToInt(PlayedGame::assists).sum(),
-				games.stream().mapToInt(PlayedGame::points).sum(), games.stream().mapToInt(PlayedGame::setsWon).sum());
+				games.stream().mapToInt(PlayedGame::points).sum(), games.stream().mapToInt(PlayedGame::setsWon).sum(),
+				(int) games.stream().filter(PlayedGame::playerOfTheMatch).count());
 	}
 
 	private static int count(List<PlayedGame> games, String outcome) {

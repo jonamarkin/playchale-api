@@ -4,6 +4,7 @@ import com.playchale.api.games.api.GameResponse;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import com.playchale.api.TestcontainersConfiguration;
@@ -11,6 +12,7 @@ import com.playchale.api.games.internal.domain.GameDetails;
 import com.playchale.api.games.internal.domain.ResultInput;
 import com.playchale.api.notifications.internal.service.NotificationResponse;
 import com.playchale.api.notifications.internal.service.NotificationService;
+import com.playchale.api.profiles.internal.service.PlayerProfileService;
 import com.playchale.api.shared.TestClock;
 import com.playchale.api.users.api.AccountDeleted;
 import com.playchale.api.users.api.GuestAccountMerged;
@@ -56,6 +58,9 @@ class PlayerOfTheMatchTest {
 
 	@Autowired
 	PlayerOfTheMatch announcer;
+
+	@Autowired
+	PlayerProfileService profiles;
 
 	@Autowired
 	NotificationService notifications;
@@ -186,8 +191,16 @@ class PlayerOfTheMatchTest {
 		record();
 		results.vote(game.id(), ama.toString(), kojo);
 		results.vote(game.id(), kojo.toString(), ama);
+		// Nothing on profiles until voting closes.
+		assertThat(profiles.get(kojo, Optional.empty()).stats().playerOfTheMatch()).isZero();
 
 		clock.set(NOW.plus(Duration.ofHours(28)));
+		// Both count it, on their profile and in their history; Kwame, who played too, doesn't.
+		assertThat(profiles.get(kojo, Optional.empty()).stats().playerOfTheMatch()).isEqualTo(1);
+		assertThat(profiles.get(ama, Optional.empty()).bySport().getFirst().stats().playerOfTheMatch()).isEqualTo(1);
+		assertThat(profiles.history(kojo).getFirst().playerOfTheMatch()).isTrue();
+		assertThat(profiles.history(kwame).getFirst().playerOfTheMatch()).isNull();
+		assertThat(profiles.get(kwame, Optional.empty()).stats().playerOfTheMatch()).isZero();
 		var closed = voteAs(kojo);
 		assertThat(closed.winners()).containsExactly(kojo.toString(), ama.toString());
 		assertThat(closed.votes()).isEqualTo(1);
