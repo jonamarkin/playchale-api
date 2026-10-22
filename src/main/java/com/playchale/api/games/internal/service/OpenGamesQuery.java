@@ -77,4 +77,12 @@ class OpenGamesQuery implements OpenGames {
 		return Set.copyOf(hosts);
 	}
 
+	@Override
+	public Set<UUID> playing(Instant from, Instant to) {
+		return Set.copyOf(jdbc.sql("""
+				SELECT DISTINCT p.user_id FROM game_participants p JOIN games g ON g.id = p.game_id
+				WHERE p.user_id IS NOT NULL AND g.status <> 'cancelled' AND g.starts_at >= :from AND g.starts_at < :to
+				""").param("from", from.atOffset(ZoneOffset.UTC)).param("to", to.atOffset(ZoneOffset.UTC)).query(UUID.class).list());
+	}
+
 }

@@ -74,8 +74,8 @@ class MarketTest {
 		org.assertj.core.api.Assertions.assertThat(ghana.shareOf(25_000, 10)).isEqualTo(2_500);
 		org.assertj.core.api.Assertions.assertThat(ghana.shareOf(10_000, 3)).as("3,333.3 rounds up to the next 10").isEqualTo(3_340);
 		org.assertj.core.api.Assertions.assertThat(ghana.shareOf(0, 10)).isZero();
-		org.assertj.core.api.Assertions.assertThat(ghana.formatMoney(2_500)).isEqualTo("GH₵ 25");
-		org.assertj.core.api.Assertions.assertThat(ghana.formatMoney(1_250)).isEqualTo("GH₵ 12.50");
+		org.assertj.core.api.Assertions.assertThat(ghana.formatMoney(2_500)).isEqualTo("GHS 25");
+		org.assertj.core.api.Assertions.assertThat(ghana.formatMoney(1_250)).isEqualTo("GHS 12.50");
 	}
 
 	@org.junit.jupiter.api.Test

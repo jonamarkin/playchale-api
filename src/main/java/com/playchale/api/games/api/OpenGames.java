@@ -6,8 +6,8 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Games anyone could still join, for telling people about the ones near them (the Friday "this
- * weekend near you"), and who's hosting, for asking a host with nothing on to put one up.
+ * Games anyone could still join, for telling people about the ones near them (Thursday's and
+ * Friday's "this weekend near you"), and who's hosting, for asking a host with nothing on to put one up.
  */
 public interface OpenGames {
 
@@ -29,5 +29,8 @@ public interface OpenGames {
 
 	/** Who has something on from {@code from} until {@code to}: a game they host there, or a game that repeats. */
 	Set<UUID> hosting(Instant from, Instant to);
+
+	/** Who's in a game (not called off) starting from {@code from} until {@code to}: already playing then. */
+	Set<UUID> playing(Instant from, Instant to);
 
 }

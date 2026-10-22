@@ -119,12 +119,12 @@ class GameChangeApiTest {
 		ok(send(post("/games/" + id + "/players"), kojo, ""), 200);
 		var kojoId = jdbc.sql("SELECT id::text FROM users WHERE phone = '+233244555124'").query(String.class).single();
 
-		// Free, then GH₵ 20 each: Kojo owes his share now, and hears so.
+		// Free, then GHS 20 each: Kojo owes his share now, and hears so.
 		var priced = ok(send(patch("/games/" + id), host, CHANGE.formatted("Sunday 5s", "2030-06-02T16:00:00Z", 60, 10, 20000, "per-player", LEGON)), 200);
 		assertThat(priced.get("share").asLong()).isEqualTo(2000);
 		assertThat(paid(id, kojoId)).isFalse();
 		assertThat(jdbc.sql("SELECT body FROM notifications WHERE kind = 'game-moved'").query(String.class).single())
-			.isEqualTo("Kwame changed what each player pays. It’s GH₵ 20 each now.");
+			.isEqualTo("Kwame changed what each player pays. It’s GHS 20 each now.");
 
 		// He pays in cash. More spots at the same price per player is fine; another price isn't.
 		ok(send(post("/games/" + id + "/players/" + kojoId + "/cash"), host, ""), 200);

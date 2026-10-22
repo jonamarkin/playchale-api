@@ -39,7 +39,7 @@ public class EmailPreference {
 
 	private String digest = "weekly";
 
-	/** Friday's "this weekend near you", inside marketing like the digest. On unless they turn it off. */
+	/** Thursday's "this weekend near you", inside marketing like the digest. On unless they turn it off. */
 	private boolean weekend = true;
 
 	private Instant optedInAt;

@@ -32,14 +32,15 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * "This weekend near you", on Friday evening when people plan their weekend: the open games this
+ * "This weekend near you", on Thursday evening when people plan their weekend: the open games this
  * weekend in each person's sports and places, read from what's really on, as a notification (and a
  * push, unless they keep "Games near you" off their phone) and, for those who agreed to hear from
- * PlayChale, an email.
+ * PlayChale, an email. Then on Friday evening, a short reminder in the app (no second email) for
+ * anyone who still has open games near them and isn't playing this weekend yet.
  *
  * <p>Nobody hears "nothing's on". Someone with no games near them gets nothing, except a host who
- * put a game on lately and has nothing this weekend, who is asked whether to put one up. One nudge a
- * weekend at most, whatever runs twice (weekend_nudges).
+ * put a game on lately and has nothing this weekend, who is asked on Thursday whether to put one up.
+ * One of each a weekend at most, whatever runs twice (weekend_nudges).
  *
  * <p>"Near" is what Home's "Games near you" means: their country, nudged to their sports and the
  * places they play. Someone who's said neither hears about every game in their country.
@@ -88,7 +89,7 @@ class WeekendNudge {
 		this.clock = clock;
 	}
 
-	@Scheduled(cron = "0 0 17 * * FRI", zone = "Africa/Accra")
+	@Scheduled(cron = "0 0 17 * * THU", zone = "Africa/Accra")
 	@Transactional
 	public void sendWeekly() {
 		if (!lock.tryLock("weekend-nudge")) {
@@ -97,16 +98,34 @@ class WeekendNudge {
 		send();
 	}
 
-	/** Nudges everyone with something to hear this weekend. Returns how many were. Visible for testing. */
+	@Scheduled(cron = "0 0 17 * * FRI", zone = "Africa/Accra")
+	@Transactional
+	public void remindWeekly() {
+		if (!lock.tryLock("weekend-nudge-friday")) {
+			return;
+		}
+		followUp();
+	}
+
+	/** The weekend ahead, from Saturday until Monday; from now if it's already begun. */
+	private record Weekend(LocalDate saturday, Instant from, Instant to) {
+
+		static Weekend after(Instant now) {
+			var saturday = LocalDate.ofInstant(now, ACCRA).with(TemporalAdjusters.nextOrSame(DayOfWeek.SATURDAY));
+			var from = saturday.atStartOfDay(ACCRA).toInstant();
+			// Run late, on the Saturday itself: from now, not from games already started.
+			return new Weekend(saturday, now.isAfter(from) ? now : from, saturday.plusDays(2).atStartOfDay(ACCRA).toInstant());
+		}
+
+	}
+
+	/** Thursday's: nudges everyone with something to hear this weekend. Returns how many were. Visible for testing. */
 	int send() {
 		var now = clock.instant();
-		var saturday = LocalDate.ofInstant(now, ACCRA).with(TemporalAdjusters.nextOrSame(DayOfWeek.SATURDAY));
-		var from = saturday.atStartOfDay(ACCRA).toInstant();
-		var to = saturday.plusDays(2).atStartOfDay(ACCRA).toInstant();
-		// Run late, on the Saturday itself: from now, not from games already started.
-		if (now.isAfter(from)) {
-			from = now;
-		}
+		var weekend = Weekend.after(now);
+		var saturday = weekend.saturday();
+		var from = weekend.from();
+		var to = weekend.to();
 		var games = open.between(from, to);
 		var hosts = open.hostedSince(now.minus(HOSTED_LATELY), now);
 		var busy = open.hosting(from, to);
@@ -120,7 +139,7 @@ class WeekendNudge {
 			if (picks.isEmpty() && !start) {
 				continue;
 			}
-			if (!claim(member.id(), saturday, start ? "start" : "games", picks.size(), now)) {
+			if (!claim(member.id(), saturday, "thu", start ? "start" : "games", picks.size(), now)) {
 				continue;
 			}
 			nudged++;
@@ -150,6 +169,34 @@ class WeekendNudge {
 		return nudged;
 	}
 
+	/**
+	 * Friday's: a reminder in the app, no email, for anyone with open games near them who isn't in a
+	 * game this weekend yet. Hosts with nothing on were asked on Thursday. Returns how many were.
+	 * Visible for testing.
+	 */
+	int followUp() {
+		var now = clock.instant();
+		var weekend = Weekend.after(now);
+		var games = open.between(weekend.from(), weekend.to());
+		var busy = new HashSet<>(open.playing(weekend.from(), weekend.to()));
+		busy.addAll(open.hosting(weekend.from(), weekend.to()));
+		int reminded = 0;
+		for (var member : users.members()) {
+			if (busy.contains(member.id())) {
+				continue;
+			}
+			var picks = picksFor(member, games);
+			if (picks.isEmpty() || !claim(member.id(), weekend.saturday(), "fri", "games", picks.size(), now)) {
+				continue;
+			}
+			reminded++;
+			notifications.send(member.id(), "nearby", "Still free this weekend?", line(picks.getFirst()) + more(picks.size(), 1),
+					"/games?when=weekend", null);
+		}
+		log.info("Weekend reminder: {} reminded", reminded);
+		return reminded;
+	}
+
 	/** The open games for this person: in their country, not ones they're in, nudged to their sports and places. */
 	static List<OpenGames.OpenGame> picksFor(UserSummary member, List<OpenGames.OpenGame> games) {
 		var country = member.country() == null || member.country().isBlank() ? Market.DEFAULT : member.country();
@@ -173,12 +220,12 @@ class WeekendNudge {
 		return places.stream().anyMatch(where::contains);
 	}
 
-	/** Takes this weekend's nudge for them: false when they've had it already. */
-	private boolean claim(UUID userId, LocalDate weekend, String kind, int games, Instant now) {
+	/** Takes this weekend's Thursday ("thu") or Friday ("fri") nudge for them: false when they've had it already. */
+	private boolean claim(UUID userId, LocalDate weekend, String day, String kind, int games, Instant now) {
 		return jdbc.sql("""
-				INSERT INTO weekend_nudges (user_id, weekend, kind, games, sent_at) VALUES (:user, :weekend, :kind, :games, :now)
-				ON CONFLICT (user_id, weekend) DO NOTHING
-				""").param("user", userId).param("weekend", weekend).param("kind", kind).param("games", games)
+				INSERT INTO weekend_nudges (user_id, weekend, day, kind, games, sent_at) VALUES (:user, :weekend, :day, :kind, :games, :now)
+				ON CONFLICT (user_id, weekend, day) DO NOTHING
+				""").param("user", userId).param("weekend", weekend).param("day", day).param("kind", kind).param("games", games)
 			.param("now", now.atOffset(ZoneOffset.UTC)).update() == 1;
 	}
 

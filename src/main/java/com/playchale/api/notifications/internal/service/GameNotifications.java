@@ -312,7 +312,7 @@ class GameNotifications {
 		return Market.get(game.country()).formatKickoff(game.startsAt(), clock.instant(), ZoneId.of(game.timezone()));
 	}
 
-	/** Money the game's country's way: "GH₵ 25", "£ 5". */
+	/** Money the game's country's way: "GHS 25", "£ 5". */
 	private static String money(GameEvents.GameInfo game, long amount) {
 		return Market.get(game.country()).formatMoney(amount);
 	}

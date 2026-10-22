@@ -74,7 +74,7 @@ class DemoSeed {
 		notifications();
 		mapPins();
 		staff();
-		// A contribution to play rather than a cost to split, as in the web app's seed: GH₵ 20 each (280 across 14 spots).
+		// A contribution to play rather than a cost to split, as in the web app's seed: GHS 20 each (280 across 14 spots).
 		jdbc.sql("UPDATE games SET pricing = 'per-player' WHERE id = :id").param("id", id("g-labone-tonight")).update();
 	}
 
@@ -896,17 +896,17 @@ class DemoSeed {
 	/* ------------------------------------------------------------------ notifications */
 
 	private void notifications() {
-		note("u-abena", "payment-reminder", "Pay your GH₵ 25 share", "Kojo is collecting for Saturday 5-a-side.",
+		note("u-abena", "payment-reminder", "Pay your GHS 25 share", "Kojo is collecting for Saturday 5-a-side.",
 				"/games/%s?pay=1".formatted(id("g-osu-sat")), "u-kojo", minutesAgo(95), false);
 		note("u-abena", "result-added", "Result: Morning singles", "You lost 1–2 in sets. Your stats are updated.",
 				"/games/%s".formatted(id("g-tennis-last")), "u-esi", minutesAgo(60 * 24 * 4 - 120), true);
 		note("u-kwame", "player-joined", "Nii joined Midweek 5s", "3 of 10 spots filled.", "/games/%s".formatted(id("g-osu-wed")), "u-nii",
 				minutesAgo(180), false);
-		note("u-kwame", "payment-received", "Kojo paid GH₵ 25", "Midweek 5s · 3 of 3 paid", "/games/%s".formatted(id("g-osu-wed")), "u-kojo",
+		note("u-kwame", "payment-received", "Kojo paid GHS 25", "Midweek 5s · 3 of 3 paid", "/games/%s".formatted(id("g-osu-wed")), "u-kojo",
 				minutesAgo(60 * 26), true);
 		note("u-kwame", "result-added", "Result: Friday 5s", "You won 5–3. Your stats are updated.", "/games/%s".formatted(id("g-osu-last")),
 				"u-kojo", minutesAgo(60 * 24 * 6 - 120), true);
-		note("u-kojo", "payment-received", "Kwame paid GH₵ 25", "Saturday 5-a-side · 5 of 7 paid", "/games/%s".formatted(id("g-osu-sat")),
+		note("u-kojo", "payment-received", "Kwame paid GHS 25", "Saturday 5-a-side · 5 of 7 paid", "/games/%s".formatted(id("g-osu-sat")),
 				"u-kwame", minutesAgo(130), false);
 		note("u-adwoa", "booking", "Kwame booked Pitch A", "Midweek 5s · Halfway Line Turf", "/venues/%s/manage".formatted(id("v-osu")), "u-kwame",
 				minutesAgo(60 * 20), false);

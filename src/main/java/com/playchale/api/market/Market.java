@@ -25,7 +25,7 @@ import com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberType;
 /**
  * What's true of a country rather than of the product: how phone numbers look, the currency, how
  * money is written. Any country: its name and currency come from the JDK's ISO data, its phone
- * numbers from Google's libphonenumber. Ghana keeps a few details set by hand (the GH₵ symbol).
+ * numbers from Google's libphonenumber. Ghana keeps a few details set by hand (the cedi written "GHS").
  * Mirrors webapp/app/data/markets.ts.
  *
  * Where a game, venue or league is played, it carries its own country, currency and timezone; a
@@ -34,7 +34,7 @@ import com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberType;
  * @param country        ISO 3166-1 alpha-2
  * @param dialCode       E.164 country calling code, with +
  * @param currency       ISO 4217
- * @param currencySymbol how money is written, e.g. "GH₵ 25", "£ 5"
+ * @param currencySymbol how money is written, e.g. "GHS 25", "£ 5"
  * @param minorUnits     minor units in one major unit (100 pesewas to the cedi, 1 for the yen)
  * @param shareStep      a player's share is rounded up to a multiple of this (minor units), so
  *                       nobody hands over awkward change
@@ -123,7 +123,7 @@ public record Market(String country, String countryName, String dialCode, String
 		var name = Locale.of("", country).getDisplayCountry(Locale.ENGLISH);
 		if (DEFAULT.equals(country)) {
 			// Set by hand: how people in Ghana write money and numbers.
-			return new Market(country, name, dial, code, "GH₵", minorUnits, 10, "Africa/Accra", "en-GH", "024 123 4567");
+			return new Market(country, name, dial, code, "GHS", minorUnits, 10, "Africa/Accra", "en-GH", "024 123 4567");
 		}
 		var symbol = currency == null ? code : currency.getSymbol(Locale.of("en", country));
 		// Shares round up to a tenth of the unit (10p, 10 kobo); a currency without cents rounds to 1.
@@ -192,7 +192,7 @@ public record Market(String country, String countryName, String dialCode, String
 		return (perPlayer + shareStep - 1) / shareStep * shareStep;
 	}
 
-	/** "GH₵ 25" or "GH₵ 12.50", "£ 5", "¥ 500", as the web app writes money. */
+	/** "GHS 25" or "GHS 12.50", "£ 5", "¥ 500", as the web app writes money. */
 	public String formatMoney(long minor) {
 		var digits = (int) Math.round(Math.log10(minorUnits));
 		var whole = minor % minorUnits == 0;

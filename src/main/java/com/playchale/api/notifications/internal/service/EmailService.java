@@ -40,7 +40,7 @@ public class EmailService {
 	 * @param muted      the categories kept out of their inbox
 	 * @param marketing  whether they agreed to email about PlayChale itself
 	 * @param digest     "weekly" or "off"
-	 * @param weekend    Friday's "this weekend near you", within marketing
+	 * @param weekend    Thursday's "this weekend near you", within marketing
 	 * @param address    where it would go, or null if we have no address for them
 	 * @param categories every category there is, so the web app doesn't hard-code the list
 	 */
@@ -137,7 +137,7 @@ public class EmailService {
 		return preferences.marketingUserIds();
 	}
 
-	/** Everyone who'd take Friday's "this weekend near you" by email: marketing, and that one left on. */
+	/** Everyone who'd take Thursday's "this weekend near you" by email: marketing, and that one left on. */
 	public List<UUID> weekendAudience() {
 		return preferences.weekendUserIds();
 	}

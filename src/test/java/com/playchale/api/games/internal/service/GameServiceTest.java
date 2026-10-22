@@ -299,7 +299,7 @@ class GameServiceTest {
 
 	@Test
 	void aPricePerPlayerIsExactlyWhatEachPlayerPays() {
-		// GH₵ 12.30 to take part, 10 spots: a split would round up to the market's step; a price doesn't.
+		// GHS 12.30 to take part, 10 spots: a split would round up to the market's step; a price doesn't.
 		var game = games.create(new GameDetails("football", "5-a-side", "Saturday 5s", KICKOFF, 60, "unlisted", null, null, "Legon Park", null,
 				null, 10, 12_300, "per-player", "public", null), kwame);
 		assertThat(game.pricing()).isEqualTo("per-player");
@@ -308,7 +308,7 @@ class GameServiceTest {
 
 		games.join(game.id(), kojo);
 		games.remind(game.id(), null, kwame);
-		assertThat(titlesFor(kojo)).containsExactly("Pay GH₵ 12.30 for Saturday 5s");
+		assertThat(titlesFor(kojo)).containsExactly("Pay GHS 12.30 for Saturday 5s");
 
 		// The total is always the price times the spots.
 		assertThatThrownBy(() -> games.create(new GameDetails("football", "5-a-side", null, KICKOFF, 60, "unlisted", null, null, "Legon Park", null,
@@ -329,7 +329,7 @@ class GameServiceTest {
 		assertThat(titlesFor(kwame)).containsExactly("Ama joined Saturday 5s", "Kojo joined Saturday 5s");
 
 		assertThat(games.remind(game.id(), null, kwame)).isEqualTo(2);
-		assertThat(titlesFor(kojo)).containsExactly("Pay your GH₵ 25 share");
+		assertThat(titlesFor(kojo)).containsExactly("Pay your GHS 25 share");
 
 		games.markPaidCash(game.id(), kojo.toString(), kwame);
 		assertThat(games.remind(game.id(), null, kwame)).as("Kojo paid; only Ama owes").isEqualTo(1);

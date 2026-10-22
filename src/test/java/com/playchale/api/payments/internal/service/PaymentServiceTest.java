@@ -110,7 +110,7 @@ class PaymentServiceTest {
 			assertThat(line.gameTitle()).isEqualTo("Saturday 5s");
 		});
 		assertThat(payments.statement(kwame)).singleElement().satisfies(line -> assertThat(line.direction()).isEqualTo("in"));
-		assertThat(notifications.list(kwame).getFirst().title()).isEqualTo("Kojo paid GH₵ 25");
+		assertThat(notifications.list(kwame).getFirst().title()).isEqualTo("Kojo paid GHS 25");
 		assertThat(notifications.list(kwame).getFirst().body()).isEqualTo("Saturday 5s · 1 of 2 paid");
 
 		// Checking again changes nothing, and paying twice is refused.

@@ -24,9 +24,9 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Friday's "this weekend near you": the open games near each person this weekend, never "nothing's
+ * Thursday's "this weekend near you": the open games near each person this weekend, never "nothing's
  * on", a host with nothing on asked to put one up, once a weekend, and by email only to those who
- * agreed to hear from PlayChale.
+ * agreed to hear from PlayChale. Then Friday's reminder, in the app only, for anyone still free.
  */
 @SpringBootTest
 @Import({ TestcontainersConfiguration.class, WeekendNudgeTest.Clocks.class })
@@ -149,6 +149,33 @@ class WeekendNudgeTest {
 		games.join(volley, ama);
 		nudge.send();
 		assertThat(notice(kojo).title()).isEqualTo("A game near you this weekend");
+	}
+
+	@Test
+	void onFridayAnyoneStillFreeIsRemindedInTheAppOnly() {
+		email(esi, "esi@playchale.com", true, true);
+		clock.set(FRIDAY.minus(Duration.ofDays(1)));
+		assertThat(nudge.send()).isEqualTo(3);
+
+		// Kojo has joined a game since Thursday: he's sorted for the weekend.
+		clock.set(FRIDAY);
+		var fives = jdbc.sql("SELECT id FROM games WHERE title = 'Saturday 5s'").query(UUID.class).single();
+		games.join(fives, kojo);
+		assertThat(nudge.followUp()).isEqualTo(1);
+
+		assertThat(notices(kojo)).hasSize(1);
+		assertThat(notices(esi)).hasSize(2);
+		var reminder = notices(esi).stream().filter(n -> n.title().equals("Still free this weekend?")).findFirst().orElseThrow();
+		assertThat(reminder.body()).startsWith("Saturday 5s · Sat 9:00 am · Halfway Line Turf · 8 spots left").endsWith("· and 1 more");
+		assertThat(reminder.link()).isEqualTo("/games?when=weekend");
+		// Yaw was asked to put a game up on Thursday; that isn't asked again.
+		assertThat(notices(yaw)).hasSize(1);
+		// One email a weekend: Thursday's.
+		assertThat(jdbc.sql("SELECT count(*) FROM mailout_recipients").query(Integer.class).single()).isEqualTo(1);
+
+		// Once, however often it runs.
+		assertThat(nudge.followUp()).isZero();
+		assertThat(notices(esi)).hasSize(2);
 	}
 
 	private record Notice(String title, String body, String link) {
