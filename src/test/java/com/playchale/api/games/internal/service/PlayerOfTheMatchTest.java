@@ -211,6 +211,12 @@ class PlayerOfTheMatchTest {
 			assertThat(n.title()).isEqualTo("Player of the match: Kojo and Ama");
 			assertThat(n.body()).isEqualTo("Level on votes in 5-a-side football: they share it.");
 		});
+		// The winners hear it as theirs, with their match card a tap away.
+		assertThat(notifications.list(kojo).stream().filter(n -> n.title().equals("You share player of the match")).toList()).singleElement()
+			.satisfies(n -> {
+				assertThat(n.body()).isEqualTo("Level on votes in 5-a-side football. Share your match card.");
+				assertThat(n.link()).isEqualTo("/games/%s?card=1".formatted(game.id()));
+			});
 	}
 
 	@Test

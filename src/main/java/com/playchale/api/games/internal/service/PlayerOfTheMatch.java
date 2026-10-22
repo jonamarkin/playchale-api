@@ -82,7 +82,8 @@ class PlayerOfTheMatch {
 				.filter(n -> n != null && !n.isBlank()).map(n -> n.strip().split("\\s+")[0]).orElse("A player")).toList();
 			var recipients = new LinkedHashSet<UUID>(played);
 			recipients.add(game.getHostId());
-			events.publishEvent(new GameEvents.PlayerOfTheMatchChosen(GameService.info(game), names, List.copyOf(recipients)));
+			var winners = tally.winners().stream().filter(key -> !key.startsWith("guest:")).map(UUID::fromString).toList();
+			events.publishEvent(new GameEvents.PlayerOfTheMatchChosen(GameService.info(game), names, List.copyOf(recipients), winners));
 			announced++;
 		}
 		if (announced > 0) {

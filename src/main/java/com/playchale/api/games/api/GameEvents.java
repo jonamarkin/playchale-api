@@ -189,8 +189,9 @@ public final class GameEvents {
 	 *
 	 * @param names      the winners' first names: one, or several when level
 	 * @param recipients everyone who played with an account, and the host
+	 * @param winners    the winners with an account (a guest can win, but hears nothing)
 	 */
-	public record PlayerOfTheMatchChosen(GameInfo game, List<String> names, List<UUID> recipients) {
+	public record PlayerOfTheMatchChosen(GameInfo game, List<String> names, List<UUID> recipients, List<UUID> winners) {
 	}
 
 	/** A player says the result isn't right. */

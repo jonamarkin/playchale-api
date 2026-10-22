@@ -274,17 +274,26 @@ class GameNotifications {
 		}
 	}
 
-	/** "Player of the match: Kwame, in Saturday 5s", to everyone who played. It follows the Results setting. */
+	/**
+	 * "Player of the match: Kwame", to everyone who played; the winner hears "You're player of the
+	 * match", and theirs opens their match card to share. It follows the Results setting.
+	 */
 	@EventListener
 	void on(GameEvents.PlayerOfTheMatchChosen e) {
 		var game = e.game();
-		var names = e.names().size() == 1 ? e.names().getFirst()
-				: String.join(", ", e.names().subList(0, e.names().size() - 1)) + " and " + e.names().getLast();
-		var title = "Player of the match: %s".formatted(names);
-		var body = e.names().size() == 1 ? "Voted by the players in %s.".formatted(game.title())
-				: "Level on votes in %s: they share it.".formatted(game.title());
+		var level = e.names().size() > 1;
+		var names = level ? String.join(", ", e.names().subList(0, e.names().size() - 1)) + " and " + e.names().getLast() : e.names().getFirst();
+		var link = "/games/%s".formatted(game.gameId());
 		for (var player : e.recipients()) {
-			notifications.send(player, "result-added", title, body, "/games/%s".formatted(game.gameId()), null);
+			if (e.winners().contains(player)) {
+				notifications.send(player, "result-added", level ? "You share player of the match" : "You’re player of the match",
+						"%s in %s. Share your match card.".formatted(level ? "Level on votes" : "Voted by the players", game.title()),
+						link + "?card=1", null);
+				continue;
+			}
+			notifications.send(player, "result-added", "Player of the match: %s".formatted(names),
+					level ? "Level on votes in %s: they share it.".formatted(game.title()) : "Voted by the players in %s.".formatted(game.title()),
+					link, null);
 		}
 	}
 
