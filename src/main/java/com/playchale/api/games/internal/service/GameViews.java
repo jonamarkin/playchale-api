@@ -3,6 +3,8 @@ package com.playchale.api.games.internal.service;
 import com.playchale.api.games.api.FixtureOrganisers;
 import com.playchale.api.games.api.FixtureTeams;
 import com.playchale.api.games.api.GameResponse;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Collection;
 import java.util.HashMap;
@@ -21,9 +23,12 @@ import com.playchale.api.games.internal.domain.GameResult;
 import com.playchale.api.games.internal.domain.GameSeries;
 import com.playchale.api.games.internal.domain.Participant;
 import com.playchale.api.games.internal.domain.ResultLine;
+import com.playchale.api.games.internal.domain.ResultVote;
+import com.playchale.api.games.internal.domain.VoteTally;
 import com.playchale.api.games.internal.repository.GameInviteRepository;
 import com.playchale.api.games.internal.repository.GameResultRepository;
 import com.playchale.api.games.internal.repository.GameSeriesRepository;
+import com.playchale.api.games.internal.repository.ResultVotes;
 import com.playchale.api.teams.api.TeamCard;
 import com.playchale.api.teams.api.TeamDirectory;
 import com.playchale.api.users.api.UserDirectory;
@@ -59,9 +64,13 @@ class GameViews {
 
 	private final GameSeriesRepository series;
 
+	private final ResultVotes votes;
+
+	private final Clock clock;
+
 	GameViews(UserDirectory users, GameResultRepository results, ObjectProvider<FixtureTeams> fixtureTeams,
 			ObjectProvider<FixtureOrganisers> fixtureOrganisers, PitchBookings venues, GameInviteRepository invites, TeamDirectory teams,
-			GameSeriesRepository series) {
+			GameSeriesRepository series, ResultVotes votes, Clock clock) {
 		this.users = users;
 		this.results = results;
 		this.fixtureTeams = fixtureTeams;
@@ -70,6 +79,8 @@ class GameViews {
 		this.invites = invites;
 		this.teams = teams;
 		this.series = series;
+		this.votes = votes;
+		this.clock = clock;
 	}
 
 	GameResponse of(Game game, UUID viewer) {
@@ -102,6 +113,8 @@ class GameViews {
 		var played = games.stream().filter(g -> Game.COMPLETED.equals(g.getStatus())).map(Game::getId).toList();
 		var resultsByGame = played.isEmpty() ? Map.<UUID, GameResult>of()
 				: results.findAllById(played).stream().collect(Collectors.toMap(GameResult::getGameId, r -> r));
+		var votesByGame = votes.ofGames(resultsByGame.keySet());
+		var now = clock.instant();
 		// Fixtures' teams, per league: a team can be in several, with a different squad in each.
 		var teamIdsByLeague = games.stream().filter(g -> g.getCompetitionId() != null).collect(Collectors.groupingBy(Game::getCompetitionId,
 				Collectors.flatMapping(g -> Stream.of(g.getHomeTeamId(), g.getAwayTeamId()), Collectors.toSet())));
@@ -115,7 +128,8 @@ class GameViews {
 		// Partner venues' own links and pins, in one query: a pin the owner adds later reaches every game there.
 		var places = venues.locations(games.stream().map(Game::getVenueId).filter(Objects::nonNull).distinct().toList());
 		var seriesRefs = seriesRefs(games, viewer);
-		return games.stream().map(g -> view(g, viewer, people, resultsByGame.get(g.getId()),
+		return games.stream().map(g -> view(g, viewer, people,
+				resultsByGame.containsKey(g.getId()) ? result(resultsByGame.get(g.getId()), votesByGame.getOrDefault(g.getId(), List.of()), viewer, now) : null,
 				g.getCompetitionId() == null ? Map.of() : teamsByLeague.getOrDefault(g.getCompetitionId(), Map.of()), places,
 				invites(invitesByGame.get(g.getId()), people, teamNames, viewer), friendly(g, standingTeams),
 				g.getCompetitionId() != null && organised.contains(g.getCompetitionId()),
@@ -166,7 +180,7 @@ class GameViews {
 		return new GameResponse.FriendlyResponse(side.apply(home), side.apply(away), g.getOpponentStatus());
 	}
 
-	private GameResponse view(Game g, UUID viewer, Map<UUID, UserSummary> people, GameResult result,
+	private GameResponse view(Game g, UUID viewer, Map<UUID, UserSummary> people, GameResponse.ResultResponse result,
 			Map<UUID, FixtureTeams.TeamCard> teams, Map<UUID, VenueLocation> places, List<GameResponse.InviteResponse> invites,
 			GameResponse.FriendlyResponse friendly, boolean organiser, GameResponse.SeriesRef series, int asked) {
 		var hostView = g.isHost(viewer);
@@ -194,7 +208,7 @@ class GameViews {
 		}
 		return new GameResponse(g.getId(), g.getSport(), g.getFormat(), g.getTitle(), g.getStartsAt(), g.getDurationMinutes(), venue,
 				g.getCapacity(), g.getTotalCost(), g.getPricing(), g.getCurrency(), g.getVisibility(), g.getHostId(), g.getNotes(), participants,
-				g.getStatus(), result == null ? null : result(result), fixture, g.getCreatedAt(), g.getCancelledAt(), g.getCancelReason(),
+				g.getStatus(), result, fixture, g.getCreatedAt(), g.getCancelledAt(), g.getCancelReason(),
 				host == null ? null : host.as(viewer), players, fixtureTeams, g.share(), g.spotsLeft(),
 				host != null && viewer != null && g.spotOf(viewer).isPresent() ? host.payoutPhone() : null, invites, friendly, g.getCountry(),
 				g.getTimezone(), series, null, viewer != null && g.spotOf(viewer).isPresent() ? payTo(g) : null, asked == 0 ? null : asked);
@@ -206,7 +220,7 @@ class GameViews {
 		return payTo == null ? null : new GameResponse.PayToResponse(payTo.phone(), payTo.name(), payTo.note());
 	}
 
-	private static GameResponse.ResultResponse result(GameResult r) {
+	private static GameResponse.ResultResponse result(GameResult r, List<ResultVote> votes, UUID viewer, Instant now) {
 		var lines = r.getPlayers();
 		var keysOn = (Function<String, List<String>>) side -> lines.stream()
 			.filter(l -> side.equals(l.side())).map(ResultLine::playerKey).toList();
@@ -221,7 +235,12 @@ class GameViews {
 				absent.isEmpty() ? null : absent, r.getRecordedBy(), r.getRecordedAt(),
 				r.getConfirmations().stream().map(c -> c.userId()).toList(),
 				r.getDisputes().stream().map(d -> new GameResponse.Dispute(d.userId(), d.reason(), d.disputedAt())).toList(),
-				r.getHomePenalties(), r.getAwayPenalties());
+				r.getHomePenalties(), r.getAwayPenalties(), r.tally(votes, viewer, now).map(GameViews::vote).orElse(null));
+	}
+
+	private static GameResponse.Vote vote(VoteTally t) {
+		return new GameResponse.Vote(t.closesAt(), t.open(), t.cast(), t.eligible(), t.myPick(),
+				t.winners().isEmpty() ? null : t.winners(), t.winners().isEmpty() ? null : t.votes());
 	}
 
 	private static Integer positive(int value) {

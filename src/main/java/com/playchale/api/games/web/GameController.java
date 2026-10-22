@@ -19,6 +19,7 @@ import com.playchale.api.games.web.dto.GameRequests.SayRequest;
 import com.playchale.api.games.web.dto.GameRequests.CancelRequest;
 import com.playchale.api.games.web.dto.GameRequests.ClaimRequest;
 import com.playchale.api.games.web.dto.GameRequests.DisputeRequest;
+import com.playchale.api.games.web.dto.GameRequests.VoteRequest;
 import com.playchale.api.games.web.dto.GameRequests.GuestJoinRequest;
 import com.playchale.api.games.web.dto.GameRequests.GuestRequest;
 import com.playchale.api.games.web.dto.GameRequests.GuestResponse;
@@ -252,6 +253,12 @@ class GameController {
 	@PostMapping("/games/{id}/result/disputes")
 	GameResponse disputeResult(CurrentUser me, @PathVariable UUID id, @RequestBody(required = false) DisputeRequest request) {
 		return results.dispute(id, request == null ? null : request.reason(), me.id());
+	}
+
+	/** games.voteResult */
+	@PostMapping("/games/{id}/result/votes")
+	GameResponse voteResult(CurrentUser me, @PathVariable UUID id, @RequestBody VoteRequest request) {
+		return results.vote(id, request.player(), me.id());
 	}
 
 	/** games.markPaidCash */

@@ -49,6 +49,13 @@ class GuestHostMerge {
 		jdbc.sql("UPDATE result_players SET user_id = :into, player_key = :key WHERE user_id = :guest").param("into", into)
 			.param("key", into.toString()).param("guest", guest).update();
 		update("UPDATE game_results SET recorded_by = :into WHERE recorded_by = :guest", guest, into);
+		// Their player of the match picks, and picks for them. A pick that's now for themselves isn't counted.
+		update("""
+				DELETE FROM result_votes theirs WHERE theirs.voter_id = :guest
+				  AND EXISTS (SELECT 1 FROM result_votes mine WHERE mine.game_id = theirs.game_id AND mine.voter_id = :into)
+				""", guest, into);
+		update("UPDATE result_votes SET voter_id = :into WHERE voter_id = :guest", guest, into);
+		update("UPDATE result_votes SET player_key = CAST(:into AS text) WHERE player_key = CAST(:guest AS text)", guest, into);
 		for (var table : new String[] { "result_confirmations", "result_disputes", "game_series_optouts", "game_invites" }) {
 			var key = table.equals("game_series_optouts") ? "series_id" : "game_id";
 			update("DELETE FROM %s theirs WHERE theirs.user_id = :guest AND EXISTS (SELECT 1 FROM %s mine WHERE mine.%s = theirs.%s AND mine.user_id = :into)"

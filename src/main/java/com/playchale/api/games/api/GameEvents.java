@@ -184,6 +184,15 @@ public final class GameEvents {
 	public record PlayerOutcome(UUID playerId, String outcome, int scoreFor, int scoreAgainst) {
 	}
 
+	/**
+	 * A game's player of the match vote has closed, and someone won.
+	 *
+	 * @param names      the winners' first names: one, or several when level
+	 * @param recipients everyone who played with an account, and the host
+	 */
+	public record PlayerOfTheMatchChosen(GameInfo game, List<String> names, List<UUID> recipients) {
+	}
+
 	/** A player says the result isn't right. */
 	public record ResultDisputed(GameInfo game, UUID playerId, String reason) {
 	}

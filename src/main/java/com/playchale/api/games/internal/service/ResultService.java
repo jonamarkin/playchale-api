@@ -14,6 +14,7 @@ import com.playchale.api.games.internal.domain.ResultInput;
 import com.playchale.api.games.internal.domain.ResultLine;
 import com.playchale.api.games.internal.repository.GameRepository;
 import com.playchale.api.games.internal.repository.GameResultRepository;
+import com.playchale.api.games.internal.repository.ResultVotes;
 import com.playchale.api.shared.error.BusinessException;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -38,14 +39,17 @@ public class ResultService implements OfficialResults {
 
 	private final FixtureRunners runners;
 
+	private final ResultVotes votes;
+
 	ResultService(GameRepository games, GameResultRepository results, GameViews views, ApplicationEventPublisher events,
-			Clock clock, FixtureRunners runners) {
+			Clock clock, FixtureRunners runners, ResultVotes votes) {
 		this.games = games;
 		this.results = results;
 		this.views = views;
 		this.events = events;
 		this.clock = clock;
 		this.runners = runners;
+		this.votes = votes;
 	}
 
 	/**
@@ -121,6 +125,17 @@ public class ResultService implements OfficialResults {
 		var game = games.findById(gameId).orElseThrow(GameService::notFound);
 		var kept = resultOf(game).dispute(me, reason, clock.instant());
 		events.publishEvent(new GameEvents.ResultDisputed(GameService.info(game), me, kept));
+		return views.of(game, me);
+	}
+
+	/** games.voteResult: a player's pick for the player of the match. Picking again changes it. */
+	@Transactional
+	public GameResponse vote(UUID gameId, String playerKey, UUID me) {
+		var game = games.findById(gameId).orElseThrow(GameService::notFound);
+		var now = clock.instant();
+		var result = resultOf(game);
+		result.checkVote(me, playerKey == null ? "" : playerKey.strip(), now);
+		votes.cast(gameId, me, playerKey.strip(), now);
 		return views.of(game, me);
 	}
 

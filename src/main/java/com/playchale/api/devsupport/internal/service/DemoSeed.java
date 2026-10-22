@@ -484,7 +484,10 @@ class DemoSeed {
 	}
 
 	private void insertResult(String gameId, Result r) {
-		jdbc.sql("INSERT INTO game_results (game_id, home_score, away_score, recorded_by, recorded_at) VALUES (:game, :home, :away, :by, :at)")
+		jdbc.sql("""
+				INSERT INTO game_results (game_id, home_score, away_score, recorded_by, recorded_at, votes_close_at)
+				VALUES (:game, :home, :away, :by, :at, :at + interval '24 hours')
+				""")
 			.param("game", id(gameId)).param("home", r.home()).param("away", r.away()).param("by", id(r.verifiedBy()))
 			.param("at", utc(r.recordedAt()))
 			.update();

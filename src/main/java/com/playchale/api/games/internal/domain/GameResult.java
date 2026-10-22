@@ -1,13 +1,17 @@
 package com.playchale.api.games.internal.domain;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -54,6 +58,9 @@ public class GameResult implements Persistable<UUID> {
 
 	private Instant recordedAt;
 
+	/** When voting for the player of the match closes: a day after the first result, however often it's corrected. */
+	private Instant votesCloseAt;
+
 	@ElementCollection
 	@CollectionTable(name = "result_players", joinColumns = @JoinColumn(name = "game_id"))
 	private List<ResultLine> players = new ArrayList<>();
@@ -75,12 +82,16 @@ public class GameResult implements Persistable<UUID> {
 	@Transient
 	private boolean isNew = true;
 
+	/** How long players have to pick the player of the match. */
+	public static final Duration VOTING = Duration.ofHours(24);
+
 	protected GameResult() {
 	}
 
 	/** A first result for a game. */
 	public GameResult(Game game, ResultInput input, UUID host, Instant now) {
 		this.gameId = game.getId();
+		this.votesCloseAt = now.plus(VOTING);
 		record(game, input, host, now);
 	}
 
@@ -194,6 +205,57 @@ public class GameResult implements Persistable<UUID> {
 		if (recordedBy.equals(userId)) {
 			throw BusinessException.conflict(recordedItYourself);
 		}
+	}
+
+	/**
+	 * A pick for the player of the match: by someone who played, for someone else on a side (a guest
+	 * too), while voting is open.
+	 */
+	public void checkVote(UUID voter, String playerKey, Instant now) {
+		if (!now.isBefore(votesCloseAt)) {
+			throw BusinessException.conflict("Voting for the player of the match has closed.");
+		}
+		if (lineOf(voter).filter(ResultLine::played).isEmpty()) {
+			throw BusinessException.conflict("Only players who were in this game can pick the player of the match.");
+		}
+		if (voter.toString().equals(playerKey)) {
+			throw BusinessException.invalid("Pick someone else: you can’t vote for yourself.");
+		}
+		if (players.stream().noneMatch(l -> l.played() && l.playerKey().equals(playerKey))) {
+			throw BusinessException.invalid("Pick someone who played in this game.");
+		}
+	}
+
+	/**
+	 * Where the vote stands, for one viewer. Only picks by and for players still on a side count, so a
+	 * correction that takes someone off drops theirs. Who's ahead stays hidden until voting closes, so it
+	 * doesn't become a race to rally friends. Empty when fewer than two played: there's nobody to choose.
+	 */
+	public Optional<VoteTally> tally(Collection<ResultVote> votes, UUID viewer, Instant now) {
+		var onSides = players.stream().filter(ResultLine::played).toList();
+		var voters = onSides.stream().map(ResultLine::userId).filter(Objects::nonNull).collect(Collectors.toSet());
+		if (onSides.size() < 2 || voters.isEmpty()) {
+			return Optional.empty();
+		}
+		var keys = onSides.stream().map(ResultLine::playerKey).collect(Collectors.toSet());
+		var counted = votes.stream()
+			.filter(v -> voters.contains(v.voterId()) && keys.contains(v.playerKey()) && !v.voterId().toString().equals(v.playerKey()))
+			.toList();
+		var open = now.isBefore(votesCloseAt);
+		var myPick = viewer == null ? null
+				: counted.stream().filter(v -> v.voterId().equals(viewer)).map(ResultVote::playerKey).findFirst().orElse(null);
+		if (open || counted.isEmpty()) {
+			return Optional.of(new VoteTally(votesCloseAt, open, counted.size(), voters.size(), myPick, List.of(), 0));
+		}
+		var byPlayer = counted.stream().collect(Collectors.groupingBy(ResultVote::playerKey, Collectors.counting()));
+		var most = Collections.max(byPlayer.values());
+		// Level at the top: they share it, in the order they're listed in the result.
+		var winners = onSides.stream().map(ResultLine::playerKey).filter(k -> byPlayer.getOrDefault(k, 0L).equals(most)).toList();
+		return Optional.of(new VoteTally(votesCloseAt, false, counted.size(), voters.size(), myPick, winners, most.intValue()));
+	}
+
+	public Instant getVotesCloseAt() {
+		return votesCloseAt;
 	}
 
 	/** W, D or L for a player on a side; empty for anyone else. */

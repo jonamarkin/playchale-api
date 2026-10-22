@@ -76,6 +76,10 @@ public final class GameRequests {
 	public record DisputeRequest(String reason) {
 	}
 
+	/** @param player the roster's key of who's picked: a player's ID, or "guest:<spot>" */
+	public record VoteRequest(String player) {
+	}
+
 	/** {"userIds": [...]}, or no body for everyone unpaid. */
 	public record RemindRequest(List<UUID> userIds) {
 	}

@@ -97,7 +97,19 @@ public record GameResponse(UUID id, String sport, String format, String title, I
 	@JsonInclude(JsonInclude.Include.NON_NULL)
 	public record ResultResponse(int homeScore, int awayScore, Sides sides, List<Scorer> scorers, List<SetScore> sets,
 			List<String> absent, UUID verifiedBy, Instant recordedAt, List<UUID> confirmedBy, List<Dispute> disputes,
-			Integer homePenalties, Integer awayPenalties) {
+			Integer homePenalties, Integer awayPenalties, Vote vote) {
+	}
+
+	/**
+	 * The player of the match vote; absent when fewer than two played. Who's ahead is never shown
+	 * while it's open: winners and votes come once it has closed (and only if anyone picked).
+	 *
+	 * @param cast     picks so far
+	 * @param eligible players who can pick
+	 * @param myPick   the viewer's pick, a roster key
+	 */
+	@JsonInclude(JsonInclude.Include.NON_NULL)
+	public record Vote(Instant closesAt, boolean open, int cast, int eligible, String myPick, List<String> winners, Integer votes) {
 	}
 
 	public record Sides(List<String> home, List<String> away) {

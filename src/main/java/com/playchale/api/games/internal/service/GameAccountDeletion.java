@@ -9,6 +9,7 @@ import com.playchale.api.games.internal.repository.DepartureRepository;
 import com.playchale.api.games.internal.repository.GameInviteRepository;
 import com.playchale.api.games.internal.repository.GameMessageRepository;
 import com.playchale.api.games.internal.repository.GameRepository;
+import com.playchale.api.games.internal.repository.ResultVotes;
 import com.playchale.api.shared.error.BusinessException;
 import com.playchale.api.users.api.AccountDeleted;
 import com.playchale.api.users.api.AccountHolds;
@@ -33,15 +34,18 @@ class GameAccountDeletion implements AccountHolds {
 
 	private final GameSeriesService series;
 
+	private final ResultVotes votes;
+
 	private final Clock clock;
 
 	GameAccountDeletion(GameRepository games, GameInviteRepository invites, DepartureRepository departures,
-			GameMessageRepository messages, GameSeriesService series, Clock clock) {
+			GameMessageRepository messages, GameSeriesService series, ResultVotes votes, Clock clock) {
 		this.games = games;
 		this.invites = invites;
 		this.departures = departures;
 		this.messages = messages;
 		this.series = series;
+		this.votes = votes;
 		this.clock = clock;
 	}
 
@@ -63,6 +67,8 @@ class GameAccountDeletion implements AccountHolds {
 		departures.forget(e.userId());
 		// And what they said in a game: the same reason, and nobody can ask them about it now.
 		messages.forget(e.userId());
+		// And their player of the match picks.
+		votes.forget(e.userId());
 		// Their repeating games stop: nobody is left to host the next one. And their opt-outs go.
 		series.accountClosed(e.userId());
 		var now = clock.instant();

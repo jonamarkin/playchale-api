@@ -217,6 +217,19 @@ class GameApiTest {
 
 		mvc.perform(post("/games/" + id + "/result/disputes").cookie(kojo).contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"2-2\"}"))
 			.andExpect(jsonPath("$.result.disputes[0].reason").value("2-2"));
+		// Kojo picks the player of the match: while voting is open, nobody sees who's ahead.
+		mvc.perform(post("/games/" + id + "/result/votes").cookie(kojo).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"player\":\"%s\"}".formatted(game.get("hostId").asString())))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.result.vote.open").value(true))
+			.andExpect(jsonPath("$.result.vote.cast").value(1))
+			.andExpect(jsonPath("$.result.vote.eligible").value(2))
+			.andExpect(jsonPath("$.result.vote.myPick").value(game.get("hostId").asString()))
+			.andExpect(jsonPath("$.result.vote.winners").doesNotExist());
+		mvc.perform(post("/games/" + id + "/result/votes").cookie(kojo).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"player\":\"%s\"}".formatted(kojoId)))
+			.andExpect(status().is4xxClientError())
+			.andExpect(jsonPath("$.error.message").value("Pick someone else: you can’t vote for yourself."));
 		mvc.perform(get("/users/" + kojoId + "/profile"))
 			.andExpect(jsonPath("$.stats.games").value(1))
 			.andExpect(jsonPath("$.stats.goals").value(1))

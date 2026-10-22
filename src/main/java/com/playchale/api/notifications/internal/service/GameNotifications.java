@@ -263,10 +263,28 @@ class GameNotifications {
 		for (var player : e.players()) {
 			var body = player.outcome() == null
 					? "%s added the score: %d–%d%s.".formatted(firstName(game.hostId()), e.homeScore(), e.awayScore(), sets)
-					// It counts straight away; if it's wrong, they say so on the game.
-					: "You %s %d–%d%s. Your stats are updated. Not right? Tell %s from the game.".formatted(OUTCOME.get(player.outcome()),
-							player.scoreFor(), player.scoreAgainst(), sets, firstName(game.hostId()));
+					// It counts straight away; if it's wrong, they say so on the game. A correction doesn't
+					// reopen the vote, so only the first result asks for a pick.
+					: e.corrected()
+							? "You %s %d–%d%s. Your stats are updated. Not right? Tell %s from the game.".formatted(OUTCOME.get(player.outcome()),
+									player.scoreFor(), player.scoreAgainst(), sets, firstName(game.hostId()))
+							: "You %s %d–%d%s. Your stats are updated. Pick the player of the match, or tell %s if the score’s off."
+								.formatted(OUTCOME.get(player.outcome()), player.scoreFor(), player.scoreAgainst(), sets, firstName(game.hostId()));
 			notifications.send(player.playerId(), "result-added", title, body, "/games/%s".formatted(game.gameId()), game.hostId());
+		}
+	}
+
+	/** "Player of the match: Kwame, in Saturday 5s", to everyone who played. It follows the Results setting. */
+	@EventListener
+	void on(GameEvents.PlayerOfTheMatchChosen e) {
+		var game = e.game();
+		var names = e.names().size() == 1 ? e.names().getFirst()
+				: String.join(", ", e.names().subList(0, e.names().size() - 1)) + " and " + e.names().getLast();
+		var title = "Player of the match: %s".formatted(names);
+		var body = e.names().size() == 1 ? "Voted by the players in %s.".formatted(game.title())
+				: "Level on votes in %s: they share it.".formatted(game.title());
+		for (var player : e.recipients()) {
+			notifications.send(player, "result-added", title, body, "/games/%s".formatted(game.gameId()), null);
 		}
 	}
 
