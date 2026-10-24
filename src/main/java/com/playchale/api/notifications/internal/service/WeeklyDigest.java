@@ -12,10 +12,13 @@ import java.util.Map;
 import java.util.UUID;
 
 import com.playchale.api.competitions.api.CompetitionDigest;
+import com.playchale.api.games.api.OpenGames;
 import com.playchale.api.games.api.PlayedGames;
+import com.playchale.api.games.api.WeekInGames;
 import com.playchale.api.shared.config.PlaychaleProperties;
 import com.playchale.api.shared.scheduling.ClusterLock;
 import com.playchale.api.users.api.UserDirectory;
+import com.playchale.api.users.api.UserSummary;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -52,6 +55,10 @@ class WeeklyDigest {
 
 	private final UserDirectory users;
 
+	private final WeekInGames week;
+
+	private final OpenGames open;
+
 	private final PlaychaleProperties properties;
 
 	private final ClusterLock lock;
@@ -59,12 +66,14 @@ class WeeklyDigest {
 	private final Clock clock;
 
 	WeeklyDigest(EmailService email, Mailouts mailouts, PlayedGames played, CompetitionDigest competitions, UserDirectory users,
-			PlaychaleProperties properties, ClusterLock lock, Clock clock) {
+			WeekInGames week, OpenGames open, PlaychaleProperties properties, ClusterLock lock, Clock clock) {
 		this.email = email;
 		this.mailouts = mailouts;
 		this.played = played;
 		this.competitions = competitions;
 		this.users = users;
+		this.week = week;
+		this.open = open;
 		this.properties = properties;
 		this.lock = lock;
 		this.clock = clock;
@@ -81,11 +90,15 @@ class WeeklyDigest {
 
 	/** Builds everyone's copy and hands the lot to {@link Mailouts}. Visible for testing. */
 	UUID send() {
-		var since = clock.instant().minus(WEEK);
-		var until = clock.instant().plus(AHEAD);
+		var now = clock.instant();
+		var since = now.minus(WEEK);
+		var until = now.plus(AHEAD);
+		// What happened around everyone, read once: who the players voted player of the match, how
+		// much was played, and the open games for the week ahead.
+		var around = new Around(week.playersOfTheMatchBetween(since, now), week.playedSince(since), open.between(now, now.plus(WEEK)), users);
 		var copies = new ArrayList<Mailouts.Copy>();
 		for (var userId : email.digestAudience()) {
-			var values = weekOf(userId, since, until);
+			var values = weekOf(userId, since, until, around);
 			if (values == null) {
 				continue;
 			}
@@ -103,16 +116,70 @@ class WeeklyDigest {
 	}
 
 	/** This person's week as the template's values, or null when there is nothing to tell them. */
-	private Map<String, String> weekOf(UUID userId, Instant since, Instant until) {
+	private Map<String, String> weekOf(UUID userId, Instant since, Instant until, Around around) {
 		var games = played.by(userId).stream().filter(g -> g.startsAt().isAfter(since)).toList();
 		var results = competitions.since(userId, since);
 		var next = competitions.upcoming(userId, until);
-		if (games.isEmpty() && results.isEmpty() && next.isEmpty()) {
+		var user = users.find(userId).orElse(null);
+		var nearby = user == null ? "" : around.linesFor(user);
+		if (games.isEmpty() && results.isEmpty() && next.isEmpty() && nearby.isEmpty()) {
 			return null;
 		}
-		var user = users.find(userId).orElse(null);
 		return Map.of("greeting", greeting(user == null ? null : user.name()), "week", weekLabel(since),
-				"yours", yours(games), "competitions", competitionLines(results, next), "actionUrl", properties.webApp() + "/home");
+				"yours", yours(games), "competitions", competitionLines(results, next),
+				"around", nearby.isEmpty() ? "A quiet week near you." : nearby, "actionUrl", properties.webApp() + "/home");
+	}
+
+	/**
+	 * The week around a person: in their country, who the players voted player of the match (first
+	 * names, as the game page shows them) and how much was played, then the open games near them for
+	 * the week ahead. Everything here is already public on game pages and profiles.
+	 */
+	static final class Around {
+
+		private final List<WeekInGames.PlayerOfTheMatch> winners;
+
+		private final Map<String, WeekInGames.Played> played;
+
+		private final List<OpenGames.OpenGame> openGames;
+
+		private final Map<UUID, UserSummary> names;
+
+		Around(List<WeekInGames.PlayerOfTheMatch> winners, Map<String, WeekInGames.Played> played, List<OpenGames.OpenGame> openGames,
+				UserDirectory users) {
+			this.winners = winners;
+			this.played = played;
+			this.openGames = openGames;
+			var ids = winners.stream().map(WeekInGames.PlayerOfTheMatch::playerKey).filter(k -> !k.startsWith("guest:")).map(UUID::fromString).toList();
+			this.names = ids.isEmpty() ? Map.of() : users.findAll(ids);
+		}
+
+		/** Lines for one person, or empty when there's nothing in their country and nothing near them. */
+		String linesFor(UserSummary member) {
+			var country = member.country() == null || member.country().isBlank() ? com.playchale.api.market.Market.DEFAULT : member.country();
+			var lines = new ArrayList<String>();
+			var count = played.get(country);
+			if (count != null && count.games() > 0) {
+				lines.add("%d %s played by %d people in %s this week.".formatted(count.games(), count.games() == 1 ? "game" : "games", count.players(),
+						Locale.of("", country).getDisplayCountry(Locale.UK)));
+			}
+			winners.stream().filter(w -> country.equals(w.country())).limit(3).forEach(w -> {
+				var who = names.get(w.playerKey().startsWith("guest:") ? null : UUID.fromString(w.playerKey()));
+				if (who != null && who.name() != null && !who.name().isBlank()) {
+					lines.add("%s · player of the match in %s".formatted(who.name().strip().split("\\s+")[0], w.title()));
+				}
+			});
+			var picks = WeekendNudge.picksFor(member, openGames);
+			if (!picks.isEmpty()) {
+				lines.add(lines.isEmpty() ? "Near you this week:" : "\nNear you this week:");
+				picks.stream().limit(3).forEach(g -> lines.add(WeekendNudge.line(g)));
+				if (picks.size() > 3) {
+					lines.add("And %d more on PlayChale.".formatted(picks.size() - 3));
+				}
+			}
+			return String.join("\n", lines);
+		}
+
 	}
 
 	private static String greeting(String name) {

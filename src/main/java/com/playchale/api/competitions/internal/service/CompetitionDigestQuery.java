@@ -28,15 +28,16 @@ class CompetitionDigestQuery implements CompetitionDigest {
 			FROM competitions c
 			WHERE c.organiser_id = :user
 			   OR EXISTS (SELECT 1 FROM competition_organisers o WHERE o.competition_id = c.id AND o.user_id = :user)
-			   OR EXISTS (SELECT 1 FROM team_players tp WHERE tp.competition_id = c.id AND tp.user_id = :user)
-			   OR EXISTS (SELECT 1 FROM teams t WHERE t.competition_id = c.id AND t.captain_id = :user)
+			   OR EXISTS (SELECT 1 FROM entry_players ep WHERE ep.competition_id = c.id AND ep.user_id = :user)
+			   OR EXISTS (SELECT 1 FROM competition_entries e JOIN teams t ON t.id = e.team_id WHERE e.competition_id = c.id AND t.captain_id = :user)
 			""";
 
 	/** The team they belong to in that competition, for "your team won"; null when they only run it. */
 	private static final String THEIR_TEAM = """
-			(SELECT t.name FROM teams t
-			 LEFT JOIN team_players tp ON tp.team_id = t.id AND tp.user_id = :user
-			 WHERE t.competition_id = c.id AND (tp.user_id IS NOT NULL OR t.captain_id = :user)
+			(SELECT t.name FROM competition_entries e
+			 JOIN teams t ON t.id = e.team_id
+			 LEFT JOIN entry_players ep ON ep.competition_id = e.competition_id AND ep.team_id = t.id AND ep.user_id = :user
+			 WHERE e.competition_id = c.id AND (ep.user_id IS NOT NULL OR t.captain_id = :user)
 			 LIMIT 1)
 			""";
 
